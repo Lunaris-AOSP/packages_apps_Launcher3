@@ -24,6 +24,13 @@
         android:title="@string/general_category_title">
 
         <SwitchPreferenceCompat
+            android:key="pref_recents_scroll_vibrate"
+            android:title="@string/recents_scroll_vibrate_title"
+            android:defaultValue="true"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
             android:key="pref_start_freeform_by_gesture"
             android:title="@string/overview_gesture_title"
             android:summary="@string/overview_gesture_summary"
