@@ -205,7 +205,6 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
         // Currently, the only grouped task action is "save app pairs".
         mActionButtons = findViewById(R.id.action_buttons);
         mSaveAppPairButton = findViewById(R.id.action_save_app_pair);
-        TypefaceUtils.setTypeface(mSaveAppPairButton, FontFamily.GSF_LABEL_LARGE);
         // Initialize a list to hold alphas for mActionButtons and any group action buttons.
         mMultiValueAlphas[ACTIONS_ALPHAS] = new MultiValueAlpha(mActionButtons, NUM_ALPHAS);
         mMultiValueAlphas[GROUP_ACTIONS_ALPHAS] =
@@ -239,7 +238,7 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
         mSaveAppPairButton.setOnClickListener(this);
 
         View clearallButton = findViewById(R.id.action_clear_all);
-        View clearallButtonSpace = findViewById(R.id.action_clear_all_space);
+        View clearallButtonSpace = findViewById(R.id.clear_all_container);
         clearallButton.setOnClickListener(this);
         clearallButton.setVisibility(mClearAll ? VISIBLE : GONE);
         clearallButtonSpace.setVisibility(mClearAll ? VISIBLE : GONE);
