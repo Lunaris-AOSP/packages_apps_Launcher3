@@ -1602,6 +1602,7 @@
     <icon drawable="@drawable/camera_foreground" name="Camera" package="com.samsung.agc.gcam88" />
     <icon drawable="@drawable/camera_foreground" name="Camera" package="com.samsung.agc.gcam90" />
     <icon drawable="@drawable/camera_foreground" name="Camera" package="com.samsung.agc.gcam91" />
+    <icon drawable="@drawable/camera_foreground" name="Camera" package="com.agc.gcam84" />
     <icon drawable="@drawable/camera_foreground" name="Camera" package="com.agc.gcam88" />
     <icon drawable="@drawable/camera_foreground" name="Camera" package="com.agc.gcam90" />
     <icon drawable="@drawable/camera_foreground" name="Camera" package="com.agc.gcam91" />
@@ -6837,6 +6838,7 @@
     <icon drawable="@drawable/mobile_id_foreground" name="Mobile ID" package="com.swisscom.mobileid" />
     <icon drawable="@drawable/mobile_id_foreground" name="Mobile ID" package="com.swisscom.mobileid" />
     <icon drawable="@drawable/mobile_jkn_foreground" name="Mobile JKN" package="app.bpjs.mobile" />
+    <icon drawable="@drawable/mobile_legends_bang_bang_foreground" name="Moba Legends: Bang Bang" package="com.mobiin.gp" />
     <icon drawable="@drawable/mobile_legends_bang_bang_foreground" name="Mobile Legends: Bang Bang" package="com.mobile.legends" />
     <icon drawable="@drawable/mobile_legends_bang_bang_foreground" name="Mobile Legends: Bang Bang" package="com.mobile.legends" />
     <icon drawable="@drawable/mobilede_foreground" name="mobile.de" package="de.mobile.android.app" />
