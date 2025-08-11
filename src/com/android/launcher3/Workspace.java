@@ -2272,7 +2272,10 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     private Runnable getWidgetResizeFrameRunnable(DragOptions options,
             LauncherAppWidgetHostView hostView, CellLayout cellLayout) {
         AppWidgetProviderInfo pInfo = hostView.getAppWidgetInfo();
-        if (pInfo != null) {
+        final boolean isAxionWidgets = "com.android.axion.widgets".equals(pInfo.provider.getPackageName());
+        final boolean shouldNotResize = isAxionWidgets 
+            && pInfo.resizeMode == AppWidgetProviderInfo.RESIZE_NONE;
+        if (pInfo != null && !shouldNotResize) {
             return () -> {
                 if (!isPageInTransition()) {
                     AppWidgetResizeFrame.showForWidget(hostView, cellLayout);
