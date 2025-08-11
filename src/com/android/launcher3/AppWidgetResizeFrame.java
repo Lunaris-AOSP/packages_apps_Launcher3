@@ -15,6 +15,7 @@ import android.animation.AnimatorSet;
 import android.animation.LayoutTransition;
 import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
+import android.appwidget.AppWidgetProviderInfo;
 import android.content.Context;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
@@ -260,6 +261,25 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
         mMinVSpan = info.minSpanY;
         mMaxHSpan = info.maxSpanX;
         mMaxVSpan = info.maxSpanY;
+
+        if (isAxionWidgets()) {
+            // Only show resize handles for the directions in which resizing is possible.
+            InvariantDeviceProfile idp = LauncherAppState.getIDP(cellLayout.getContext());
+            mVerticalResizeActive = (info.resizeMode & AppWidgetProviderInfo.RESIZE_VERTICAL) != 0
+                    && mMinVSpan < idp.numRows && mMaxVSpan > 1
+                    && mMinVSpan < mMaxVSpan;
+            if (!mVerticalResizeActive) {
+                mDragHandles[INDEX_TOP].setVisibility(GONE);
+                mDragHandles[INDEX_BOTTOM].setVisibility(GONE);
+            }
+            mHorizontalResizeActive = (info.resizeMode & AppWidgetProviderInfo.RESIZE_HORIZONTAL) != 0
+                    && mMinHSpan < idp.numColumns && mMaxHSpan > 1
+                    && mMinHSpan < mMaxHSpan;
+            if (!mHorizontalResizeActive) {
+                mDragHandles[INDEX_LEFT].setVisibility(GONE);
+                mDragHandles[INDEX_RIGHT].setVisibility(GONE);
+            }
+        }
 
         mReconfigureButton = (ImageButton) findViewById(R.id.widget_reconfigure_button);
         if (info.isReconfigurable()) {
@@ -884,5 +904,11 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
     private boolean hasSeenReconfigurableWidgetEducationTip() {
         return LauncherPrefs.get(getContext()).get(RECONFIGURABLE_WIDGET_EDUCATION_TIP_SEEN)
                 || Utilities.isRunningInTestHarness();
+    }
+    
+    private boolean isAxionWidgets() {
+        LauncherAppWidgetProviderInfo info = (LauncherAppWidgetProviderInfo)
+                mWidgetView.getAppWidgetInfo();
+        return "com.android.axion.widgets".equals(info.provider.getPackageName());
     }
 }
