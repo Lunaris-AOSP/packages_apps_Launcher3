@@ -2150,7 +2150,9 @@ public abstract class AbsSwipeUpHandler<
             // End the animation, but stay at the same visual progress.
             mLauncherTransitionController.getNormalController().dispatchSetInterpolator(
                     t -> Utilities.boundToRange(mCurrentShift.value, 0, 1));
-            mLauncherTransitionController.getNormalController().getAnimationPlayer().end();
+            MAIN_EXECUTOR.execute(() -> {
+                mLauncherTransitionController.getNormalController().getAnimationPlayer().end();
+            });
             mLauncherTransitionController = null;
         }
 
