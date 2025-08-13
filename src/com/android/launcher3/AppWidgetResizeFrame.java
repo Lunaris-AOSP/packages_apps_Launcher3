@@ -261,24 +261,12 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
         mMinVSpan = info.minSpanY;
         mMaxHSpan = info.maxSpanX;
         mMaxVSpan = info.maxSpanY;
-
-        if (isAxionWidgets()) {
-            // Only show resize handles for the directions in which resizing is possible.
-            InvariantDeviceProfile idp = LauncherAppState.getIDP(cellLayout.getContext());
-            mVerticalResizeActive = (info.resizeMode & AppWidgetProviderInfo.RESIZE_VERTICAL) != 0
-                    && mMinVSpan < idp.numRows && mMaxVSpan > 1
-                    && mMinVSpan < mMaxVSpan;
-            if (!mVerticalResizeActive) {
-                mDragHandles[INDEX_TOP].setVisibility(GONE);
-                mDragHandles[INDEX_BOTTOM].setVisibility(GONE);
-            }
-            mHorizontalResizeActive = (info.resizeMode & AppWidgetProviderInfo.RESIZE_HORIZONTAL) != 0
-                    && mMinHSpan < idp.numColumns && mMaxHSpan > 1
-                    && mMinHSpan < mMaxHSpan;
-            if (!mHorizontalResizeActive) {
-                mDragHandles[INDEX_LEFT].setVisibility(GONE);
-                mDragHandles[INDEX_RIGHT].setVisibility(GONE);
-            }
+        
+        if (isNonResizeableAxWidgets()) {
+            mDragHandles[INDEX_TOP].setVisibility(GONE);
+            mDragHandles[INDEX_BOTTOM].setVisibility(GONE);
+            mDragHandles[INDEX_LEFT].setVisibility(GONE);
+            mDragHandles[INDEX_RIGHT].setVisibility(GONE);
         }
 
         mReconfigureButton = (ImageButton) findViewById(R.id.widget_reconfigure_button);
@@ -346,10 +334,17 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
     }
 
     public boolean beginResizeIfPointInRegion(int x, int y) {
-        mLeftBorderActive = x < mTouchTargetWidth;
-        mRightBorderActive = x > getWidth() - mTouchTargetWidth;
-        mTopBorderActive = y < mTouchTargetWidth + mTopTouchRegionAdjustment;
-        mBottomBorderActive = y > getHeight() - mTouchTargetWidth + mBottomTouchRegionAdjustment;
+        if (isNonResizeableAxWidgets()) {
+            mLeftBorderActive = false;
+            mRightBorderActive = false;
+            mTopBorderActive = false;
+            mBottomBorderActive = false;
+        } else {
+            mLeftBorderActive = x < mTouchTargetWidth;
+            mRightBorderActive = x > getWidth() - mTouchTargetWidth;
+            mTopBorderActive = y < mTouchTargetWidth + mTopTouchRegionAdjustment;
+            mBottomBorderActive = y > getHeight() - mTouchTargetWidth + mBottomTouchRegionAdjustment;
+        }
 
         boolean anyBordersActive = mLeftBorderActive || mRightBorderActive
                 || mTopBorderActive || mBottomBorderActive;
@@ -906,9 +901,10 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
                 || Utilities.isRunningInTestHarness();
     }
     
-    private boolean isAxionWidgets() {
+    private boolean isNonResizeableAxWidgets() {
         LauncherAppWidgetProviderInfo info = (LauncherAppWidgetProviderInfo)
                 mWidgetView.getAppWidgetInfo();
-        return "com.android.axion.widgets".equals(info.provider.getPackageName());
+        final boolean nonResizeable = info.resizeMode == AppWidgetProviderInfo.RESIZE_NONE;
+        return "com.android.axion.widgets".equals(info.provider.getPackageName()) && nonResizeable;
     }
 }

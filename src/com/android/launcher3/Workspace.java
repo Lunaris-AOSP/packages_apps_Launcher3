@@ -2273,9 +2273,9 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             LauncherAppWidgetHostView hostView, CellLayout cellLayout) {
         AppWidgetProviderInfo pInfo = hostView.getAppWidgetInfo();
         final boolean isAxionWidgets = "com.android.axion.widgets".equals(pInfo.provider.getPackageName());
-        final boolean shouldNotResize = isAxionWidgets 
+        final boolean nonResizeableAxWidgets = isAxionWidgets 
             && pInfo.resizeMode == AppWidgetProviderInfo.RESIZE_NONE;
-        if (pInfo != null && !shouldNotResize) {
+        if (pInfo != null && !nonResizeableAxWidgets) {
             return () -> {
                 if (!isPageInTransition()) {
                     AppWidgetResizeFrame.showForWidget(hostView, cellLayout);
