@@ -2049,6 +2049,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 composeIconLaunchAnimator(anim, mV, appTargets, wallpaperTargets, nonAppTargets,
                         launcherClosing);
                 anim.addListener(new BoostAnimatorListener());
+                if (mLauncher.getStateManager().getState() == LauncherState.BACKGROUND_APP) {
+                    anim.setDuration(0L);
+                }
                 addCujInstrumentation(anim, Cuj.CUJ_LAUNCHER_APP_LAUNCH_FROM_ICON);
                 skipFirstFrame = false;
             }
