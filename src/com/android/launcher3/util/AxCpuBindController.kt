@@ -23,36 +23,32 @@ class AxCpuBindController private constructor() {
     private var animationBoostType = 0
     private var bindStatus = STATUS_UNBIND
     private var animationBoost = ANIMATION_BOOST_OFF
+    private val pid get() = Process.myPid()
 
     private fun bindBigCore() {
-        if (bindStatus != STATUS_BIND_BIG_CORE) {
-            bindStatus = STATUS_BIND_BIG_CORE
-            BoostHelper.setThreadAffinity(Process.myPid(), STATUS_BIND_BIG_CORE)
+        if (bindStatus == STATUS_BIND_BIG_CORE) {
+            return
         }
+        bindStatus = STATUS_BIND_BIG_CORE
+        BoostHelper.setThreadAffinity(pid, STATUS_BIND_BIG_CORE)
     }
 
     private fun unbind() {
-        if (bindStatus != STATUS_UNBIND) {
-            bindStatus = STATUS_UNBIND
-            BoostHelper.setThreadAffinity(Process.myPid(), STATUS_UNBIND)
+        if (bindStatus == STATUS_UNBIND) {
+            return
         }
-    }
-
-    private fun animationBoost(type: Int, enabled: Boolean) {
-        if (enabled) {
-            animationBoostOn(type)
-        } else {
-            animationBoostOff(type)
-        }
+        bindStatus = STATUS_UNBIND
+        BoostHelper.setThreadAffinity(pid, STATUS_UNBIND)
     }
 
     private fun animationBoostOn(type: Int) {
         animationBoostType = animationBoostType or type
-        if (animationBoost != ANIMATION_BOOST_ON) {
-            bindBigCore()
-            animationBoost = ANIMATION_BOOST_ON
-            BoostHelper.animationBoost(Process.myPid(), true)
+        if (animationBoost == ANIMATION_BOOST_ON) {
+            return
         }
+        bindBigCore()
+        animationBoost = ANIMATION_BOOST_ON
+        BoostHelper.animationBoost(pid, ANIMATION_BOOST_ON)
     }
 
     private fun animationBoostOff(type: Int) {
@@ -60,33 +56,33 @@ class AxCpuBindController private constructor() {
         if (animationBoostType <= 0 && animationBoost != ANIMATION_BOOST_OFF) {
             unbind()
             animationBoost = ANIMATION_BOOST_OFF
-            BoostHelper.animationBoost(Process.myPid(), false)
+            BoostHelper.animationBoost(pid, ANIMATION_BOOST_OFF)
         }
     }
 
-    fun acquireAppOpenBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_APP_OPEN, true)
-    fun releaseAppOpenBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_APP_OPEN, false)
+    fun acquireAppOpenBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_APP_OPEN)
+    fun releaseAppOpenBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_APP_OPEN)
 
-    fun acquireAppCloseBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_APP_CLOSE, true)
-    fun releaseAppCloseBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_APP_CLOSE, false)
+    fun acquireAppCloseBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_APP_CLOSE)
+    fun releaseAppCloseBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_APP_CLOSE)
 
-    fun acquireHomeTransitionBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_HOME_TRANSITION, true)
-    fun releaseHomeTransitionBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_HOME_TRANSITION, false)
+    fun acquireHomeTransitionBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_HOME_TRANSITION)
+    fun releaseHomeTransitionBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_HOME_TRANSITION)
 
-    fun acquireDrawerScrollBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_DRAWER_SCROLL, true)
-    fun releaseDrawerScrollBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_DRAWER_SCROLL, false)
+    fun acquireDrawerScrollBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_DRAWER_SCROLL)
+    fun releaseDrawerScrollBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_DRAWER_SCROLL)
 
-    fun acquirePagedViewBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_PAGED_TRANSITION, true)
-    fun releasePagedViewBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_PAGED_TRANSITION, false)
+    fun acquirePagedViewBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_PAGED_TRANSITION)
+    fun releasePagedViewBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_PAGED_TRANSITION)
 
-    fun acquireDragBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_DRAG, true)
-    fun releaseDragBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_DRAG, false)
+    fun acquireDragBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_DRAG)
+    fun releaseDragBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_DRAG)
 
-    fun acquireStateDragBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_STATE_DRAG, true)
-    fun releaseStateDragBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_STATE_DRAG, false)
+    fun acquireStateDragBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_STATE_DRAG)
+    fun releaseStateDragBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_STATE_DRAG)
 
-    fun acquireTaskDismissBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_TASK_DISMISS, true)
-    fun releaseTaskDismissBoost() = animationBoost(REQUEST_ANIMATION_BOOST_TYPE_TASK_DISMISS, false)
+    fun acquireTaskDismissBoost() = animationBoostOn(REQUEST_ANIMATION_BOOST_TYPE_TASK_DISMISS)
+    fun releaseTaskDismissBoost() = animationBoostOff(REQUEST_ANIMATION_BOOST_TYPE_TASK_DISMISS)
 
     companion object {
         private const val STATUS_BIND_BIG_CORE = 0
