@@ -53,6 +53,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.icu.text.MessageFormat;
@@ -260,7 +261,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     private final String mMinimizedStateDescription;
     private final String mRunningStateDescription;
-
+    
     /**
      * Various options for the running state of an app.
      */
@@ -989,6 +990,15 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (mDisplay == DISPLAY_ALL_APPS) {
+            String fontFamily = Typeface.getFontName();
+            String currentFont = getTypeface().getSystemFontFamilyName();
+            if (!TextUtils.equals(fontFamily, currentFont)) {
+                postOnAnimationDelayed(() -> {
+                    setTypeface(Typeface.create(fontFamily, Typeface.NORMAL));
+                }, 500);
+            }
+        }
         int height = MeasureSpec.getSize(heightMeasureSpec);
         if (mCenterVertically || !mShouldShowLabel) {
             Paint.FontMetrics fm = getPaint().getFontMetrics();
