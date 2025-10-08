@@ -425,4 +425,8 @@
     <!-- All Apps Blur -->
     <string name="allapps_blur_title">All Apps blur</string>
     <string name="allapps_blur_summary">Blur content behind the all apps bottom sheet</string>
+
+    <!-- Auto-hide page indicator dots -->
+    <string name="auto_hide_dots">Auto-hide page indicator</string>
+    <string name="auto_hide_dots_summary">Hide the page indicator dots automatically</string>
 </resources>
