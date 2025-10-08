@@ -49,7 +49,7 @@
         android:max="175"
         android:min="0"
         settings:units="px"
-        android:defaultValue="23" />
+        android:defaultValue="30" />
 
     <SwitchPreferenceCompat
         android:key="pref_blur_background_at_app_launch"

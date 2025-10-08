@@ -280,7 +280,7 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val SHOW_QUICKSPACE_WEATHER_TEXT = backedUpItem("pref_quickspace_weather_text", true)
         @JvmField val SHOW_STATUS_BAR = backedUpItem("pref_show_statusbar", true)
         @JvmField val SHOW_TOP_SHADOW = backedUpItem("pref_show_top_shadow", true)
-        @JvmField val BLUR_DEPTH = backedUpItem("pref_blur_depth", 23)
+        @JvmField val BLUR_DEPTH = backedUpItem("pref_blur_depth", 30)
         @JvmField val RECENTS_OPACITY = backedUpItem("pref_recents_opacity", 20)
         @JvmField val APP_DRAWER_OPACITY = backedUpItem("pref_app_drawer_opacity", 90)
         @JvmField val BLUR_BACKGROUND_AT_APP_LAUNCH = backedUpItem("pref_blur_background_at_app_launch", true)
