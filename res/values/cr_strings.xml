@@ -429,4 +429,10 @@
     <!-- All Apps Blur -->
     <string name="allapps_blur_title">All Apps blur</string>
     <string name="allapps_blur_summary">Blur content behind the all apps bottom sheet</string>
+
+    <!-- Custom seekbar -->
+    <string name="custom_seekbar_value">Value: <xliff:g id="v">%s</xliff:g></string>
+    <string name="custom_seekbar_default_value">by default</string>
+    <string name="custom_seekbar_default_value_to_set">Default value: <xliff:g id="v">%s</xliff:g>\nLong tap to set</string>
+    <string name="custom_seekbar_default_value_is_set">Default value is set</string>
 </resources>
