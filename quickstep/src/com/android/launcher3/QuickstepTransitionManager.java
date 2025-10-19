@@ -205,7 +205,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     public static final long APP_LAUNCH_DURATION = 500;
 
-    private static final long APP_LAUNCH_ALPHA_DURATION = 50;
+    private static final long APP_LAUNCH_ALPHA_DURATION = 60;
     private static final long APP_LAUNCH_ALPHA_START_DELAY = 25;
 
     public static final int ANIMATION_NAV_FADE_IN_DURATION = 266;
