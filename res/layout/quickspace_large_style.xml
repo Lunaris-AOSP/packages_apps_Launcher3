@@ -31,7 +31,7 @@
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-medium"
         android:textColor="?workspaceTextColor"
-        android:textSize="64sp"
+        android:textSize="90sp"
         android:format12Hour="h:mm"
         android:format24Hour="H:mm"
         android:includeFontPadding="false" />

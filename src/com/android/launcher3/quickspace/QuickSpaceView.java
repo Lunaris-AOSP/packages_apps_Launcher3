@@ -42,8 +42,46 @@ import com.android.launcher3.quickspace.receivers.QuickSpaceActionReceiver;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.graphics.Color;
 
 public class QuickSpaceView extends FrameLayout implements OnDataListener {
+
+    // === Runtime clock color updater (hour part) ===
+    private final Handler mClockColorHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mClockColorRunnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                if (mQuickspaceClock != null) {
+                    CharSequence text = mQuickspaceClock.getText();
+                    if (text != null) {
+                        String time = text.toString();
+                        int colon = time.indexOf(':');
+                        if (colon > 0) {
+                            int hourColor = Color.parseColor("#EB0029");
+                            int minuteColor = mQuickspaceClock.getCurrentTextColor();
+                            SpannableString styled = new SpannableString(time);
+                            styled.setSpan(new ForegroundColorSpan(hourColor), 0, colon, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            styled.setSpan(new ForegroundColorSpan(minuteColor), colon, styled.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            mQuickspaceClock.setText(styled);
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                // ignore to avoid crashing UI
+            } finally {
+                // re-run every second
+                mClockColorHandler.postDelayed(this, 1000);
+            }
+        }
+    };
+    // === End runtime clock color updater ===
+
 
     private static final String TAG = "Launcher3:QuickSpaceView";
     private static final boolean DEBUG = false;
@@ -497,6 +535,10 @@ public class QuickSpaceView extends FrameLayout implements OnDataListener {
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
+        // Start/refresh clock color updater
+        mClockColorHandler.removeCallbacks(mClockColorRunnable);
+        mClockColorHandler.post(mClockColorRunnable);
+
         if (mDestroyed) return;
         
         if (mController != null && mFinishedInflate && !mListenerRegistered) {
@@ -516,7 +558,10 @@ public class QuickSpaceView extends FrameLayout implements OnDataListener {
                 mListenerRegistered = false;
             }
         }
-        super.onDetachedFromWindow();
+        
+        // Stop clock color updates to avoid leaks
+        mClockColorHandler.removeCallbacks(mClockColorRunnable);
+super.onDetachedFromWindow();
     }
 
     @Override
@@ -525,6 +570,10 @@ public class QuickSpaceView extends FrameLayout implements OnDataListener {
         if (mDestroyed || mController == null) return;
         
         loadViews();
+        // Ensure clock color updater starts after views are loaded
+        mClockColorHandler.removeCallbacks(mClockColorRunnable);
+        mClockColorHandler.post(mClockColorRunnable);
+
         mFinishedInflate = true;
         if (isAttachedToWindow() && !mListenerRegistered) {
             mController.addListener(this);
