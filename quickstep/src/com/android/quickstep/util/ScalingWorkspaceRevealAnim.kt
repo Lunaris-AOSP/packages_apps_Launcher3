@@ -33,7 +33,6 @@ import com.android.app.animation.Animations
 import com.android.app.animation.Interpolators
 import com.android.app.animation.Interpolators.EMPHASIZED
 import com.android.app.animation.Interpolators.LINEAR
-import com.android.launcher3.Flags
 import com.android.launcher3.LauncherAnimUtils.HOTSEAT_SCALE_PROPERTY_FACTORY
 import com.android.launcher3.LauncherAnimUtils.SCALE_INDEX_WORKSPACE_STATE
 import com.android.launcher3.LauncherAnimUtils.WORKSPACE_SCALE_PROPERTY_FACTORY
@@ -178,7 +177,7 @@ class ScalingWorkspaceRevealAnim(
             if (Flags.allAppsBlur() || Flags.enableOverviewBackgroundWallpaperBlur()) {
                 R.dimen.max_depth_blur_radius_enhanced
             } else {
-                R.integer.max_depth_blur_radius
+                R.dimen.max_depth_blur_radius
             }
         )
         val blurAnimator = ValueAnimator.ofFloat(1f, 0f)
