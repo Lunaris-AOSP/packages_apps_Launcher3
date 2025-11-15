@@ -45,7 +45,7 @@
         android:fadingEdgeLength="@dimen/task_header_title_fading_edge_length"
         android:singleLine="true"
         android:textColor="@color/materialColorOnSecondaryContainer"
-        android:fontFamily="google-sans-flex"
+        android:fontFamily="@*android:string/config_headlineFontFamily"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toEndOf="@id/header_app_icon"
         app:layout_constraintEnd_toStartOf="@id/header_close_button"
