@@ -98,7 +98,7 @@ public class LauncherBackAnimationController {
     private static final int SCRIM_FADE_DURATION = 233;
     private static final float MIN_WINDOW_SCALE =
             Flags.predictiveBackToHomePolish() ? 0.75f : 0.85f;
-    private static final float MAX_SCRIM_ALPHA_DARK = 0.2f;
+    private static final float MAX_SCRIM_ALPHA_DARK = 0.8f;
     private static final float MAX_SCRIM_ALPHA_LIGHT = 0.2f;
     private static final int MIN_BLUR_RADIUS_PRE_COMMIT = 10;
 
