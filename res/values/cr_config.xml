@@ -42,4 +42,8 @@
 
     <!-- Icon pack -->
     <string name="icon_pack_settings_class" translatable="false">com.android.launcher3.icons.pack.IconPackSettingsFragment</string>
+
+    <!-- Burn-in protection for gesture navigation handle -->
+    <bool name="config_enableBurnInProtection">true</bool>
+    <integer name="config_burnInProtectionShiftInterval">60</integer>
 </resources>
