@@ -327,12 +327,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                 0 // Bottom left
         };
         if (Utilities.shouldEnableAllAppsBlur(getContext())) {
-            int resId = Utilities.isDarkTheme(getContext())
-                    ? android.R.color.system_accent1_800 : android.R.color.system_accent1_100;
-            int layerAbove = ColorUtils.setAlphaComponent(getResources().getColor(resId, null),
-                    (int) (0.4f * 255));
-            int layerBelow = ColorUtils.setAlphaComponent(Color.WHITE, (int) (0.1f * 255));
-            mBottomSheetBackgroundColor = ColorUtils.compositeColors(layerAbove, layerBelow);
+            int layerFg = getContext().getColor(R.color.blur_shade_panel_fg);
+            int layerBg = getContext().getColor(R.color.blur_shade_panel_bg);
+            mBottomSheetBackgroundColor = ColorUtils.compositeColors(layerFg, layerBg);
         } else {
             mBottomSheetBackgroundColor = getContext().getColor(R.color.materialColorSurfaceDim);
         }
