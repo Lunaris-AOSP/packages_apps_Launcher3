@@ -94,6 +94,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.LocusId;
 import android.content.pm.LauncherApps;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BlendMode;
@@ -1263,6 +1264,15 @@ public abstract class RecentsView<
         }
     }
 
+    private final SharedPreferences.OnSharedPreferenceChangeListener mPrefListener =
+            (prefs, key) -> {
+                if (LauncherPrefs.RECENTS_STYLE.getSharedPrefKey().equals(key)) {
+                    updateOverlapState();
+                    resetTaskVisuals();
+                    requestLayout();
+                }
+            };
+
     public void init(OverviewActionsView actionsView, SplitSelectStateController splitController,
             @Nullable DesktopRecentsTransitionController desktopRecentsTransitionController,
             MemInfoView memInfoView) {
@@ -1321,6 +1331,8 @@ public abstract class RecentsView<
         if (mDesktopVisibilityController != null) {
             mDesktopVisibilityController.registerDesktopVisibilityListener(mUtils);
         }
+        LauncherPrefs.getPrefs(getContext())
+                .registerOnSharedPreferenceChangeListener(mPrefListener);
     }
 
     @Override
@@ -1343,8 +1355,10 @@ public abstract class RecentsView<
         if (mDesktopVisibilityController != null) {
             mDesktopVisibilityController.unregisterDesktopVisibilityListener(mUtils);
         }
-        mTaskLaunchListener = null;
-        mOnTaskLaunchCancelledRunnable = null;
+        if (mPrefListener != null) {
+            LauncherPrefs.getPrefs(getContext())
+                    .unregisterOnSharedPreferenceChangeListener(mPrefListener);
+        }
         reset();
     }
 
