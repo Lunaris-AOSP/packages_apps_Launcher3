@@ -114,8 +114,12 @@ public class SettingsRecents extends CollapsingToolbarBaseActivity
 
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+<<<<<<< HEAD
         if (LauncherPrefs.RECENTS_MEMINFO.getSharedPrefKey().equals(key)
-                || LauncherPrefs.RECENTS_NEW_OVERVIEW_STYLE.getSharedPrefKey().equals(key)) {
+                || LauncherPrefs.RECENTS_NEW_OVERVIEW_STYLE.getSharedPrefKey().equ) {
+=======
+        if (LauncherPrefs.RECENTS_MEMINFO.getSharedPrefKey().equals(key)) {
+>>>>>>> 3f75dda109 (Launcher3: Apply custom recent view styles immediately)
             LauncherAppState.INSTANCE.executeIfCreated(app -> app.setNeedsRestart());
         }
     }
