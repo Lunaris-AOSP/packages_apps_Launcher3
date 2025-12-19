@@ -19,6 +19,7 @@ package com.android.launcher3.settings;
 import static androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -193,6 +194,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
         private static final String KEY_MINUS_ONE = "pref_enable_minus_one";
         private static final String KEY_GENERAL_CATEGORY = "general_category";
+        private static final String KEY_CLEAR_HOME_SCREEN = "pref_clear_home_screen";
 
         private Preference mShowGoogleAppPref;
         private Preference mShowGoogleBarPref;
@@ -218,6 +220,21 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
             mShowGoogleAppPref = screen.findPreference(KEY_MINUS_ONE);
             mShowGoogleBarPref = screen.findPreference(LauncherPrefs.DOCK_SEARCH.getSharedPrefKey());
+
+            Preference clearHomeScreenPref = screen.findPreference(KEY_CLEAR_HOME_SCREEN);
+            if (clearHomeScreenPref != null) {
+                clearHomeScreenPref.setOnPreferenceClickListener(pref -> {
+                    new AlertDialog.Builder(getContext())
+                            .setMessage(R.string.remove_all_views_from_home_screen_desc)
+                            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                                LauncherAppState.getInstance(getContext())
+                                        .clearAllViewsFromHomeScreen();
+                            })
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show();
+                    return true;
+                });
+            }
 
             updateIsGoogleAppEnabled();
 
