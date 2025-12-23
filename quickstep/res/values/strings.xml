@@ -386,4 +386,7 @@
     <string name="pin_to_taskbar">Pin to taskbar</string>
     <!-- Label for unpinning an item from the taskbar. [CHAR_LIMIT=20] -->
     <string name="unpin_from_taskbar">Unpin from taskbar</string>
+
+    <!-- Memory Boost -->
+    <string name="memory_boost_applied">Memory optimized</string>
 </resources>

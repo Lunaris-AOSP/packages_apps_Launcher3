@@ -55,6 +55,21 @@ class ClearAllButton @JvmOverloads constructor(context: Context, attrs: Attribut
             applyPrimaryTranslation()
         }
 
+    private var isPerformingMemoryBoost = false
+    fun setMemoryBoostInProgress(inProgress: Boolean) {
+        if (isPerformingMemoryBoost == inProgress) return
+        
+        isPerformingMemoryBoost = inProgress
+        isSelected = inProgress
+        
+        animate()
+            .scaleX(if (inProgress) 0.95f else 1f)
+            .scaleY(if (inProgress) 0.95f else 1f)
+            .alpha(if (inProgress) 0.8f else 1f)
+            .setDuration(100)
+            .start()
+    }
+
     /**
      * Moves ClearAllButton between carousel and 2 row grid.
      *
