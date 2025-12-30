@@ -45,10 +45,9 @@ public class ThirdPartyIconProvider extends LauncherIconProvider {
         ComponentKey key = new ComponentKey(
                 info.getComponentName(), UserHandle.getUserHandleForUid(info.applicationInfo.uid));
 
-        final boolean isClockOrCalendar = info.getComponentName().equals(mCalendar) || info.getComponentName().equals(mClock);
         IconResolver.DefaultDrawableProvider fallback =
                 () -> super.getIcon(info, iconDpi);
-        Drawable icon = isClockOrCalendar ? null : ThirdPartyIconUtils.getByKey(mContext, key, iconDpi, fallback);
+        Drawable icon = ThirdPartyIconUtils.getByKey(mContext, key, iconDpi, fallback);
 
         if (icon == null) {
             return fallback.get();
