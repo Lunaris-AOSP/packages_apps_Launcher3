@@ -877,7 +877,8 @@ public class DeviceProfile {
                     mResponsiveAllAppsWidthSpec,
                     mResponsiveAllAppsHeightSpec,
                     mIconSizeSteps,
-                    isVerticalBarLayout()
+                    isVerticalBarLayout(),
+                    allAppsCellHeightMultiplier
             );
             updateAllAppsWithResponsiveMeasures();
         } else {
@@ -889,7 +890,8 @@ public class DeviceProfile {
                     mTypeIndex,
                     scale,
                     getWorkspaceIconProfile().getIconSizePx(),
-                    mWorkspaceProfile.getIconDrawablePaddingOriginalPx()
+                    mWorkspaceProfile.getIconDrawablePaddingOriginalPx(),
+                    allAppsCellHeightMultiplier
             );
         }
         updateAllAppsContainerWidth();
