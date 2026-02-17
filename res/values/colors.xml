@@ -459,4 +459,6 @@
     <color name="materialColorSecondaryFixedDim">@color/system_secondary_fixed_dim</color>
     <color name="materialColorTertiaryFixed">@color/system_tertiary_fixed</color>
     <color name="materialColorTertiaryFixedDim">@color/system_tertiary_fixed_dim</color>
+    <color name="primaryBackground">#ffffffff</color>
+    <color name="primaryForeground">#ff000000</color>
 </resources>
