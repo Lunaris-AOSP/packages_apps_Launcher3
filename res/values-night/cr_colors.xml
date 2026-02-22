@@ -19,6 +19,28 @@
     <!-- Appseat -->
     <color name="appseat_color">@*android:color/system_neutral2_900</color>
 
+    <!-- Material Expressive -->
+    <color name="homepage_blue_variant_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_blue_variant_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_blue_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_blue_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_pink_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_pink_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_orange_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_orange_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_yellow_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_yellow_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_green_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_green_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_grey_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_grey_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_cyan_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_cyan_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_red_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_red_bg">@android:color/system_neutral1_600</color>
+    <color name="homepage_purple_fg">@*android:color/accent_device_default_dark</color>
+    <color name="homepage_purple_bg">@android:color/system_neutral1_600</color>
+
     <!-- Hotseat searchbar -->
     <color name="qsb_primary">@*android:color/system_accent3_100</color>
     <color name="qsb_secondary">@*android:color/system_accent1_300</color>
