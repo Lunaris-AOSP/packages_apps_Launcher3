@@ -231,6 +231,19 @@
     <string name="quickspace_alternate_style_title">Extended style</string>
     <string name="quickspace_alternate_style_summary">Switch to extended style</string>
 
+    <!-- Quickspace new style -->
+    <string name="quickspace_style_title">At A Glance style</string>
+    <string-array name="quickspace_style_entries">
+        <item>Default</item>
+        <item>Extended</item>
+        <item>OOS Clock</item>
+    </string-array>
+    <string-array name="quickspace_style_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
     <!-- Quickspace PSA - Custom messages for the glance -->
     <string name="quickspace_psa_title">Random messages</string>
     <string name="quickspace_psa_summary">Make your companion more lively with random messages</string>

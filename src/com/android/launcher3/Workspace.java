@@ -664,7 +664,21 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         }
 
         int cellHSpan = mLauncher.getDeviceProfile().inv.numSearchContainerColumns;
-        CellLayoutLayoutParams lp = new CellLayoutLayoutParams(0, 0, cellHSpan, 1);
+
+        // Determine cell vertical span based on quickspace style
+        int cellVSpan = 1; // Default
+        try {
+            String styleValue = LauncherPrefs.QUICKSPACE_UI_STYLE.get(getContext());
+            int style = Integer.parseInt(styleValue);
+            if (style == 2) { // Large style needs more vertical space
+                cellVSpan = 2;
+            }
+        } catch (NumberFormatException e) {
+            // Fallback to default if parsing fails
+            cellVSpan = 1;
+        }
+        
+        CellLayoutLayoutParams lp = new CellLayoutLayoutParams(0, 0, cellHSpan, cellVSpan);
         lp.canReorder = false;
         if (!firstPage.addViewToCellLayout(
                 mFirstPagePinnedItem, 0, R.id.reserved_container_workspace, lp, true)) {

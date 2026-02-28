@@ -120,10 +120,35 @@ public class QuickEventsController {
         };
     }
 
+    public static String getDayOfWeek(Context context) {
+        DateFormat format = DateFormat.getInstanceForSkeleton("EEEE", Locale.getDefault());
+        format.setContext(DisplayContext.CAPITALIZATION_FOR_STANDALONE);
+        return format.format(System.currentTimeMillis());
+    }
+
+    public static String getShortDate(Context context) {
+        DateFormat format = DateFormat.getInstanceForSkeleton("dMMMM", Locale.getDefault());
+        format.setContext(DisplayContext.CAPITALIZATION_FOR_STANDALONE);
+        return format.format(System.currentTimeMillis());
+    }
+
     private static String formatDateTime(Context context) {
+        // Check if new style preference exists and use it, otherwise fall back to old preference
+        String styleValue = LauncherPrefs.QUICKSPACE_UI_STYLE.get(context);
+        int style = 0;
+        try {
+            style = Integer.parseInt(styleValue);
+        } catch (NumberFormatException e) {
+            // Fallback to old preference for compatibility
+            style = LauncherPrefs.SHOW_QUICKSPACE_ALT.get(context) ? 1 : 0;
+        }
+        return formatDateTime(context, style);
+    }
+
+    private static String formatDateTime(Context context, int style) {
         String styleText;
         DateFormat dateFormat;
-        if (LauncherPrefs.SHOW_QUICKSPACE_ALT.get(context)) {
+        if (style == 1) { // Extended
             styleText = context.getString(R.string.quickspace_date_format_minimalistic);
         } else {
             styleText = context.getString(R.string.quickspace_date_format);

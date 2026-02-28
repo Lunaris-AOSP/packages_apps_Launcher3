@@ -182,6 +182,17 @@
             android:persistent="true"
             launcher:iconSpaceReserved="false" />
 
+        <ListPreference
+            android:key="pref_quickspace_style"
+            android:title="@string/quickspace_style_title"
+            android:summary="%s"
+            android:dependency="pref_quickspace"
+            android:entries="@array/quickspace_style_entries"
+            android:entryValues="@array/quickspace_style_values"
+            android:defaultValue="0"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
         <SwitchPreferenceCompat
             android:key="pref_quickspace_psonality"
             android:title="@string/quickspace_psa_title"
