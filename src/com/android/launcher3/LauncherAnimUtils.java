@@ -20,6 +20,7 @@ import android.animation.Animator;
 import android.animation.Animator.AnimatorListener;
 import android.animation.AnimatorListenerAdapter;
 import android.graphics.Color;
+import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.FloatProperty;
@@ -34,7 +35,15 @@ import com.android.launcher3.util.MultiScalePropertyFactory;
 import com.android.launcher3.views.ScrimColors;
 import com.android.launcher3.views.ScrimView;
 
+import java.util.function.Function;
+
 public class LauncherAnimUtils {
+    public static Function<RectF, Float> getPosProviderForRect(RectF start, RectF target) {
+        float totalXDiff = Math.abs(start.centerX() - target.centerX());
+        float totalYDiff = Math.abs(start.centerY() - target.centerY());
+        return totalYDiff > totalXDiff ? RectF::centerY : RectF::centerX;
+    }
+
     /**
      * Durations for various state animations. These are not defined in resources to allow
      * easier access from static classes and enums

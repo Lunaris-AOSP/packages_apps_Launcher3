@@ -167,6 +167,7 @@ import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.RectFSpringAnim.DefaultSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.IconSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.TaskbarHotseatSpringConfig;
+import com.android.quickstep.util.RectFSpringAnim.WidgetSpringConfig;
 import com.android.quickstep.util.ScalingWorkspaceRevealAnim;
 import com.android.quickstep.util.SurfaceTransaction;
 import com.android.quickstep.util.SurfaceTransaction.SurfaceProperties;
@@ -232,6 +233,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     public static final int RECENTS_LAUNCH_DURATION = 336;
     private static final int LAUNCHER_RESUME_START_DELAY = 100;
     private static final int CLOSING_TRANSITION_DURATION_MS = (int) APP_LAUNCH_DURATION;
+    private static final float WIDGET_CLOSE_ALPHA_END_PROGRESS = 0.4f;
     public static final int SPLIT_LAUNCH_DURATION = 370;
     public static final int SPLIT_DIVIDER_ANIM_DURATION = 100;
 
@@ -1806,8 +1808,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 : useIconSpring
                         ? new IconSpringConfig(mLauncher, mDeviceProfile, closingWindowStartRectF,
                                 targetRect)
-                        : new DefaultSpringConfig(mLauncher, mDeviceProfile, closingWindowStartRectF,
-                                targetRect));
+                        : floatingWidget != null
+                                ? new WidgetSpringConfig(mLauncher, mDeviceProfile,
+                                        closingWindowStartRectF, targetRect)
+                                : new DefaultSpringConfig(mLauncher, mDeviceProfile,
+                                        closingWindowStartRectF, targetRect));
 
         // Hook up floating views to the closing window animators.
         // note the coordinate of closingWindowStartRect is based on launcher
@@ -1869,16 +1874,36 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
             final float floatingWidgetAlpha = isTransluscent ? 0 : 1;
             FloatingWidgetView finalFloatingWidget = floatingWidget;
+            final Function<RectF, Float> posProvider = LauncherAnimUtils.getPosProviderForRect(
+                    closingWindowStartRectF, targetRect);
+            final float startPos = posProvider.apply(closingWindowStartRectF);
+            final float totalDiff = Math.abs(startPos - posProvider.apply(targetRect));
             RectFSpringAnim.OnUpdateListener runner = new SpringAnimRunner(targets, targetRect,
                     closingWindowStartRect, closingWindowOriginalRect, startWindowCornerRadius) {
+                private float mWidgetAlphaLowerBound = 1f;
+                private boolean mThresholdCaptured;
+
+                @Override
+                protected float getWindowAlpha(float progress) {
+                    return 1f - mapBoundToRange(progress, 0f, WIDGET_CLOSE_ALPHA_END_PROGRESS,
+                            0f, 1f, ACCELERATE_1_5);
+                }
+
+                @Override
+                public float getCornerRadius(float progress) {
+                    return finalFloatingWidget.getOutlineRadius();
+                }
+
                 @Override
                 public void onUpdate(RectF currentRectF, float progress) {
-                    final float fallbackBackgroundAlpha =
-                            1 - mapBoundToRange(progress, 0.8f, 1, 0, 1, EXAGGERATED_EASE);
-                    final float foregroundAlpha =
-                            mapBoundToRange(progress, 0.5f, 1, 0, 1, EXAGGERATED_EASE);
-                    finalFloatingWidget.update(currentRectF, floatingWidgetAlpha, foregroundAlpha,
-                            fallbackBackgroundAlpha, 1 - progress);
+                    float currentProgress = totalDiff > 0f
+                            ? Math.abs(posProvider.apply(currentRectF) - startPos) / totalDiff : 1f;
+                    if (!mThresholdCaptured && progress >= 0.99f) {
+                        mWidgetAlphaLowerBound = currentProgress;
+                        mThresholdCaptured = true;
+                    }
+                    finalFloatingWidget.update(currentProgress, mWidgetAlphaLowerBound,
+                            currentRectF, floatingWidgetAlpha, 1 - progress);
 
                     super.onUpdate(currentRectF, progress);
                 }

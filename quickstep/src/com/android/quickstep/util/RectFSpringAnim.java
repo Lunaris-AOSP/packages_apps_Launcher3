@@ -145,6 +145,7 @@ public class RectFSpringAnim extends ReleaseCheck {
     protected final float mRectStiffness;
     private final float mRectDamping;
     private final boolean mUseIconSpringConfig;
+    private final boolean mUseConfiguredSpring;
 
     public RectFSpringAnim(SpringConfig config) {
         mStartRect = config.startRect;
@@ -161,6 +162,7 @@ public class RectFSpringAnim extends ReleaseCheck {
         mRectStiffness = config.rectStiffness;
         mRectDamping = config.rectDamping;
         mUseIconSpringConfig = config instanceof IconSpringConfig;
+        mUseConfiguredSpring = mUseIconSpringConfig || config instanceof WidgetSpringConfig;
 
         mCurrentY = getTrackedYFromRect(mStartRect);
     }
@@ -280,9 +282,9 @@ public class RectFSpringAnim extends ReleaseCheck {
                 new SpringAnimation(this, RECT_CENTER_X)
                         .setSpring(
                                 new SpringForce(endX)
-                                        .setStiffness(mUseIconSpringConfig
+                                        .setStiffness(mUseConfiguredSpring
                                                 ? mStiffnessX : sCachedStiffnessX)
-                                        .setDampingRatio(mUseIconSpringConfig
+                                        .setDampingRatio(mUseConfiguredSpring
                                                 ? mDampingX : sCachedDampingX)
                         ).setStartValue(startX)
                         .setStartVelocity(xVelocityPxPerS)
@@ -292,9 +294,9 @@ public class RectFSpringAnim extends ReleaseCheck {
                 new SpringAnimation(this, RECT_Y)
                         .setSpring(
                                 new SpringForce(endY)
-                                        .setStiffness(mUseIconSpringConfig
+                                        .setStiffness(mUseConfiguredSpring
                                                 ? mStiffnessY : sCachedStiffnessY)
-                                        .setDampingRatio(mUseIconSpringConfig
+                                        .setDampingRatio(mUseConfiguredSpring
                                                 ? mDampingY : sCachedDampingY)
                         )
                         .setStartValue(startY)
@@ -305,9 +307,9 @@ public class RectFSpringAnim extends ReleaseCheck {
                 new SpringAnimation(this, RECT_SCALE_PROGRESS)
                         .setSpring(
                                 new SpringForce(1f)
-                                        .setStiffness(mUseIconSpringConfig
+                                        .setStiffness(mUseConfiguredSpring
                                                 ? mRectStiffness : sCachedStiffnessZ)
-                                        .setDampingRatio(mUseIconSpringConfig
+                                        .setDampingRatio(mUseConfiguredSpring
                                                 ? mRectDamping : sCachedDampingZ))
                         .setStartVelocity(velocityPxPerMs.y * minVisibleChange / durationScale)
                         .setMaxValue(1f)
@@ -531,6 +533,21 @@ public class RectFSpringAnim extends ReleaseCheck {
                 }
             }
             return tracking;
+        }
+    }
+
+    public static final class WidgetSpringConfig extends DefaultSpringConfig {
+
+        public WidgetSpringConfig(Context context, DeviceProfile deviceProfile,
+                RectF startRect, RectF targetRect) {
+            super(context, deviceProfile, startRect, targetRect);
+            ResourceProvider rp = DynamicResource.provider(context);
+            stiffnessX = rp.getFloat(R.dimen.widget_x_stiffness);
+            stiffnessY = rp.getFloat(R.dimen.widget_y_stiffness);
+            rectStiffness = rp.getFloat(R.dimen.widget_rect_scale_stiffness);
+            dampingX = rp.getFloat(R.dimen.swipe_up_rect_x_damping_ratio);
+            dampingY = rp.getFloat(R.dimen.swipe_up_rect_y_damping_ratio);
+            rectDamping = rp.getFloat(R.dimen.swipe_up_rect_scale_damping_ratio_v2);
         }
     }
 

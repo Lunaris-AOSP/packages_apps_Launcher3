@@ -15,6 +15,8 @@
  */
 package com.android.quickstep.views;
 
+import static com.android.app.animation.Interpolators.LINEAR;
+
 import android.animation.Animator;
 import android.animation.Animator.AnimatorListener;
 import android.annotation.TargetApi;
@@ -206,6 +208,21 @@ public class FloatingWidgetView extends FrameLayout implements AnimatorListener,
         positionViews();
     }
 
+    public void update(float linearProgress, float widgetAlphaLowerBound, RectF backgroundPosition,
+            float floatingWidgetAlpha, float cornerRadiusProgress) {
+        float lowerBound = Utilities.boundToRange(widgetAlphaLowerBound, 0f, 1f);
+        float fallbackAlpha = lowerBound >= 1f
+                ? (linearProgress >= 1f ? 0f : 1f)
+                : Utilities.mapBoundToRange(linearProgress, lowerBound, 1f, 1f, 0f, LINEAR);
+        update(backgroundPosition, floatingWidgetAlpha,
+                Utilities.mapBoundToRange(linearProgress, 0.5f, 1f, 0f, 1f, LINEAR),
+                fallbackAlpha, cornerRadiusProgress);
+    }
+
+    public float getOutlineRadius() {
+        return mBackgroundView.getOutlineRadius();
+    }
+
     @Override
     public void setPositionOffsetY(float y) {
         mIconOffsetY = y;
@@ -257,8 +274,9 @@ public class FloatingWidgetView extends FrameLayout implements AnimatorListener,
             sTmpMatrix.setTranslate(-mBackgroundOffset.left - mAppWidgetView.getLeft(),
                     -mBackgroundOffset.top - mAppWidgetView.getTop());
             sTmpMatrix.postScale(foregroundScale, foregroundScale);
-            sTmpMatrix.postTranslate(mBackgroundPosition.left, mBackgroundPosition.top
-                    + mIconOffsetY);
+            float foregroundHeight = mAppWidgetBackgroundView.getHeight() * foregroundScale;
+            sTmpMatrix.postTranslate(mBackgroundPosition.left,
+                    mBackgroundPosition.centerY() - foregroundHeight / 2f + mIconOffsetY);
 
             // We use the animation matrix here, because calling setMatrix on the GhostView
             // actually sets the animation matrix, not the regular one.
