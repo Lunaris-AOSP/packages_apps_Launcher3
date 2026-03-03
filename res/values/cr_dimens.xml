@@ -42,4 +42,7 @@
     <!-- Burn-in protection shift amounts -->
     <dimen name="burn_in_protection_horizontal_shift">12dp</dimen>
     <dimen name="burn_in_protection_vertical_shift">6dp</dimen>
+
+    <!-- App drawer searchbar -->
+    <dimen name="all_apps_search_bar_bottom_padding_extra">16dp</dimen>
 </resources>

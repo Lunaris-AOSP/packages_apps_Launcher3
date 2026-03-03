@@ -41,6 +41,7 @@ import androidx.preference.PreferenceFragmentCompat.OnPreferenceStartScreenCallb
 import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceGroup.PreferencePositionCallback;
 import androidx.preference.PreferenceScreen;
+import androidx.preference.ListPreference;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.launcher3.BuildConfig;
@@ -114,6 +115,7 @@ public class SettingsAppDrawer extends CollapsingToolbarBaseActivity
 @Override
 public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
     if (LauncherPrefs.DRAWER_SEARCH.getSharedPrefKey().equals(key) ||
+        LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.getSharedPrefKey().equals(key) ||
         LauncherPrefs.DRAWER_SCROLLBAR.getSharedPrefKey().equals(key)) {
         LauncherAppState.INSTANCE.executeIfCreated(app -> app.setNeedsRestart());
     }
@@ -177,13 +179,20 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
      * This fragment shows the launcher preferences.
      */
     public static class AppDrawerSettingsFragment extends SettingsBasePreferenceFragment implements
-            SettingsCache.OnChangeListener {
+            SettingsCache.OnChangeListener,
+            SharedPreferences.OnSharedPreferenceChangeListener {
 
         private boolean mRestartOnResume = false;
 
         private String mHighLightKey;
 
         private boolean mPreferenceHighlighted = false;
+
+        private static final String KEY_SEARCH_PLACEMENT = "pref_allapps_search_placement";
+        private static final String KEY_OPEN_KEYBOARD = "pref_drawer_open_keyboard";
+
+        private ListPreference mSearchPlacementPref;
+        private Preference mOpenKeyboardPref;
 
         @Override
         public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -204,6 +213,10 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
 
             PreferenceScreen screen = getPreferenceScreen();
 
+            mSearchPlacementPref = screen.findPreference(KEY_SEARCH_PLACEMENT);
+            mOpenKeyboardPref = screen.findPreference(KEY_OPEN_KEYBOARD);
+            updateOpenKeyboardEnabled();
+
             // If the target preference is not in the current preference screen, find the parent
             // preference screen that contains the target preference and set it as the preference
             // screen.
@@ -223,6 +236,9 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             if (getActivity() != null && !TextUtils.isEmpty(getPreferenceScreen().getTitle())) {
                 getActivity().setTitle(getPreferenceScreen().getTitle());
             }
+
+            getPreferenceManager().getSharedPreferences()
+                    .registerOnSharedPreferenceChangeListener(this);
         }
 
         private boolean isKeyInPreferenceGroup(String targetKey, PreferenceGroup parent) {
@@ -299,6 +315,25 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
                 recreateActivityNow();
             }
         }
+
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            getPreferenceManager().getSharedPreferences()
+                    .unregisterOnSharedPreferenceChangeListener(this);
+        }
+
+        @Override
+        public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+            if (KEY_SEARCH_PLACEMENT.equals(key)) {
+                updateOpenKeyboardEnabled();
+            }
+        }
+
+        private void updateOpenKeyboardEnabled() {
+            if (mOpenKeyboardPref == null || mSearchPlacementPref == null) return;
+            mOpenKeyboardPref.setEnabled(!"hidden".equals(mSearchPlacementPref.getValue()));
+       }
 
         @Override
         public void onSettingsChanged(boolean isEnabled) {
