@@ -471,4 +471,7 @@
     <string name="samsung_style_shape_title">Samsung Style</string>
     <string name="scroll_shape_title">Scroll</string>
     <string name="stretched_shape_title">Stretched</string>
+
+    <string name="recents_overview_style_title">New overview style</string>
+    <string name="recents_overview_style_summary">Use redesigned action buttons in recents</string>
 </resources>
