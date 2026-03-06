@@ -173,6 +173,7 @@ import com.android.quickstep.util.SurfaceTransaction;
 import com.android.quickstep.util.SurfaceTransaction.SurfaceProperties;
 import com.android.quickstep.util.SurfaceTransactionApplier;
 import com.android.quickstep.util.TaskRestartedDuringLaunchListener;
+import com.android.quickstep.util.WidgetAnimationUtils;
 import com.android.quickstep.util.WorkspaceRevealAnim;
 import com.android.quickstep.views.FloatingWidgetView;
 import com.android.quickstep.views.RecentsView;
@@ -1884,6 +1885,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 private boolean mThresholdCaptured;
 
                 @Override
+                protected boolean isWidget() {
+                    return true;
+                }
+
+                @Override
                 protected float getWindowAlpha(float progress) {
                     return 1f - mapBoundToRange(progress, 0f, WIDGET_CLOSE_ALPHA_END_PROGRESS,
                             0f, 1f, ACCELERATE_1_5);
@@ -2643,6 +2649,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         private final SurfaceTransactionApplier mSurfaceApplier;
         private final Rect mWindowStartBounds = new Rect();
         private final Rect mWindowOriginalBounds = new Rect();
+        private final RectF mWidgetSourceBounds = new RectF();
+        private final RectF mWidgetCropBounds = new RectF();
 
         private float mLastCornerRadius = -1f;
         private final Rect mTmpRect = new Rect();
@@ -2696,6 +2704,10 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             return mStartRadius + curvedProgress * (mEndRadius - mStartRadius);
         }
 
+        protected boolean isWidget() {
+            return false;
+        }
+
         @Override
         public void onUpdate(RectF currentRectF, float progress) {
             for (int i = mAppTargets.length - 1; i >= 0; i--) {
@@ -2715,26 +2727,33 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     final float scale;
 
                     // We need to infer the crop (we crop the window to match the currentRectF).
-                    if (mWindowStartBounds.height() > mWindowStartBounds.width()) {
+                    if (isWidget()) {
+                        mWidgetSourceBounds.set(0f, 0f, mWindowOriginalBounds.width(),
+                                mWindowOriginalBounds.height());
+                        scale = WidgetAnimationUtils.updateWindowCrop(mWidgetSourceBounds,
+                                mCurrentRectF, mMatrix, mWidgetCropBounds);
+                        if (scale <= 0f) {
+                            continue;
+                        }
+                        mWidgetCropBounds.round(mTmpRect);
+                    } else if (mWindowStartBounds.height() > mWindowStartBounds.width()) {
                         scale = Math.min(1f, mCurrentRectF.width() / mWindowOriginalBounds.width());
 
                         int unscaledHeight = (int) (mCurrentRectF.height() * (1f / scale));
-                        int croppedHeight = mWindowStartBounds.height() - unscaledHeight;
-                        mTmpRect.set(0, 0, mWindowOriginalBounds.width(),
-                                mWindowStartBounds.height() - croppedHeight);
+                        mTmpRect.set(0, 0, mWindowOriginalBounds.width(), unscaledHeight);
                     } else {
                         scale = Math.min(1f, mCurrentRectF.height()
                                 / mWindowOriginalBounds.height());
 
                         int unscaledWidth = (int) (mCurrentRectF.width() * (1f / scale));
-                        int croppedWidth = mWindowStartBounds.width() - unscaledWidth;
-                        mTmpRect.set(0, 0, mWindowStartBounds.width() - croppedWidth,
-                                mWindowOriginalBounds.height());
+                        mTmpRect.set(0, 0, unscaledWidth, mWindowOriginalBounds.height());
                     }
 
                     // Match size and position of currentRect.
-                    mMatrix.setScale(scale, scale);
-                    mMatrix.postTranslate(mCurrentRectF.left, mCurrentRectF.top);
+                    if (!isWidget()) {
+                        mMatrix.setScale(scale, scale);
+                        mMatrix.postTranslate(mCurrentRectF.left, mCurrentRectF.top);
+                    }
 
                     builder.setMatrix(mMatrix)
                             .setWindowCrop(mTmpRect)

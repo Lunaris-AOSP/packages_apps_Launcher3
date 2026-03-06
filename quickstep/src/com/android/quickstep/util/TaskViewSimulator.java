@@ -609,4 +609,8 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
         // Ideally we should use square-root. This is an optimization as one of the dimension is 0.
         return Math.max(Math.abs(mTempPoint[0]), Math.abs(mTempPoint[1]));
     }
+
+    public float getScaledCornerRadius() {
+        return mMatrix.mapRadius(getCurrentCornerRadius());
+    }
 }

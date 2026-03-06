@@ -47,10 +47,12 @@ import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.RectFSpringAnim.DefaultSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.IconSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.TaskbarHotseatSpringConfig;
+import com.android.quickstep.util.RectFSpringAnim.WidgetSpringConfig;
 import com.android.quickstep.util.SurfaceTransaction.SurfaceProperties;
 import com.android.quickstep.util.TaskViewSimulator;
 import com.android.quickstep.util.TransformParams;
 import com.android.quickstep.util.TransformParams.BuilderProxy;
+import com.android.quickstep.util.WidgetAnimationUtils;
 import com.android.quickstep.views.RecentsView;
 import com.android.quickstep.views.TaskView;
 import com.android.wm.shell.shared.GroupedTaskInfo;
@@ -183,6 +185,10 @@ public abstract class SwipeUpAnimationLogic implements
             return false;
         }
 
+        public boolean isWidget() {
+            return false;
+        }
+
         public @NonNull RectF getWindowTargetRect() {
             PagedOrientationHandler orientationHandler = getOrientationHandler();
             DeviceProfile dp = mDp;
@@ -222,6 +228,10 @@ public abstract class SwipeUpAnimationLogic implements
         public void update(RectF currentRect, float progress, float radius, int overlayAlpha) { }
 
         public void onCancel() { }
+
+        protected float getWindowCornerRadius(float progress) {
+            return -1f;
+        }
 
         /**
          * @param progress The progress of the animation to the home screen.
@@ -381,7 +391,9 @@ public abstract class SwipeUpAnimationLogic implements
                 ? new RectFSpringAnim(new IconSpringConfig(mContext, mDp, startRect, targetRect))
                 : new RectFSpringAnim(useTaskbarHotseatParams
                         ? new TaskbarHotseatSpringConfig(mContext, startRect, targetRect)
-                        : new DefaultSpringConfig(mContext, mDp, startRect, targetRect));
+                        : homeAnimationFactory.isWidget()
+                                ? new WidgetSpringConfig(mContext, mDp, startRect, targetRect)
+                                : new DefaultSpringConfig(mContext, mDp, startRect, targetRect));
         homeAnimationFactory.setAnimation(anim);
 
         SpringAnimationRunner runner = new SpringAnimationRunner(
@@ -405,6 +417,7 @@ public abstract class SwipeUpAnimationLogic implements
         final Matrix mMatrix = new Matrix();
 
         final RectF mWindowCurrentRect = new RectF();
+        private final RectF mWidgetCropRectF = new RectF();
         final Matrix mHomeToWindowPositionMap;
         private final TransformParams mLocalTransformParams;
         final HomeAnimationFactory mAnimationFactory;
@@ -472,7 +485,22 @@ public abstract class SwipeUpAnimationLogic implements
             mHomeAnim.setPlayFraction(progress);
             if (mTargetTaskView == null) {
                 mHomeToWindowPositionMap.mapRect(mWindowCurrentRect, currentRect);
-                mMatrix.setRectToRect(mCropRectF, mWindowCurrentRect, ScaleToFit.FILL);
+                if (mAnimationFactory.isWidget()) {
+                    float scale = WidgetAnimationUtils.updateWindowCrop(mCropRectF,
+                            mWindowCurrentRect, mMatrix, mWidgetCropRectF);
+                    if (scale <= 0f) {
+                        return;
+                    }
+                    mWidgetCropRectF.round(mCropRect);
+                    mAnimationFactory.update(currentRect, progress,
+                            mMatrix.mapRadius(cornerRadius), 0);
+                    float windowRadius = mAnimationFactory.getWindowCornerRadius(progress);
+                    if (windowRadius >= 0f) {
+                        cornerRadius = windowRadius / scale;
+                    }
+                } else {
+                    mMatrix.setRectToRect(mCropRectF, mWindowCurrentRect, ScaleToFit.FILL);
+                }
                 mLocalTransformParams
                         .setTargetAlpha(alpha)
                         .setCornerRadius(cornerRadius);
@@ -486,11 +514,13 @@ public abstract class SwipeUpAnimationLogic implements
             mLocalTransformParams.applySurfaceParams(
                     mLocalTransformParams.createSurfaceParams(this));
 
-            mAnimationFactory.update(
-                    currentRect,
-                    progress,
-                    mMatrix.mapRadius(cornerRadius),
-                    mTargetTaskView == null ? 0 : (int) (alpha * 255));
+            if (!mAnimationFactory.isWidget() || mTargetTaskView != null) {
+                mAnimationFactory.update(
+                        currentRect,
+                        progress,
+                        mMatrix.mapRadius(cornerRadius),
+                        mTargetTaskView == null ? 0 : (int) (alpha * 255));
+            }
 
             if (mTargetTaskView == null) {
                 return;
