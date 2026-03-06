@@ -51,6 +51,7 @@ import kotlin.math.min
 object WorkspaceProfileNonResponsiveFactory {
 
     fun createWorkspacePadding(
+        context: Context,
         isVerticalLayout: Boolean,
         isSeascape: Boolean,
         isFixedLandscape: Boolean,
@@ -77,6 +78,7 @@ object WorkspaceProfileNonResponsiveFactory {
                 hotseatBarBottomSpacePx = hotseatBarBottomSpacePx,
                 hotseatQsbSpace = hotseatQsbSpace,
                 isQsbInline = isFixedLandscape,
+                context = context,
             )
         if (isVerticalLayout) {
             return Rect(
@@ -151,6 +153,7 @@ object WorkspaceProfileNonResponsiveFactory {
     }
 
     fun createWorkspaceProfileNonScalable(
+        context: Context,
         res: Resources,
         deviceProperties: DeviceProperties,
         inv: InvariantDeviceProfile,
@@ -214,6 +217,7 @@ object WorkspaceProfileNonResponsiveFactory {
             res.getDimensionPixelSize(R.dimen.workspace_page_indicator_overlap_workspace)
         val noInsetWorkspacePadding =
             createWorkspacePadding(
+                context = context,
                 isVerticalLayout = isVerticalLayout,
                 isSeascape = isSeascape,
                 isFixedLandscape = inv.isFixedLandscape,
@@ -310,6 +314,7 @@ object WorkspaceProfileNonResponsiveFactory {
     }
 
     fun createWorkspaceProfileScalable(
+        context: Context, 
         res: Resources,
         scale: Float,
         inv: InvariantDeviceProfile,
@@ -412,6 +417,7 @@ object WorkspaceProfileNonResponsiveFactory {
             res.getDimensionPixelSize(R.dimen.workspace_page_indicator_overlap_workspace)
         val noInsetWorkspacePadding =
             createWorkspacePadding(
+                context = context,
                 isVerticalLayout = isVerticalLayout,
                 isSeascape = isSeascape,
                 isFixedLandscape = inv.isFixedLandscape,
@@ -545,6 +551,7 @@ object WorkspaceProfileNonResponsiveFactory {
         return when {
             isScalableGrid ->
                 createWorkspaceProfileScalable(
+                        context = context,
                         res = res,
                         scale = scale,
                         inv = inv,
@@ -569,6 +576,7 @@ object WorkspaceProfileNonResponsiveFactory {
 
             else ->
                 createWorkspaceProfileNonScalable(
+                        context = context,
                         res = res,
                         deviceProperties = deviceProperties,
                         cellScaleToFit = cellScaleToFit,
@@ -688,6 +696,7 @@ object WorkspaceProfileNonResponsiveFactory {
         // We also need to update WorkspacePadding and CellLayoutPadding, keeping it in a
         // different method to make it easier to keep track
         return workspaceProfile.recalculateWorkspacePadding(
+            context = context,
             isVerticalLayout,
             isSeascape,
             inv.isFixedLandscape,

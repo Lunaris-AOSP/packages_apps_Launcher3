@@ -24,6 +24,7 @@ import android.util.DisplayMetrics
 import com.android.launcher3.DevicePaddings
 import com.android.launcher3.DeviceProfile
 import com.android.launcher3.InvariantDeviceProfile
+import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.Utilities.getIconSizeWithOverlap
 import com.android.launcher3.Utilities.getNormalizedIconDrawablePadding
@@ -121,6 +122,7 @@ data class WorkspaceProfile(
             "should use a factory and create a new one."
     )
     fun recalculateWorkspacePadding(
+        context: Context,
         isVerticalLayout: Boolean,
         isSeascape: Boolean,
         isFixedLandscape: Boolean,
@@ -136,6 +138,7 @@ data class WorkspaceProfile(
     ): WorkspaceProfile {
         val noInsetWorkspacePadding =
             WorkspaceProfileNonResponsiveFactory.createWorkspacePadding(
+                context = context,
                 isVerticalLayout = isVerticalLayout,
                 isSeascape = isSeascape,
                 isFixedLandscape = isFixedLandscape,
@@ -253,6 +256,7 @@ data class WorkspaceProfile(
             hotseatBarBottomSpacePx: Int,
             hotseatQsbSpace: Int,
             isQsbInline: Boolean,
+            context: Context? = null,
         ): Int {
             return when {
                 isVerticalLayout -> {
@@ -264,15 +268,24 @@ data class WorkspaceProfile(
                     (max(iconSizePx, hotseatProfile.qsbVisualHeight) + hotseatBarBottomSpacePx)
                 }
                 else -> {
+                    val qsbHeight = if (context != null 
+                        && LauncherPrefs.DOCK_SEARCH.get(context)
+                        && LauncherPrefs.HOTSEAT_QSB_HEIGHT.get(context)) {
+                        hotseatProfile.qsbVisualHeight
+                    } else {
+                        0
+                    }
+                    
                     (iconSizePx +
                         hotseatQsbSpace +
-                        hotseatProfile.qsbVisualHeight +
+                        qsbHeight +
                         hotseatBarBottomSpacePx)
                 }
             }
         }
 
         private fun createWorkspacePadding(
+            context: Context?,
             isVerticalLayout: Boolean,
             isSeascape: Boolean,
             isFixedLandscape: Boolean,
@@ -301,6 +314,7 @@ data class WorkspaceProfile(
                     hotseatBarBottomSpacePx = hotseatBarBottomSpacePx,
                     hotseatQsbSpace = hotseatQsbSpace,
                     isQsbInline = isQsbInline,
+                    context = context,
                 )
 
             when {
@@ -349,6 +363,7 @@ data class WorkspaceProfile(
         }
 
         fun createWorkspaceProfileResponsiveGrid(
+            context: Context,
             res: Resources,
             inv: InvariantDeviceProfile,
             deviceProperties: DeviceProperties,
@@ -436,6 +451,7 @@ data class WorkspaceProfile(
             val desiredWorkspaceHorizontalMarginPx = responsiveWorkspaceWidthSpec.startPaddingPx
             val noInsetWorkspacePadding =
                 createWorkspacePadding(
+                    context = context,
                     isVerticalLayout = isVerticalLayout,
                     isSeascape = isSeascape,
                     isFixedLandscape = inv.isFixedLandscape,
@@ -568,6 +584,7 @@ data class WorkspaceProfile(
                     mResponsiveWorkspaceHeightSpec != null &&
                     mResponsiveWorkspaceCellSpec != null) ->
                     createWorkspaceProfileResponsiveGrid(
+                        context = context,
                         res = res,
                         inv = inv,
                         iconSizeSteps = iconSizeSteps,

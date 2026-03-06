@@ -59,6 +59,14 @@
             android:dependency="pref_sleep_gesture"
             launcher:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:key="pref_hotseat_qsb_height"
+            android:title="@string/hotseat_qsb_height_title"
+            android:summary="@string/hotseat_qsb_height_summary"
+            android:defaultValue="true"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
     </PreferenceCategory>
 
     <PreferenceCategory

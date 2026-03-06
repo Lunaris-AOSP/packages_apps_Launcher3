@@ -474,4 +474,7 @@
 
     <string name="recents_overview_style_title">New overview style</string>
     <string name="recents_overview_style_summary">Use redesigned action buttons in recents</string>
+
+    <string name="hotseat_qsb_height_title">QSB height</string>
+    <string name="hotseat_qsb_height_summary">Use full QSB height instead of icon height</string>
 </resources>

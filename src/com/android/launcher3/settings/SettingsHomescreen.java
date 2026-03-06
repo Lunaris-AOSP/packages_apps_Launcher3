@@ -121,6 +121,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                 LauncherPrefs.DOCK_MUSIC_SEARCH.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey().equals(key) ||
+                LauncherPrefs.HOTSEAT_QSB_HEIGHT.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SHOW_STATUS_BAR.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SHORT_PARALLAX.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SINGLE_PAGE_CENTER.getSharedPrefKey().equals(key) ||
