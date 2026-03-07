@@ -25,7 +25,9 @@ import static com.android.launcher3.icons.IconNormalizer.ICON_VISIBLE_AREA_FACTO
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.PaintDrawable;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.text.Selection;
@@ -41,6 +43,7 @@ import android.view.ViewGroup.MarginLayoutParams;
 import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.ExtendedEditText;
 import com.android.launcher3.Insettable;
+import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.allapps.ActivityAllAppsContainerView;
@@ -114,22 +117,32 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         // Update the width to match the grid padding
+        if (mAppsView == null) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            return;
+        }
         DeviceProfile dp = mLauncher.getDeviceProfile();
         int myRequestedWidth = getSize(widthMeasureSpec);
-        
-        // Add null check for mAppsView
+        View widthSource = mAppsView.getActiveRecyclerView();
+        if (widthSource == null) {
+            widthSource = mAppsView.getAppsRecyclerViewContainer();
+        }
+        if (widthSource == null) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            return;
+        }
         if (mAppsView != null && mAppsView.getActiveRecyclerView() != null) {
-            int rowWidth = myRequestedWidth - mAppsView.getActiveRecyclerView().getPaddingLeft()
-                    - mAppsView.getActiveRecyclerView().getPaddingRight();
+            int rowWidth = myRequestedWidth - widthSource.getPaddingLeft()
+                    - widthSource.getPaddingRight();
 
-        int cellWidth = DeviceProfile.calculateCellWidth(rowWidth,
-                dp.getWorkspaceIconProfile().getCellLayoutBorderSpacePx().x, dp.numShownHotseatIcons);
-        int iconVisibleSize =
-                Math.round(ICON_VISIBLE_AREA_FACTOR * dp.getWorkspaceIconProfile().getIconSizePx());
-        int iconPadding = cellWidth - iconVisibleSize;
+            int cellWidth = DeviceProfile.calculateCellWidth(rowWidth,
+                    dp.getWorkspaceIconProfile().getCellLayoutBorderSpacePx().x, dp.numShownHotseatIcons);
+            int iconVisibleSize =
+                    Math.round(ICON_VISIBLE_AREA_FACTOR * dp.getWorkspaceIconProfile().getIconSizePx());
+            int iconPadding = cellWidth - iconVisibleSize;
 
-            int myWidth = rowWidth - iconPadding + getPaddingLeft() + getPaddingRight();
-            super.onMeasure(makeMeasureSpec(myWidth, EXACTLY), heightMeasureSpec);
+                int myWidth = rowWidth - iconPadding + getPaddingLeft() + getPaddingRight();
+                super.onMeasure(makeMeasureSpec(myWidth, EXACTLY), heightMeasureSpec);
         } else {
             // Fallback to default measurement if mAppsView is not initialized yet
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);

@@ -42,6 +42,7 @@ import androidx.preference.PreferenceFragmentCompat.OnPreferenceStartScreenCallb
 import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceGroup.PreferencePositionCallback;
 import androidx.preference.PreferenceScreen;
+import androidx.preference.SwitchPreferenceCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.launcher3.BuildConfig;
@@ -49,6 +50,8 @@ import com.android.launcher3.Flags;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
 import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.SessionCommitReceiver;
+import com.android.launcher3.allapps.AppDrawerStyle;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.util.SettingsCache;
@@ -185,7 +188,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
      * This fragment shows the launcher preferences.
      */
     public static class HomescreenSettingsFragment extends SettingsBasePreferenceFragment implements
-            SettingsCache.OnChangeListener {
+            SettingsCache.OnChangeListener, SharedPreferences.OnSharedPreferenceChangeListener {
 
         private boolean mRestartOnResume = false;
 
@@ -199,6 +202,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
         private Preference mShowGoogleAppPref;
         private Preference mShowGoogleBarPref;
+        private SwitchPreferenceCompat mAutoAddIconsPref;
 
         @Override
         public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -221,6 +225,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
             mShowGoogleAppPref = screen.findPreference(KEY_MINUS_ONE);
             mShowGoogleBarPref = screen.findPreference(LauncherPrefs.DOCK_SEARCH.getSharedPrefKey());
+            mAutoAddIconsPref = screen.findPreference(SessionCommitReceiver.ADD_ICON_PREFERENCE_KEY);
 
             Preference clearHomeScreenPref = screen.findPreference(KEY_CLEAR_HOME_SCREEN);
             if (clearHomeScreenPref != null) {
@@ -238,6 +243,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             }
 
             updateIsGoogleAppEnabled();
+            updateAutoAddIconsPreferenceState();
 
             if (!VibratorWrapper.INSTANCE.get(getContext()).hasVibrator()) {
                 PreferenceCategory generalCategory = (PreferenceCategory) findPreference(KEY_GENERAL_CATEGORY);
@@ -266,6 +272,9 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             }
 
             updateQsbStylePrefs();
+
+            getPreferenceManager().getSharedPreferences()
+                    .registerOnSharedPreferenceChangeListener(this);
         }
 
         private boolean isKeyInPreferenceGroup(String targetKey, PreferenceGroup parent) {
@@ -347,6 +356,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                 }
             }
             updateIsGoogleAppEnabled();
+            updateAutoAddIconsPreferenceState();
 
             if (mRestartOnResume) {
                 recreateActivityNow();
@@ -392,6 +402,13 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             tryRecreateActivity();
         }
 
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            getPreferenceManager().getSharedPreferences()
+                    .unregisterOnSharedPreferenceChangeListener(this);
+        }
+
         /**
          * Tries to recreate the preference
          */
@@ -426,6 +443,31 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             return position >= 0 ? new PreferenceHighlighter(
                     list, position, screen.findPreference(mHighLightKey))
                     : null;
+        }
+
+        @Override
+        public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+            if (LauncherPrefs.APP_DRAWER_STYLE.getSharedPrefKey().equals(key)) {
+                updateAutoAddIconsPreferenceState();
+            }
+        }
+
+        private void updateAutoAddIconsPreferenceState() {
+            if (mAutoAddIconsPref == null || getContext() == null) {
+                return;
+            }
+            boolean iosStyle = AppDrawerStyle.isIos(AppDrawerStyle.get(getContext()));
+            if (iosStyle) {
+                mAutoAddIconsPref.setChecked(true);
+                LauncherPrefs.getPrefs(getContext()).edit()
+                        .putBoolean(SessionCommitReceiver.ADD_ICON_PREFERENCE_KEY, true)
+                        .apply();
+                mAutoAddIconsPref.setEnabled(false);
+                mAutoAddIconsPref.setSummary(R.string.auto_add_shortcuts_forced_ios_summary);
+            } else {
+                mAutoAddIconsPref.setEnabled(true);
+                mAutoAddIconsPref.setSummary(R.string.auto_add_shortcuts_description);
+            }
         }
     }
 }
