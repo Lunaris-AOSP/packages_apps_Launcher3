@@ -45,6 +45,7 @@ import com.android.launcher3.ExtendedEditText;
 import com.android.launcher3.Insettable;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
+import com.android.launcher3.qsb.QsbContainerView;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.allapps.ActivityAllAppsContainerView;
 import com.android.launcher3.allapps.AllAppsStore;
@@ -74,7 +75,6 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
     // The amount of pixels to shift down and overlap with the rest of the content.
     private final int mContentOverlap;
-    private final int searchSideMargin;
 
     public AppsSearchContainerLayout(Context context) {
         this(context, null);
@@ -95,8 +95,6 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
         mContentOverlap =
                 getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_content_overlap);
-        searchSideMargin =
-                getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_margin_side);
     }
 
     @Override
@@ -153,11 +151,11 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
 
-        Drawable gIcon = getContext().getDrawable(R.drawable.ic_super_g_color);
-        Drawable gIconThemed = getContext().getDrawable(R.drawable.ic_super_g_themed);
+        Drawable gIcon = getContext().getDrawable(R.drawable.ic_allapps_g_color);
+        Drawable gIconThemed = getContext().getDrawable(R.drawable.ic_allapps_g_themed);
         Drawable sIcon = getContext().getDrawable(R.drawable.ic_allapps_search);
-        Drawable lens = getContext().getDrawable(R.drawable.ic_lens_color);
-        Drawable lensThemed = getContext().getDrawable(R.drawable.ic_lens_themed);
+        Drawable actions = getContext().getDrawable(R.drawable.ic_allapps_actions_color);
+        Drawable actionsThemed = getContext().getDrawable(R.drawable.ic_allapps_actions_themed);
 
         // Shift the widget horizontally so that its centered in the parent (b/63428078)
         View parent = (View) getParent();
@@ -179,68 +177,81 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
         boolean showQSB = Utilities.showQSB(getContext());
         boolean isDockThemed = ThemeManager.INSTANCE.get(getContext()).isMonoThemeEnabled();
+        boolean hasGoogleApp = Utilities.isGSAEnabled(getContext());
 
         if (showQSB) {
             if (!isDockThemed) {
-                setCompoundDrawablesRelativeWithIntrinsicBounds(gIcon, null, lens, null);
+                setCompoundDrawablesRelativeWithIntrinsicBounds(gIcon, null, actions, null);
             } else {
-                setCompoundDrawablesRelativeWithIntrinsicBounds(gIconThemed, null, lensThemed, null);
+                setCompoundDrawablesRelativeWithIntrinsicBounds(gIconThemed, null, actionsThemed, null);
             }
         } else {
             setCompoundDrawablesRelativeWithIntrinsicBounds(sIcon, null, null, null);
         }
 
+        int leftSlotWidth = getResources().getDimensionPixelSize(R.dimen.qsb_icon_tap_size);
+        int actionSlotWidth = getResources().getDimensionPixelSize(R.dimen.qsb_icon_tap_size);
+        int rightGroupWidth = actionSlotWidth * 2;
+        int rightGroupStart = getWidth() - getPaddingEnd() - rightGroupWidth;
+
         setOnTouchListener(new OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 if (event.getAction() == MotionEvent.ACTION_UP) {
-                    float touchX = event.getRawX();
-                    
-                    Drawable[] drawables = getCompoundDrawables();
-                    Drawable rightDrawable = drawables[2];
-                    Drawable leftDrawable = drawables[0];
-                    
-                    int paddingEnd = getPaddingEnd();
-                    int paddingLeft = getPaddingLeft();
-                
-                    if (rightDrawable != null) {
-                        int rightDrawableWidth = rightDrawable.getBounds().width();
-                        if (touchX >= (getWidth() - rightDrawableWidth - paddingEnd)) {
-                            Intent lensIntent = new Intent();
-                            lensIntent.setAction(Intent.ACTION_VIEW)
-                                    .setComponent(new ComponentName(Utilities.GSA_PACKAGE, Utilities.LENS_ACTIVITY))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    .setData(Uri.parse(Utilities.LENS_URI))
-                                    .putExtra("LensHomescreenShortcut", true);
-                            getContext().startActivity(lensIntent);
-                            return true;
+                    float touchX = event.getX();
+                    Drawable rightDrawable = getCompoundDrawablesRelative()[2];
+                    Drawable leftDrawable = getCompoundDrawablesRelative()[0];
+
+                    // Left slot (G icon when showQSB)
+                    if (leftDrawable != null && touchX <= (getPaddingStart() + leftSlotWidth)) {
+                        if (hasGoogleApp && showQSB) {
+                            Intent gIntent = getContext().getPackageManager()
+                                    .getLaunchIntentForPackage(Utilities.GSA_PACKAGE);
+                            if (gIntent != null) {
+                                gIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                getContext().startActivity(gIntent);
+                                return true;
+                            }
                         }
+                        return false;
                     }
-                    
-                    if (leftDrawable != null) {
-                        int leftDrawableWidth = leftDrawable.getBounds().width();
-                        if (touchX <= (leftDrawableWidth + paddingLeft + searchSideMargin)) {
-                            Intent gIntent = getContext().getPackageManager().getLaunchIntentForPackage(Utilities.GSA_PACKAGE);
-                            gIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                            getContext().startActivity(gIntent);
-                            return true;
+
+                    // Right two slots: mic then lens
+                    if (rightDrawable != null && touchX >= rightGroupStart) {
+                        if (touchX < (rightGroupStart + actionSlotWidth)) {
+                            // Mic slot – voice search
+                            String searchPackage = QsbContainerView.getSearchWidgetPackageName(getContext());
+                            if (searchPackage != null) {
+                                Intent voiceIntent = new Intent(Intent.ACTION_VOICE_COMMAND)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                        .setPackage(searchPackage);
+                                getContext().startActivity(voiceIntent);
+                            }
+                        } else {
+                            // Lens slot
+                            if (hasGoogleApp) {
+                                Intent lensIntent = new Intent();
+                                lensIntent.setAction(Intent.ACTION_VIEW)
+                                        .setComponent(new ComponentName(Utilities.GSA_PACKAGE, Utilities.LENS_ACTIVITY))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        .setData(Uri.parse(Utilities.LENS_URI))
+                                        .putExtra("LensHomescreenShortcut", true);
+                                getContext().startActivity(lensIntent);
+                            }
                         }
+                        return true;
                     }
-                    
-                    int leftBoundary = leftDrawable != null ? 
-                        (leftDrawable.getBounds().width() + paddingLeft) : paddingLeft;
-                    int rightBoundary = rightDrawable != null ? 
-                        (getWidth() - rightDrawable.getBounds().width() - paddingEnd) : (getWidth() - paddingEnd);
-                        
-                    if (touchX > leftBoundary && touchX < rightBoundary) {
-                        Intent pixelSearchIntent = getContext().getPackageManager().getLaunchIntentForPackage("rk.android.app.pixelsearch");
+
+                    // Middle area – Pixel Search if installed
+                    if (touchX > (getPaddingStart() + leftSlotWidth) && touchX < rightGroupStart) {
+                        Intent pixelSearchIntent = getContext().getPackageManager()
+                                .getLaunchIntentForPackage("rk.android.app.pixelsearch");
                         if (pixelSearchIntent != null) {
                             pixelSearchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                             getContext().startActivity(pixelSearchIntent);
                             return true;
-                        } else {
-                            return false;
                         }
+                        return false;
                     }
                 }
                 return false;
