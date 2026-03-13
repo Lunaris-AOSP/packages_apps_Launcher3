@@ -83,9 +83,9 @@
     <item name="swipe_up_rect_scale_damping_ratio_v2" type="dimen" format="float">0.99</item>
     <item name="swipe_up_rect_scale_stiffness_v2" type="dimen" format="float">500</item>
 
-    <item name="widget_rect_scale_stiffness" type="dimen" format="float">1100</item>
-    <item name="widget_x_stiffness" type="dimen" format="float">900</item>
-    <item name="widget_y_stiffness" type="dimen" format="float">900</item>
+    <item name="widget_rect_scale_stiffness" type="dimen" format="float">600</item>
+    <item name="widget_x_stiffness" type="dimen" format="float">450</item>
+    <item name="widget_y_stiffness" type="dimen" format="float">550</item>
 
     <item name="swipe_up_rect_xy_fling_friction" type="dimen" format="float">1.5</item>
 
