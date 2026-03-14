@@ -40,6 +40,7 @@ import androidx.annotation.Nullable;
 
 import com.android.launcher3.ShortcutAndWidgetContainer.TranslationProvider;
 import com.android.launcher3.celllayout.CellLayoutLayoutParams;
+import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.util.HorizontalInsettableView;
 import com.android.launcher3.util.LauncherBindableItemsContainer.ItemOperator;
@@ -106,11 +107,13 @@ public class Hotseat extends CellLayout implements Insettable {
     public Hotseat(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
         if (Utilities.showQSB(context)) {
-            mQsb = LayoutInflater.from(context).inflate(R.layout.search_container_hotseat, this,
-                    false);
+            boolean useGoogleStyle = LauncherPrefs.get(context).get(LauncherPrefs.QSB_STYLE_GOOGLE);
+            int qsbLayout = useGoogleStyle
+                    ? R.layout.search_container_hotseat_google
+                    : R.layout.search_container_hotseat;
+            mQsb = LayoutInflater.from(context).inflate(qsbLayout, this, false);
         } else {
-            mQsb = LayoutInflater.from(context).inflate(R.layout.empty_view, this,
-                    false);
+            mQsb = LayoutInflater.from(context).inflate(R.layout.empty_view, this, false);
         }
 
         addView(mQsb);

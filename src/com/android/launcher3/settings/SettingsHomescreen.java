@@ -117,6 +117,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
         if (LauncherPrefs.SHOW_HOTSEAT_BG.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.HOTSEAT_OPACITY.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.DOCK_SEARCH.getSharedPrefKey().equals(key) ||
+                LauncherPrefs.QSB_STYLE_GOOGLE.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.DOCK_THEME.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SEARCH_RADIUS_SIZE.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.DOCK_MUSIC_SEARCH.getSharedPrefKey().equals(key) ||
@@ -263,6 +264,8 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             if (getActivity() != null && !TextUtils.isEmpty(getPreferenceScreen().getTitle())) {
                 getActivity().setTitle(getPreferenceScreen().getTitle());
             }
+
+            updateQsbStylePrefs();
         }
 
         private boolean isKeyInPreferenceGroup(String targetKey, PreferenceGroup parent) {
@@ -347,6 +350,39 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
             if (mRestartOnResume) {
                 recreateActivityNow();
+            }
+            updateQsbStylePrefs();
+            LauncherPrefs.getPrefs(getContext())
+                    .registerOnSharedPreferenceChangeListener(mPrefListener);
+        }
+
+        @Override
+        public void onPause() {
+            super.onPause();
+            LauncherPrefs.getPrefs(getContext())
+                    .unregisterOnSharedPreferenceChangeListener(mPrefListener);
+        }
+
+        private final SharedPreferences.OnSharedPreferenceChangeListener mPrefListener =
+                (prefs, key) -> {
+                    if (LauncherPrefs.QSB_STYLE_GOOGLE.getSharedPrefKey().equals(key)) {
+                        updateQsbStylePrefs();
+                    }
+                };
+
+        private void updateQsbStylePrefs() {
+            boolean isGoogleStyle = LauncherPrefs.get(getContext())
+                    .get(LauncherPrefs.QSB_STYLE_GOOGLE);
+            setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey(), !isGoogleStyle);
+            setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey(), !isGoogleStyle);
+            setQsbPrefEnabled(LauncherPrefs.DOCK_THEME.getSharedPrefKey(), !isGoogleStyle);
+            setQsbPrefEnabled(LauncherPrefs.SEARCH_RADIUS_SIZE.getSharedPrefKey(), !isGoogleStyle);
+        }
+
+        private void setQsbPrefEnabled(String key, boolean enabled) {
+            Preference pref = findPreference(key);
+            if (pref != null) {
+                pref.setEnabled(enabled);
             }
         }
 

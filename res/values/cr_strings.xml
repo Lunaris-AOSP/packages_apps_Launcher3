@@ -142,6 +142,8 @@
     <string name="label_search">Search</string>
     <string name="label_lens">Google Lens</string>
     <string name="label_voice_search">Voice search</string>
+    <string name="label_ai_mode">AI Mode</string>
+    <string name="ai_mode_not_available">AI functionality not available</string>
     <string name="label_gemini_search">AI mode</string>
     <string name="dock_music_search_title">Music search</string>
     <string name="dock_music_search_summary">Start music search on pressing mic icon</string>
@@ -485,4 +487,8 @@
 
     <!-- Message shown when all home screen views are removed -->
     <string name="home_screen_all_views_removed_msg">Home screen cleared</string>
+
+    <!-- QSB style -->
+    <string name="qsb_style_google_title">Google-style search bar</string>
+    <string name="qsb_style_google_summary">Use the QSB design with AI and Lens buttons</string>
 </resources>

@@ -1182,6 +1182,10 @@ public final class Utilities {
         return isGSAEnabled(context) && LauncherPrefs.DOCK_MUSIC_SEARCH.get(context);
     }
 
+    public static boolean isAiMusicSearchEnabled(Context context) {
+        return isGSAEnabled(context) && LauncherPrefs.get(context).get(LauncherPrefs.DOCK_MUSIC_SEARCH);
+    }
+
     public static boolean isResizeableActivity(Context context, ComponentName activity) {
         if (activity == null) return false;
         final ActivityInfo info;
