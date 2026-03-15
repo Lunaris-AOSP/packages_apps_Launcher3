@@ -1265,10 +1265,16 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             rebindAdapters();
         }
         if (mHasWorkApps) {
-            mWorkManager.reset();
+                try {
+                    mWorkManager.reset();
+                } catch (NullPointerException e) {
+                }
         }
         if (mHasPrivateApps) {
-            mPrivateProfileManager.reset();
+                try {
+                    mPrivateProfileManager.reset();
+                } catch (NullPointerException e) {
+                }
         }
         updateOneUiPageIndicator();
 
