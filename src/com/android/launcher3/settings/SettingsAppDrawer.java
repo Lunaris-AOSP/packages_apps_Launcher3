@@ -118,6 +118,9 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
     if (LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.getSharedPrefKey().equals(key) ||
         LauncherPrefs.ALL_APPS_DARK_TEXT.getSharedPrefKey().equals(key) ||
         LauncherPrefs.APP_DRAWER_STYLE.getSharedPrefKey().equals(key) ||
+        LauncherPrefs.APP_DRAWER_CUSTOM_COLOR_ENABLED.getSharedPrefKey().equals(key) ||
+        LauncherPrefs.APP_DRAWER_CUSTOM_COLOR_LIGHT.getSharedPrefKey().equals(key) ||
+        LauncherPrefs.APP_DRAWER_CUSTOM_COLOR_DARK.getSharedPrefKey().equals(key) ||
         LauncherPrefs.DRAWER_SCROLLBAR.getSharedPrefKey().equals(key)) {
         LauncherAppState.INSTANCE.executeIfCreated(app -> app.setNeedsRestart());
     }
