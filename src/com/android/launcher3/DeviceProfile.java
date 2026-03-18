@@ -998,7 +998,8 @@ public class DeviceProfile {
                 return false;
             }
         }
-        return mDeviceProperties.isTablet() || Flags.allAppsSheetForHandheld();
+        return (mDeviceProperties.isTablet() || Flags.allAppsSheetForHandheld())
+                && !AppDrawerStyle.isVerticalPaged(AppDrawerStyle.get(this.context));
     }
 
     private void setupAllAppsStyle(Context context) {
