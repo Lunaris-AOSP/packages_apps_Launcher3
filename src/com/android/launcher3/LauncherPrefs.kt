@@ -270,7 +270,7 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val APP_DRAWER_CUSTOM_COLOR_LIGHT = backedUpItem("pref_app_drawer_custom_color_light", -1)
         @JvmField val APP_DRAWER_CUSTOM_COLOR_DARK = backedUpItem("pref_app_drawer_custom_color_dark", -16777216)
         @JvmField val APP_DRAWER_OPACITY = backedUpItem("pref_app_drawer_opacity", 60)
-        @JvmField val APP_DRAWER_SORT_MODE = backedUpItem("pref_app_drawer_sort_mode", 0)
+        @JvmField val APP_DRAWER_SORT_MODE = backedUpItem("pref_app_drawer_sorting_mode", "alphabetical")
         @JvmField val APP_DRAWER_STYLE = backedUpItem("pref_app_drawer_style", "normal")
         @JvmField val APP_DRAWER_STYLE_IOS_MIGRATED = nonRestorableItem("pref_app_drawer_style_ios_migrated", false)
         @JvmField val AUTO_HIDE_DOTS = backedUpItem("pref_auto_hide_dots", true)
