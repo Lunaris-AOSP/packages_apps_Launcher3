@@ -246,7 +246,7 @@
             android:key="pref_qsb_style_google"
             android:title="@string/qsb_style_google_title"
             android:summary="@string/qsb_style_google_summary"
-            android:defaultValue="false"
+            android:defaultValue="true"
             android:dependency="pref_dock_search"
             launcher:iconSpaceReserved="false" />
 
