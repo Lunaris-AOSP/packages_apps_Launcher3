@@ -37,6 +37,10 @@ import android.graphics.Outline;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserHandle;
+import android.provider.Settings;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
 import android.view.View;
 import android.view.ViewOutlineProvider;
 
@@ -76,7 +80,11 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     public static final int ALPHA_INDEX_HIDDEN_WHILE_DREAMING = 3;
     public static final int ALPHA_INDEX_NUDGED = 4;
     public static final int ALPHA_INDEX_ALL_SET_TRANSITION = 5;
-    private static final int NUM_ALPHA_CHANNELS = 6;
+    public static final int ALPHA_INDEX_AUTO_HIDE = 6;
+    private static final int NUM_ALPHA_CHANNELS = 7;
+    private static final long AUTO_HIDE_TIMEOUT_MS = 4500;
+    private static final long AUTO_HIDE_FADE_DURATION_MS = 750;
+    private static final long AUTO_HIDE_FADE_IN_DURATION_MS = 150;
 
     // Values for long press animations, picked to most closely match navbar spec.
     private static final float SCALE_TOUCH_ANIMATION_SHRINK = 0.85f;
@@ -124,6 +132,9 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     private float mTranslationYForSwipe;
     private float mTranslationYForStash;
     private TaskStackChangeListener mTaskStackChangeListener;
+    private final Runnable mAutoHideHandleRunnable;
+    @Nullable
+    private ValueAnimator mAutoHideFadeAnimator;
 
     // Burn-in protection
     private Timer mBurnInTimer;
@@ -145,6 +156,7 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
         mTaskbarStashedHandleAlpha = new MultiValueAlpha(mStashedHandleView, NUM_ALPHA_CHANNELS);
         final Resources resources = mActivity.getResources();
         mTaskbarStashedHandleAlpha.setUpdateVisibility(true);
+        mAutoHideHandleRunnable = this::fadeOutStashedHandle;
         mStashedHandleView.updateHandleColor(
                 mPrefs.get(STASHED_HANDLE_REGION_IS_DARK), false /* animate */);
         mBurnInProtectionEnabled = resources.getBoolean(R.bool.config_enableBurnInProtection);
@@ -247,7 +259,7 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
         if (mActivity.isPrimaryDisplay()) {
             initRegionSampler();
         }
-        if (mActivity.isPhoneGestureNavMode()) {
+        if (!mActivity.isThreeButtonNav()) {
             onIsStashedChanged(true);
         }
         if (!mActivity.isPrimaryDisplay() && enableAutoStashConnectedDisplayTaskbar.isTrue()) {
@@ -288,8 +300,9 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
                 }, Executors.UI_HELPER_EXECUTOR);
     }
 
-
     public void onDestroy() {
+        mStashedHandleView.removeCallbacks(mAutoHideHandleRunnable);
+        cancelAutoHideFade();
         if (mRegionSamplingHelper != null) {
             mRegionSamplingHelper.stopAndDestroy();
         }
@@ -354,6 +367,7 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     public void onIsStashedChanged(boolean isStashed) {
         mIsStashed = isStashed;
         updateSamplingState();
+        updateAutoHideForCurrentState(isStashed /* resetTimer */);
     }
 
     public void onNavigationBarLumaSamplingEnabled(int displayId, boolean enable) {
@@ -368,6 +382,9 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     public void setIsAppTransitionPending(boolean pending) {
         mIsAppTransitionPending = pending;
         updateSamplingState();
+        if (!pending) {
+            updateAutoHideForCurrentState(true /* resetTimer */);
+        }
     }
 
     private void updateSamplingState() {
@@ -423,8 +440,79 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     }
 
     public void updateStateForSysuiFlags(@SystemUiStateFlags long systemUiStateFlags) {
+        boolean wasTaskbarHidden = mTaskbarHidden;
         mTaskbarHidden = (systemUiStateFlags & SYSUI_STATE_NAV_BAR_HIDDEN) != 0;
         updateRegionSamplingWindowVisibility();
+        updateAutoHideForCurrentState(wasTaskbarHidden && !mTaskbarHidden /* resetTimer */);
+    }
+
+    public void touchAutoHide(boolean resetTimer) {
+        updateAutoHideForCurrentState(resetTimer);
+    }
+
+    private void updateAutoHideForCurrentState(boolean resetTimer) {
+        if (!shouldAutoHideHandle()) {
+            mStashedHandleView.removeCallbacks(mAutoHideHandleRunnable);
+            fadeInStashedHandle();
+            return;
+        }
+
+        if (!mIsStashed || mTaskbarHidden) {
+            mStashedHandleView.removeCallbacks(mAutoHideHandleRunnable);
+            fadeInStashedHandle();
+            return;
+        }
+
+        if (!resetTimer) {
+            return;
+        }
+
+        mStashedHandleView.removeCallbacks(mAutoHideHandleRunnable);
+        fadeInStashedHandle();
+        mStashedHandleView.postDelayed(mAutoHideHandleRunnable, AUTO_HIDE_TIMEOUT_MS);
+    }
+
+    private void fadeOutStashedHandle() {
+        cancelAutoHideFade();
+        var alphaChannel = mTaskbarStashedHandleAlpha.get(ALPHA_INDEX_AUTO_HIDE);
+        float startAlpha = alphaChannel.getValue();
+        if (startAlpha == 0f) return;
+
+        mAutoHideFadeAnimator = ValueAnimator.ofFloat(startAlpha, 0f);
+        mAutoHideFadeAnimator.setDuration(AUTO_HIDE_FADE_DURATION_MS);
+        mAutoHideFadeAnimator.setInterpolator(new AccelerateInterpolator());
+        mAutoHideFadeAnimator.addUpdateListener(
+                anim -> alphaChannel.setValue((float) anim.getAnimatedValue()));
+        mAutoHideFadeAnimator.start();
+    }
+
+    private void fadeInStashedHandle() {
+        cancelAutoHideFade();
+        var alphaChannel = mTaskbarStashedHandleAlpha.get(ALPHA_INDEX_AUTO_HIDE);
+        float startAlpha = alphaChannel.getValue();
+        if (startAlpha == 1f) return;
+
+        mAutoHideFadeAnimator = ValueAnimator.ofFloat(startAlpha, 1f);
+        mAutoHideFadeAnimator.setDuration(AUTO_HIDE_FADE_IN_DURATION_MS);
+        mAutoHideFadeAnimator.setInterpolator(new DecelerateInterpolator());
+        mAutoHideFadeAnimator.addUpdateListener(
+                anim -> alphaChannel.setValue((float) anim.getAnimatedValue()));
+        mAutoHideFadeAnimator.start();
+    }
+
+    private void cancelAutoHideFade() {
+        if (mAutoHideFadeAnimator != null) {
+            mAutoHideFadeAnimator.cancel();
+            mAutoHideFadeAnimator = null;
+        }
+    }
+
+    private boolean shouldAutoHideHandle() {
+        return !mActivity.isThreeButtonNav()
+                && SettingsCache.INSTANCE.get(mActivity).getValue(NAVIGATION_BAR_HINT_URI)
+                && Settings.System.getIntForUser(mActivity.getContentResolver(),
+                        Settings.System.GESTURE_NAVBAR_AUTO_HIDE, 0,
+                        UserHandle.USER_CURRENT) == 1;
     }
 
     private void updateRegionSamplingWindowVisibility() {
