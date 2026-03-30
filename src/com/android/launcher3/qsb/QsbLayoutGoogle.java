@@ -57,6 +57,7 @@ public class QsbLayoutGoogle extends FrameLayout
         setIcons();
         setupMicIcon();
         setupLensIcon();
+        setupAiModeButton();
 
         mThemeChangeListener = this::setIcons;
         ThemeManager.INSTANCE.get(mContext).addChangeListener(mThemeChangeListener);
@@ -204,6 +205,110 @@ public class QsbLayoutGoogle extends FrameLayout
         } catch (ActivityNotFoundException e) {
             Toast.makeText(mContext, R.string.activity_not_found, Toast.LENGTH_SHORT).show();
             Log.e(TAG, "No search activity found for: " + searchPackage);
+        }
+    }
+
+    private void setupAiModeButton() {
+        if (mAiModeButton == null) return;
+        mAiModeButton.setOnClickListener(v -> {
+            if (Utilities.isAiMusicSearchEnabled(mContext)) {
+                launchAiMusicSearch();
+                return;
+            }
+
+            String[] aiActivities = {
+                "com.google.android.googlequicksearchbox.OneSearchAimActivity",
+                "com.google.android.googlequicksearchbox.GeminiGatewayActivity",
+                "com.google.android.googlequicksearchbox.SearchActivity",
+                "com.google.android.googlequicksearchbox.VoiceSearchActivity",
+                "com.google.android.googlequicksearchbox.OneSearchActivity",
+                "com.google.android.googlequicksearchbox.GoogleAppVoiceAssistEntrypoint"
+            };
+
+            for (String activityName : aiActivities) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW)
+                            .setComponent(new ComponentName(Utilities.GSA_PACKAGE, activityName))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    mContext.startActivity(intent);
+                    Log.d(TAG, "Successfully launched AI activity: " + activityName);
+                    return;
+                } catch (ActivityNotFoundException e) {
+                    Log.d(TAG, "Activity not found: " + activityName);
+                } catch (SecurityException e) {
+                    Log.w(TAG, "Security exception: " + activityName + ", " + e.getMessage());
+                }
+            }
+
+            String[] aiIntents = {
+                "com.google.android.PIXEL_SEARCH",
+                "android.intent.action.ASSIST",
+                "android.intent.action.VOICE_ASSIST"
+            };
+
+            for (String intentAction : aiIntents) {
+                try {
+                    Intent intent = new Intent(intentAction)
+                            .setPackage(Utilities.GSA_PACKAGE)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    mContext.startActivity(intent);
+                    Log.d(TAG, "Launched via intent action: " + intentAction);
+                    return;
+                } catch (ActivityNotFoundException e) {
+                    Log.d(TAG, "Intent action not found: " + intentAction);
+                } catch (SecurityException e) {
+                    Log.w(TAG, "Security exception: " + intentAction + ", " + e.getMessage());
+                }
+            }
+
+            String searchPackage = QsbContainerView.getSearchWidgetPackageName(mContext);
+            if (searchPackage != null) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VOICE_COMMAND)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            .setPackage(searchPackage);
+                    mContext.startActivity(intent);
+                    Log.d(TAG, "Falling back to voice command");
+                } catch (ActivityNotFoundException e) {
+                    Log.e(TAG, "No AI or voice activities found");
+                    Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
+                } catch (SecurityException e) {
+                    Log.e(TAG, "Security exception: " + e.getMessage());
+                    Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void launchAiMusicSearch() {
+        String searchPackage = QsbContainerView.getSearchWidgetPackageName(mContext);
+        if (searchPackage == null) {
+            Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_MAIN)
+                    .setAction("com.google.android.googlequicksearchbox.MUSIC_SEARCH")
+                    .setPackage(searchPackage)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            mContext.startActivity(intent);
+            Log.d(TAG, "Successfully launched AI music search");
+        } catch (ActivityNotFoundException e) {
+            Log.d(TAG, "Music search not found, falling back to voice command");
+            try {
+                Intent intent = new Intent(Intent.ACTION_VOICE_COMMAND)
+                        .setPackage(searchPackage)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                mContext.startActivity(intent);
+            } catch (ActivityNotFoundException e2) {
+                Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
+            } catch (SecurityException e2) {
+                Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
+            }
+        } catch (SecurityException e) {
+            Toast.makeText(mContext, R.string.ai_mode_not_available, Toast.LENGTH_SHORT).show();
         }
     }
 
