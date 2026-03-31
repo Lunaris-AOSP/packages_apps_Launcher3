@@ -51,6 +51,6 @@
     <dimen name="burn_in_protection_vertical_shift">6dp</dimen>
 
     <!-- App drawer searchbar -->
-    <dimen name="all_apps_search_bar_bottom_padding_extra">16dp</dimen>
+    <dimen name="all_apps_search_bar_bottom_padding_extra">32dp</dimen>
     <dimen name="all_apps_page_indicator_bottom_margin">32dp</dimen>
 </resources>
