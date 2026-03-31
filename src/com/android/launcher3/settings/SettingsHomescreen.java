@@ -385,7 +385,6 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                     .get(LauncherPrefs.QSB_STYLE_GOOGLE);
             setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey(), !isGoogleStyle);
             setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey(), !isGoogleStyle);
-            setQsbPrefEnabled(LauncherPrefs.DOCK_THEME.getSharedPrefKey(), !isGoogleStyle);
             setQsbPrefEnabled(LauncherPrefs.SEARCH_RADIUS_SIZE.getSharedPrefKey(), !isGoogleStyle);
         }
 

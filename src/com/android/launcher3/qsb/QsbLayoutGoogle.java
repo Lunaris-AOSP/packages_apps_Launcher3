@@ -111,7 +111,7 @@ public class QsbLayoutGoogle extends FrameLayout
     }
 
     private void setIcons() {
-        boolean isThemed = ThemeManager.INSTANCE.get(mContext).isMonoThemeEnabled();
+        boolean isThemed = LauncherPrefs.DOCK_THEME.get(getContext());
         boolean isMusicSearch = Utilities.isMusicSearchEnabled(mContext);
 
         mGoogleIcon.setImageResource(isThemed
