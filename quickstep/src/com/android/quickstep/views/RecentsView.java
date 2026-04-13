@@ -2368,7 +2368,10 @@ public abstract class RecentsView<
         setTaskModalness(0);
         setColorTint(0);
         if (mEnableOverlap) {
-        doScrollScale();
+            // Recompute page offsets first so overlap translation is applied from a
+            // stable baseline instead of compounding any previous overlap offset.
+            updatePageOffsets();
+            doScrollScale();
         }
     }
 
