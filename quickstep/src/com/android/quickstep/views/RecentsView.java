@@ -1362,10 +1362,8 @@ public abstract class RecentsView<
         if (mDesktopVisibilityController != null) {
             mDesktopVisibilityController.unregisterDesktopVisibilityListener(mUtils);
         }
-        if (mPrefListener != null) {
-            LauncherPrefs.getPrefs(getContext())
-                    .unregisterOnSharedPreferenceChangeListener(mPrefListener);
-        }
+        LauncherPrefs.getPrefs(getContext())
+                .unregisterOnSharedPreferenceChangeListener(mPrefListener);
         reset();
     }
 
