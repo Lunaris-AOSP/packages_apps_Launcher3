@@ -7016,7 +7016,7 @@ public abstract class RecentsView<
         float mScrollScale = isOxygen ? 0.92f : 0.85f;
 
         float overlapFactor = 0f;
-        if (!isStock && mFullscreenProgress <= 0.01f) {
+        if (!isStock && mFullscreenProgress < 0.05f) {
              overlapFactor = Utilities.mapToRange(
                 mFullscreenProgress, 0f, 0.05f, 1f, 0f, LINEAR);
         }
