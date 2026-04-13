@@ -7084,9 +7084,6 @@ public abstract class RecentsView<
 
                 if (child instanceof TaskView) {
                     TaskView tv = (TaskView) child;
-                    if (tv.getPrimaryTaskOffsetTranslationProperty().get(tv) != 0f) {
-                        tv.getPrimaryTaskOffsetTranslationProperty().set(tv, 0f);
-                    }
                     if (child.getTranslationZ() != 0f) child.setTranslationZ(0f);
                     if (child.getRotationY() != 0f) child.setRotationY(0f);
 
