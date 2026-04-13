@@ -6995,8 +6995,9 @@ public abstract class RecentsView<
     protected void onScrollChanged(int l, int t, int oldl, int oldt) {
         super.onScrollChanged(l, t, oldl, oldt);
         dispatchScrollChanged();
-        updatePageOffsets();
-        if (!mEnableOverlap) {
+        if (mEnableOverlap) {
+            updatePageOffsets();
+        } else {
             doScrollScale();
         }
     }
