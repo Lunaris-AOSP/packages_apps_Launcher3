@@ -34,7 +34,7 @@ public class QsbOuterDrawable extends Drawable {
         if (bounds.isEmpty()) return;
 
         // Get the themed color for outer shape
-        int themedColor = Themes.getAttrColor(mContext, com.android.launcher3.R.attr.qsbFillColorThemed);
+        int themedColor = Themes.getAttrColor(mContext, com.android.launcher3.R.attr.qsbOuterColor);
         
         // Apply opacity to outer shape only
         int alpha = (int) (mOpacity * 255 / 100);
