@@ -63,7 +63,7 @@ public class QuickSpaceView extends FrameLayout implements OnDataListener {
                         String time = text.toString();
                         int colon = time.indexOf(':');
                         if (colon > 0) {
-                            int hourColor = Color.parseColor("#EB0029");
+                            int hourColor = Color.parseColor("#FE4543");
                             int minuteColor = mQuickspaceClock.getCurrentTextColor();
                             SpannableString styled = new SpannableString(time);
                             styled.setSpan(new ForegroundColorSpan(hourColor), 0, colon, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);

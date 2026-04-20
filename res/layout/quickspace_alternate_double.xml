@@ -58,8 +58,6 @@
             android:layout_weight="0.0"
             android:paddingEnd="6dp" />
 
-        <include layout="@layout/quickspace_weather_content" />
-
     </LinearLayout>
 
     <!-- Row 2: Clock + Event Title -->

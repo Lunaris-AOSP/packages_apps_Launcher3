@@ -10,13 +10,12 @@
     <!-- Day of the Week -->
     <com.android.launcher3.quickspace.views.DoubleShadowTextView
         android:id="@+id/quickspace_day_of_week"
-        android:fontFamily="sans-serif-condensed-medium"
+        android:fontFamily="@font/SlateForOnePlus-Medium"
         android:paddingStart="16dp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textColor="?workspaceTextColor"
         android:textSize="28sp"
-        android:textStyle="bold"
         launcher:ambientShadowBlur="3dp"
         launcher:ambientShadowColor="?workspaceAmbientShadowColor"
         launcher:keyShadowBlur="2dp"
@@ -29,7 +28,7 @@
         android:paddingStart="16dp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-medium"
+        android:fontFamily="@font/SlateForOnePlus-Bold"
         android:textColor="?workspaceTextColor"
         android:textSize="80sp"
         android:format12Hour="h:mm"
@@ -47,12 +46,12 @@
 
         <com.android.launcher3.quickspace.views.DoubleShadowTextView
             android:id="@+id/quickspace_date"
-            style="@style/QuickSpaceSubText"
+            android:fontFamily="@font/SlateForOnePlus-Regular"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="?workspaceTextColor"
             android:textSize="@dimen/quickspace_subtitle_size"
-            android:paddingEnd="8dp"
+            android:paddingEnd="10dp"
             launcher:ambientShadowBlur="3dp"
             launcher:ambientShadowColor="?workspaceAmbientShadowColor"
             launcher:keyShadowBlur="2dp"
@@ -98,7 +97,7 @@
         <!-- PSA Message -->
         <com.android.launcher3.quickspace.views.DoubleShadowTextView
             android:id="@+id/quickspace_psa_message"
-            style="@style/QuickSpaceSubText"
+            android:fontFamily="@font/SlateForOnePlus-Regular"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="?workspaceTextColor"
