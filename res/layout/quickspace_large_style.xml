@@ -25,7 +25,7 @@
     <!-- Clock -->
     <TextClock
         android:id="@+id/quickspace_clock"
-        android:paddingStart="16dp"
+        android:paddingStart="10dp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:fontFamily="@font/SlateForOnePlus-Bold"
