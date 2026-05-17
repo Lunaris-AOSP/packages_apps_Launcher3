@@ -295,7 +295,7 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val RECENTS_LENS = backedUpItem("pref_recents_lens", true)
         @JvmField val RECENTS_MEMINFO = backedUpItem("pref_recents_meminfo", false)
         @JvmField val RECENTS_MEMINFO_ZRAM = backedUpItem("pref_recents_meminfo_zram", false)
-        @JvmField val RECENTS_STYLE = backedUpItem("pref_recents_style", "stock")
+        @JvmField val RECENTS_STYLE = backedUpItem("pref_recents_style", "default")
         @JvmField val RECENTS_OPACITY = backedUpItem("pref_recents_opacity", 40)
         @JvmField val RECENTS_NEW_OVERVIEW_STYLE = backedUpItem("pref_recents_new_overview_style", true)
         @JvmField val RECENTS_SCREENSHOT = backedUpItem("pref_recents_screenshot", true)
