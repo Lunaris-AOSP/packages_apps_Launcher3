@@ -34,6 +34,7 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.IntDef;
@@ -196,6 +197,10 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
     private boolean mIsPerformingMemoryBoost;
     private View mClearAllButton;
 
+    private View mLockPillContainer;
+    private TextView mLockPillText;
+    private boolean mLockPillShowing = false;
+
     public OverviewActionsView(Context context) {
         this(context, null);
     }
@@ -279,7 +284,27 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
                 }
             }, 1f /* initialValue */);
         }
+        mLockPillContainer = findViewById(R.id.lock_pill_container);
+        mLockPillText = findViewById(R.id.lock_pill_text);
         updateVisibilities();
+    }
+
+    public void showLockPill(boolean isCurrentlyLocked) {
+        if (mLockPillContainer == null || mLockPillShowing) return;
+        mLockPillShowing = true;
+        mLockPillText.setText(isCurrentlyLocked ? R.string.unlock_app : R.string.lock_app);
+        mLockPillContainer.setAlpha(0f);
+        mLockPillContainer.setVisibility(VISIBLE);
+        mLockPillContainer.animate().alpha(1f).setDuration(150).start();
+        mActionButtons.animate().alpha(0f).setDuration(150).start();
+    }
+
+    public void hideLockPill() {
+        if (mLockPillContainer == null || !mLockPillShowing) return;
+        mLockPillShowing = false;
+        mLockPillContainer.animate().alpha(0f).setDuration(150).withEndAction(() ->
+                mLockPillContainer.setVisibility(GONE)).start();
+        mActionButtons.animate().alpha(1f).setDuration(150).start();
     }
 
     private void updateVisibilities() {
