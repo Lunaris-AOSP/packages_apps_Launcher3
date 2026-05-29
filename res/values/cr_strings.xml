@@ -499,6 +499,8 @@
     <string name="action_lock">Lock/Unlock app</string>
     <string name="unlock_app">Unlocked app in recents</string>
     <string name="lock_app">Locked app in recents</string>
+    <string name="lock_task_in_recents">Lock</string>
+    <string name="unlock_task_from_recents">Unlock</string>
     
     <!-- Additional shape options in customization picker -->
     <string name="pebble_shape_title">Pebble</string>
