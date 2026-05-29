@@ -585,4 +585,9 @@
 
     <!-- Recents style -->
     <string name="recents_scroll_vibrate_title">Scroll vibration</string>
+
+    <!-- Navbar -->
+    <string name="navbar_burn_in_protection_title">Navbar burn-in protection</string>
+    <string name="navbar_burn_in_protection_summary">Periodically shift the navigation handle to prevent display burn-in</string>
+    <string name="navbar_burn_in_interval_title">Shift interval</string>
 </resources>

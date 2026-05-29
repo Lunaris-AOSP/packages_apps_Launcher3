@@ -333,6 +333,8 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val WALLPAPER_CAROUSEL_LOCKSCREEN = backedUpItem("pref_wallpaper_carousel_lockscreen", true)
         @JvmField val WALLPAPER_SCROLLING = backedUpItem("pref_allow_wallpaper_scrolling", true)
         @JvmField val WORK_EDU_STEP = backedUpItem("showed_work_profile_edu", 0)
+        @JvmField val NAVBAR_BURN_IN_PROTECTION = backedUpItem("pref_navbar_burn_in_protection", true)
+        @JvmField val NAVBAR_BURN_IN_INTERVAL = backedUpItem("pref_navbar_burn_in_interval", 60)
         @JvmField
         val WORKSPACE_SIZE =
             backedUpItem(DeviceGridState.KEY_WORKSPACE_SIZE, "", EncryptionType.ENCRYPTED)
