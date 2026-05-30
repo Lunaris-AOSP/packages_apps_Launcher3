@@ -59,6 +59,16 @@
             settings:units="%"
             android:defaultValue="40" />
 
+        <com.android.launcher3.settings.preferences.CustomSeekBarPreference
+            android:key="pref_recents_task_corner_radius"
+            android:title="@string/recents_task_corner_radius_title"
+            android:persistent="true"
+            android:max="50"
+            android:defaultValue="26"
+            settings:min="0"
+            settings:units="dp"
+            settings:defaultValueText="@string/recents_task_corner_radius_default" />
+
         <SwitchPreferenceCompat
             android:key="pref_recents_new_overview_style"
             android:title="@string/recents_overview_style_title"
