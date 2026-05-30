@@ -20,12 +20,19 @@ import static com.android.systemui.shared.system.QuickStepContract.supportsRound
 import android.content.Context;
 import android.content.res.Resources;
 
+import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
+import com.android.launcher3.Utilities;
 import com.android.launcher3.util.Themes;
 
 public class TaskCornerRadius {
 
     public static float get(Context context) {
+        int customRadiusDp = LauncherPrefs.RECENTS_TASK_CORNER_RADIUS.get(context);
+        if (customRadiusDp >= 0) {
+            return Utilities.dpToPx(customRadiusDp, context);
+        }
+
         Resources resources = context.getResources();
         if (!supportsRoundedCornersOnWindows(resources)) {
             return resources.getDimension(R.dimen.task_corner_radius_small);
