@@ -7147,6 +7147,11 @@ public abstract class RecentsView<
                     tv.setColorTint(0f, 0);
                 }
             }
+
+            if (tv != null) {
+                tv.updateFullscreenParams();
+            }
+
             if (tv == null || mRemoteTargetHandles == null) continue;
             final float primaryScale = orientationHandler.getPrimaryValue(
                     tv.getScaleX(), tv.getScaleY());
