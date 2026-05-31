@@ -5262,7 +5262,16 @@ public abstract class RecentsView<
                 || mRecentsStyle.equals("oxygen");
     }
 
+    public boolean isKamiRecentsStyleActive() {
+        return mRecentsStyle.equals("staple");
+    }
+
     public float getStackDismissReflowTarget(TaskView taskView, float reflowTarget) {
+        return getStackDismissReflowTarget(taskView, reflowTarget, false);
+    }
+
+    public float getStackDismissReflowTarget(TaskView taskView, float reflowTarget,
+            boolean trailingStackTask) {
         if (!isStackRecentsStyleActive()) {
             return reflowTarget;
         }
@@ -5270,6 +5279,15 @@ public abstract class RecentsView<
         float overlapFactor = getStackStyleOverlapFactor();
         if (overlapFactor <= 0f) {
             return reflowTarget;
+        }
+        if (mRecentsStyle.equals("staple")) {
+            float childSize = getPagedOrientationHandler().getMeasuredSize(taskView);
+            if (childSize == 0f) {
+                return reflowTarget;
+            }
+            float stackTranslation = getStackStyleTranslation(reflowTarget, childSize,
+                    overlapFactor);
+            return reflowTarget + stackTranslation * (trailingStackTask ? 2.35f : 1f);
         }
 
         boolean touchInLandscape = mOrientationState.getTouchRotation() != ROTATION_0
