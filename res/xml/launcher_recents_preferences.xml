@@ -67,6 +67,13 @@
             android:summary="%s"
             launcher:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:key="pref_swipe_down_to_lock"
+            android:title="@string/swipe_down_to_lock_title"
+            android:summary="@string/swipe_down_to_lock_summary"
+            android:defaultValue="false"
+            launcher:iconSpaceReserved="false" />
+
         <com.android.launcher3.settings.preferences.CustomSeekBarPreference
             android:key="pref_recents_opacity"
             android:title="@string/background_opacity_title"
