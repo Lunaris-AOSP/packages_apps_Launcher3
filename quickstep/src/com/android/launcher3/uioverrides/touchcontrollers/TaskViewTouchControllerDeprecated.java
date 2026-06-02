@@ -30,6 +30,7 @@ import android.view.animation.Interpolator;
 import com.android.app.animation.Interpolators;
 import com.android.launcher3.AbstractFloatingView;
 import com.android.launcher3.LauncherAnimUtils;
+import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.anim.AnimatorPlaybackController;
@@ -87,6 +88,7 @@ public class TaskViewTouchControllerDeprecated<
     private float mProgressMultiplier;
     private float mEndDisplacement;
     private boolean mDraggingEnabled = true;
+    private boolean mSwipeDownIsLockMode;
     private FlingBlockCheck mFlingBlockCheck = new FlingBlockCheck();
     private Float mOverrideVelocity = null;
 
@@ -283,18 +285,27 @@ public class TaskViewTouchControllerDeprecated<
 
             mEndDisplacement = -secondaryTaskDimension;
         } else {
-            // Drag-down uses translation with secondaryDismissTranslationProperty for lock
-            currentInterpolator = Interpolators.LINEAR;
-            pa = new PendingAnimation(maxDuration);
+            if (mSwipeDownIsLockMode) {
+                // Drag-down uses translation with secondaryDismissTranslationProperty for lock
+                currentInterpolator = Interpolators.LINEAR;
+                pa = new PendingAnimation(maxDuration);
 
-            // Translate down by 40% of task height using the dismiss property (for neighbor settle)
-            float maxLockDisplacement = -secondaryTaskDimension * 0.4f * verticalFactor;
-            pa.setFloat(mTaskBeingDragged,
-                    mTaskBeingDragged.getSecondaryDismissTranslationProperty(),
-                    maxLockDisplacement,
-                    Interpolators.LINEAR);
+                // Translate down by 40% of task height using the dismiss property (for neighbor settle)
+                float maxLockDisplacement = -secondaryTaskDimension * 0.4f * verticalFactor;
+                pa.setFloat(mTaskBeingDragged,
+                        mTaskBeingDragged.getSecondaryDismissTranslationProperty(),
+                        maxLockDisplacement,
+                        Interpolators.LINEAR);
 
-            mEndDisplacement = maxLockDisplacement;
+                mEndDisplacement = maxLockDisplacement;
+            } else {
+                currentInterpolator = Interpolators.ZOOM_IN;
+                pa = mRecentsView.createTaskLaunchAnimation(
+                        mTaskBeingDragged, maxDuration, currentInterpolator);
+
+                mTaskBeingDragged.getThumbnailBounds(mTempRect, /*relativeToDragLayer=*/true);
+                mEndDisplacement = secondaryLayerDimension - mTempRect.bottom;
+            }
         }
 
         mEndDisplacement *= verticalFactor;
@@ -323,7 +334,9 @@ public class TaskViewTouchControllerDeprecated<
         RecentsPagedOrientationHandler orientationHandler =
                 mRecentsView.getPagedOrientationHandler();
         boolean isGoingDown = !orientationHandler.isGoingUp(startDisplacement, mIsRtl);
-        if (isGoingDown && mTaskBeingDragged != null && mTaskBeingDragged.isRunningTask()
+        mSwipeDownIsLockMode = isGoingDown && LauncherPrefs.SWIPE_DOWN_TO_LOCK.get(mContainer);
+        if (isGoingDown && mSwipeDownIsLockMode
+                && mTaskBeingDragged != null && mTaskBeingDragged.isRunningTask()
                 && mRecentsView.getEnableDrawingLiveTile()) {
             mRecentsView.setEnableDrawingLiveTile(false);
         }
@@ -417,7 +430,7 @@ public class TaskViewTouchControllerDeprecated<
             mCurrentAnimation.setPlayFraction(progress);
         }
 
-        if (!mCurrentAnimationIsGoingUp && goingToEnd) {
+        if (!mCurrentAnimationIsGoingUp && goingToEnd && mSwipeDownIsLockMode) {
             // Swipe-down complete: toggle lock state
             String packageName = mTaskBeingDragged.getFirstTask() != null
                     ? mTaskBeingDragged.getFirstTask().key.getPackageName() : null;
@@ -474,8 +487,8 @@ public class TaskViewTouchControllerDeprecated<
         // Restore Z if we modified it during drag.
         if (mTaskBeingDragged != null) {
             mTaskBeingDragged.setTranslationZ(mTaskDragStartTranslationZ);
-            // Restore live tile if it was suppressed
-            if (mTaskBeingDragged.isRunningTask()
+            // Restore live tile only if it was suppressed during a lock gesture
+            if (mSwipeDownIsLockMode && mTaskBeingDragged.isRunningTask()
                     && !mRecentsView.getEnableDrawingLiveTile()) {
                 mRecentsView.setEnableDrawingLiveTile(true);
                 mRecentsView.runActionOnRemoteHandles(remoteTargetHandle ->
@@ -486,6 +499,7 @@ public class TaskViewTouchControllerDeprecated<
         }
         mTaskDragStartTranslationZ = 0f;
 
+        mSwipeDownIsLockMode = false;
         mTaskBeingDragged = null;
         mCurrentAnimation = null;
         mIsDismissHapticRunning = false;
