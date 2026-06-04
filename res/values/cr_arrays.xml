@@ -86,4 +86,13 @@
         <item>ios</item>
         <item>oxygen</item>
     </string-array>
+    <string-array name="overview_gesture_action_entries">
+        <item>@string/overview_gesture_action_freeform</item>
+        <item>@string/overview_gesture_action_split_screen</item>
+    </string-array>
+
+    <string-array name="overview_gesture_action_values" translatable="false">
+        <item>freeform</item>
+        <item>split_screen</item>
+    </string-array>
 </resources>
