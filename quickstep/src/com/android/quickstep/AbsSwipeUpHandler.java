@@ -2692,8 +2692,24 @@ public abstract class AbsSwipeUpHandler<
     }
 
     private float getOverviewGestureThreshold() {
-        int progress = LauncherPrefs.FREEFORM_GESTURE_PROGRESS.get(mContext);
+        int progress = isOverviewGestureInLandscape()
+                ? LauncherPrefs.OVERVIEW_GESTURE_LANDSCAPE_PROGRESS.get(mContext)
+                : LauncherPrefs.OVERVIEW_GESTURE_PORTRAIT_PROGRESS.get(mContext);
         return Utilities.boundToRange(progress / 10f, 1f, 5f);
+    }
+
+    private boolean isOverviewGestureInLandscape() {
+        if (mRecentsView != null) {
+            RecentsOrientedState orientationState = mRecentsView.getPagedViewOrientedState();
+            return isLandscapeRotation(orientationState.getTouchRotation())
+                    || isLandscapeRotation(orientationState.getDisplayRotation())
+                    || isLandscapeRotation(orientationState.getRecentsActivityRotation());
+        }
+        return mDp != null && mDp.getDeviceProperties().isLandscape();
+    }
+
+    private boolean isLandscapeRotation(int rotation) {
+        return rotation == ROTATION_90 || rotation == ROTATION_270;
     }
 
     private boolean mHasSplitScreenGestureStarted = false;

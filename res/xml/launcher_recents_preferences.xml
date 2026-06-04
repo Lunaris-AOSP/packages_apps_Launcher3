@@ -42,9 +42,19 @@
 
         <com.android.launcher3.settings.preferences.CustomSeekBarPreference
             android:key="pref_start_freeform_progress"
-            android:title="@string/overview_gesture_threshold_title"
+            android:title="@string/overview_gesture_threshold_portrait_title"
             android:summary="@string/overview_gesture_threshold_summary"
             android:defaultValue="20"
+            android:min="10"
+            android:max="50"
+            android:dependency="pref_start_freeform_by_gesture"
+            launcher:iconSpaceReserved="false" />
+
+        <com.android.launcher3.settings.preferences.CustomSeekBarPreference
+            android:key="pref_start_freeform_landscape_progress"
+            android:title="@string/overview_gesture_threshold_landscape_title"
+            android:summary="@string/overview_gesture_threshold_summary"
+            android:defaultValue="40"
             android:min="10"
             android:max="50"
             android:dependency="pref_start_freeform_by_gesture"

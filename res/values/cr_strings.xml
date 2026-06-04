@@ -185,7 +185,8 @@
     <string name="overview_gesture_action_title">Swipe up action</string>
     <string name="overview_gesture_action_freeform">Open in floating window</string>
     <string name="overview_gesture_action_split_screen">Start split screen</string>
-    <string name="overview_gesture_threshold_title">Swipe distance</string>
+    <string name="overview_gesture_threshold_portrait_title">Portrait swipe distance</string>
+    <string name="overview_gesture_threshold_landscape_title">Landscape swipe distance</string>
     <string name="overview_gesture_threshold_summary">Lower values trigger sooner, higher values require a longer swipe</string>
     <string name="freeform_gesture_threshold_reached">Release to launch floating window</string>
 
