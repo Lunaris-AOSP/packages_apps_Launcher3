@@ -81,6 +81,7 @@ import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.LauncherAppWidgetInfo;
 import com.android.launcher3.model.data.LoaderParams;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
+import com.android.launcher3.popup.SystemShortcut;
 import com.android.launcher3.pm.InstallSessionHelper;
 import com.android.launcher3.pm.PackageInstallInfo;
 import com.android.launcher3.pm.UserCache;
@@ -494,6 +495,16 @@ public class LoaderTask implements Runnable {
                 tryLoadWorkspaceIconsInBulk(mWorkspaceIconRequestInfos);
             } finally {
                 IOUtils.closeSilently(c);
+                synchronized (mBgDataModel) {
+                    for (ItemInfo info : mBgDataModel.itemsIdMap) {
+                        if (info instanceof WorkspaceItemInfo) {
+                            String custom = SystemShortcut.getCustomName(mContext, info);
+                            if (custom != null) {
+                                info.title = custom;
+                            }
+                        }
+                    }
+                }
             }
 
             // Break early if we've stopped loading
@@ -678,6 +689,15 @@ public class LoaderTask implements Runnable {
             allAppsItemRequestInfos.forEach(iconRequestInfo ->
                     mBgAllAppsList.updateSectionName(iconRequestInfo.itemInfo));
         } finally {
+            for (int i = 0; i < mBgAllAppsList.data.size(); i++) {
+                com.android.launcher3.model.data.AppInfo appInfo =
+                        mBgAllAppsList.data.get(i);
+                String custom = SystemShortcut.getCustomName(mContext, appInfo);
+                if (custom != null) {
+                    appInfo.title = custom;
+                    mBgAllAppsList.updateSectionName(appInfo);
+                }
+            }
             Trace.endSection();
         }
 
