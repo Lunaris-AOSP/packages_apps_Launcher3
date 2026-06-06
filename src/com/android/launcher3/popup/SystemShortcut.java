@@ -14,6 +14,7 @@ import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCH
 import static com.android.launcher3.widget.picker.model.data.WidgetPickerDataUtils.findAllWidgetsForPackageUser;
 
 import android.app.ActivityManagerNative;
+import android.app.AlertDialog;
 import android.app.IActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -29,6 +30,7 @@ import android.net.Uri;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.UserHandle;
+import android.text.InputFilter;
 import android.util.Log;
 import android.view.InflateException;
 import android.view.View;
@@ -50,7 +52,6 @@ import com.android.launcher3.DropTargetHandler;
 import com.android.launcher3.Flags;
 import com.android.launcher3.Launcher;
 import com.android.launcher3.LauncherAppState;
-import com.android.launcher3.LauncherModel;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.R;
@@ -68,6 +69,7 @@ import com.android.launcher3.util.ActivityOptionsWrapper;
 import com.android.launcher3.util.ApiWrapper;
 import com.android.launcher3.util.ApplicationInfoWrapper;
 import com.android.launcher3.util.ComponentKey;
+import com.android.launcher3.util.CustomAppNameStore;
 import com.android.launcher3.util.InstantAppResolver;
 import com.android.launcher3.util.PackageManagerHelper;
 import com.android.launcher3.util.PackageUserKey;
@@ -91,35 +93,6 @@ import java.util.Arrays;
 public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
         implements View.OnClickListener {
     private static final String TAG = "SystemShortcut";
-
-    public static final String CUSTOM_NAMES_PREFS = "custom_app_names";
-
-    @Nullable
-    public static String customNameKey(ItemInfo info) {
-        android.content.ComponentName cn = info.getTargetComponent();
-        if (cn == null) return null;
-        return cn.getPackageName() + "/" + cn.getClassName() + "/" + info.user.hashCode();
-    }
-
-    public static void saveCustomName(Context context, ItemInfo info, @Nullable String name) {
-        String key = customNameKey(info);
-        if (key == null) return;
-        SharedPreferences prefs = context.getSharedPreferences(CUSTOM_NAMES_PREFS,
-                Context.MODE_PRIVATE);
-        if (name == null) {
-            prefs.edit().remove(key).apply();
-        } else {
-            prefs.edit().putString(key, name).apply();
-        }
-    }
-
-    @Nullable
-    public static String getCustomName(Context context, ItemInfo info) {
-        String key = customNameKey(info);
-        if (key == null) return null;
-        return context.getSharedPreferences(CUSTOM_NAMES_PREFS, Context.MODE_PRIVATE)
-                .getString(key, null);
-    }
 
     private final int mIconResId;
     protected final int mLabelResId;
@@ -775,10 +748,8 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
 
     public static final Factory<ActivityContext> RENAME_APP =
             (activity, itemInfo, originalView) -> {
-                if (itemInfo.itemType == ITEM_TYPE_APPLICATION ||
-                    (itemInfo instanceof WorkspaceItemInfo && 
-                     ((WorkspaceItemInfo) itemInfo).itemType != 
-                             LauncherSettings.Favorites.ITEM_TYPE_FOLDER)) {
+                if (itemInfo.itemType == ITEM_TYPE_APPLICATION
+                        && itemInfo.getTargetComponent() != null) {
                     return new RenameApp<>(activity, itemInfo, originalView);
                 }
                 return null;
@@ -786,15 +757,10 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
 
     public static class RenameApp<T extends ActivityContext> extends SystemShortcut<T> {
         private static final int MAX_APP_NAME_LENGTH = 32;
-        private CharSequence mOriginalTitle;
-        private CharSequence mSystemTitle;
 
         public RenameApp(T target, ItemInfo itemInfo, @NonNull View originalView) {
             super(getDrawableId(), R.string.rename_app_label, target,
                     itemInfo, originalView);
-            mSystemTitle = itemInfo.title;
-            String saved = getCustomName((Context) target, itemInfo);
-            mOriginalTitle = (saved != null) ? saved : itemInfo.title;
         }
 
         public static int getDrawableId() {
@@ -806,45 +772,44 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
             dismissTaskMenuView();
 
             Context context = view.getContext();
-            
+
             AlertDialog.Builder builder = new AlertDialog.Builder(context);
             builder.setTitle(R.string.rename_app_title);
 
             final EditText input = new EditText(context);
             input.setText(mItemInfo.title);
             input.setSelection(0, mItemInfo.title != null ? mItemInfo.title.length() : 0);
-            input.setMaxEms(MAX_APP_NAME_LENGTH);
+            input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_APP_NAME_LENGTH)});
             input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
-            
+
             builder.setView(input);
 
             builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
                 String newName = input.getText().toString().trim();
                 if (validateAndUpdateName(newName, context)) {
-                    Toast.makeText(context, 
-                        R.string.app_renamed_successfully,
-                        Toast.LENGTH_SHORT).show();
-                    // mTarget.getStatsLogManager().logger().withItemInfo(mItemInfo)
-                    //     .log(StatsLogManager.LauncherEvent.LAUNCHER_SYSTEM_SHORTCUT_RENAME_TAP);
+                    Toast.makeText(context,
+                            R.string.app_renamed_successfully,
+                            Toast.LENGTH_SHORT).show();
                 } else if (newName.isEmpty()) {
                     Toast.makeText(context,
-                        R.string.rename_app_empty_error,
-                        Toast.LENGTH_SHORT).show();
+                            R.string.rename_app_empty_error,
+                            Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(context,
-                        context.getString(R.string.rename_app_length_error, MAX_APP_NAME_LENGTH),
-                        Toast.LENGTH_SHORT).show();
+                            context.getString(R.string.rename_app_length_error,
+                                    MAX_APP_NAME_LENGTH),
+                            Toast.LENGTH_SHORT).show();
                 }
             });
 
             builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> dialog.cancel());
 
-            if (getCustomName((Context) mTarget, mItemInfo) != null) {
+            if (CustomAppNameStore.getCustomName((Context) mTarget, mItemInfo) != null) {
                 builder.setNeutralButton(R.string.rename_app_reset, (dialog2, which2) -> {
                     resetToOriginalName(context);
-                    Toast.makeText(context, 
-                        R.string.rename_app_reset_message,
-                        Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context,
+                            R.string.rename_app_reset_message,
+                            Toast.LENGTH_SHORT).show();
                 });
             }
 
@@ -852,13 +817,12 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
             dialog.show();
 
             input.requestFocus();
-            InputMethodManager imm = (InputMethodManager) 
-                context.getSystemService(Context.INPUT_METHOD_SERVICE);
+            InputMethodManager imm = (InputMethodManager)
+                    context.getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) {
                 imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
             }
         }
-
 
         private boolean validateAndUpdateName(String newName, Context context) {
             if (newName.isEmpty()) {
@@ -871,10 +835,11 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
 
             mItemInfo.title = newName;
 
-            saveCustomName(context, mItemInfo, newName);
+            CustomAppNameStore.saveCustomName(context, mItemInfo, newName);
             if (mItemInfo instanceof WorkspaceItemInfo) {
                 WorkspaceItemInfo wsInfo = (WorkspaceItemInfo) mItemInfo;
-                LauncherAppState.getInstance(context).getModel().getWriter(false, null, null).updateItemInDatabase(wsInfo);
+                LauncherAppState.getInstance(context).getModel().getWriter(false, null, null)
+                        .updateItemInDatabase(wsInfo);
             }
 
             forceUiUpdate(context);
@@ -883,24 +848,43 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
         }
 
         private void resetToOriginalName(Context context) {
-            saveCustomName(context, mItemInfo, null);
-            mItemInfo.title = mSystemTitle;
+            CustomAppNameStore.saveCustomName(context, mItemInfo, null);
+            CharSequence systemTitle = getSystemTitle(context, mItemInfo);
+            if (systemTitle != null) {
+                mItemInfo.title = systemTitle;
+            }
 
-            if (mItemInfo instanceof WorkspaceItemInfo) {
+            if (mItemInfo instanceof WorkspaceItemInfo && systemTitle != null) {
                 WorkspaceItemInfo wsInfo = (WorkspaceItemInfo) mItemInfo;
-                LauncherAppState.getInstance(context).getModel().getWriter(false, null, null).updateItemInDatabase(wsInfo);
+                LauncherAppState.getInstance(context).getModel().getWriter(false, null, null)
+                        .updateItemInDatabase(wsInfo);
             }
 
             forceUiUpdate(context);
         }
 
+        @Nullable
+        private static CharSequence getSystemTitle(Context context, ItemInfo info) {
+            ComponentName cn = info.getTargetComponent();
+            if (cn == null) {
+                return null;
+            }
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_LAUNCHER);
+            intent.setComponent(cn);
+            LauncherActivityInfo activityInfo = context.getSystemService(LauncherApps.class)
+                    .resolveActivity(intent, info.user);
+            if (activityInfo != null) {
+                return Utilities.trim(activityInfo.getLabel());
+            }
+            return null;
+        }
+
         private void forceUiUpdate(Context context) {
-            android.content.ComponentName cn = mItemInfo.getTargetComponent();
+            ComponentName cn = mItemInfo.getTargetComponent();
             if (cn != null) {
-                LauncherAppState.getInstance(context).getModel().onPackageIconsUpdated(
-                    new java.util.HashSet<>(java.util.Arrays.asList(cn.getPackageName())),
-                    mItemInfo.user
-                );
+                LauncherAppState.getInstance(context).getModel()
+                        .onCustomAppNameChanged(cn, mItemInfo.user);
             }
         }
     }
