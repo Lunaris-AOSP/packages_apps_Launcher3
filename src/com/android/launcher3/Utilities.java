@@ -1124,7 +1124,8 @@ public final class Utilities {
     }
 
     private static boolean isQSBEnabled(Context context) {
-        return LauncherPrefs.DOCK_SEARCH.get(context);
+        return LauncherPrefs.DOCK_SEARCH.get(context)
+                && !LauncherPrefs.COMPACT_SEARCH_BAR.get(context);
     }
 
     public static boolean isMusicSearchEnabled(Context context) {
