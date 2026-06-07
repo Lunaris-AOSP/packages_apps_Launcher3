@@ -145,6 +145,11 @@
     <string name="dock_search_summary">Search bar in the bottom dock</string>
     <string name="compact_search_bar_title">Compact search bar</string>
     <string name="compact_search_bar_summary">Show a compact search pill above the app dock</string>
+    <string name="compact_search_bar_action_title">Compact search action</string>
+    <string name="compact_search_bar_action_google">Google search</string>
+    <string name="compact_search_bar_action_lens">Google Lens</string>
+    <string name="compact_search_bar_action_mic">Voice search</string>
+    <string name="compact_search_bar_action_gemini">Gemini</string>
     <string name="dock_theme_title">Themed icons</string>
     <string name="dock_theme_summary">Use themed icons for search bar</string>
     <string name="search_radius_title">Corner radius</string>
