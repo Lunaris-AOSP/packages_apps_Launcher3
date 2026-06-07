@@ -63,11 +63,13 @@ public class Hotseat extends CellLayout implements Insettable {
     public static final int ALPHA_CHANNEL_PREVIEW_RENDERER = 1;
     public static final int ALPHA_CHANNEL_TASKBAR_STASH = 2;
     public static final int ALPHA_CHANNEL_ASSISTANT_VISIBILITY = 3;
-    public static final int ALPHA_CHANNEL_CHANNELS_COUNT = 4;
+    public static final int ALPHA_CHANNEL_STATE_VISIBILITY = 4;
+    public static final int ALPHA_CHANNEL_CHANNELS_COUNT = 5;
 
     @Retention(RetentionPolicy.RUNTIME)
     @IntDef({ALPHA_CHANNEL_TASKBAR_ALIGNMENT, ALPHA_CHANNEL_PREVIEW_RENDERER,
-            ALPHA_CHANNEL_TASKBAR_STASH, ALPHA_CHANNEL_ASSISTANT_VISIBILITY})
+            ALPHA_CHANNEL_TASKBAR_STASH, ALPHA_CHANNEL_ASSISTANT_VISIBILITY,
+            ALPHA_CHANNEL_STATE_VISIBILITY})
     public @interface HotseatQsbAlphaId {
     }
 
@@ -88,13 +90,13 @@ public class Hotseat extends CellLayout implements Insettable {
     private Workspace<?> mWorkspace;
     private boolean mSendTouchToWorkspace;
     private final MultiValueAlpha mIconsAlphaChannels;
-    private final MultiValueAlpha mQsbAlphaChannels;
+    private MultiValueAlpha mQsbAlphaChannels;
 
     private @Nullable MultiProperty mQsbTranslationX;
 
     private final MultiPropertyFactory mIconsTranslationXFactory;
 
-    private final View mQsb;
+    private View mQsb;
 
     public Hotseat(Context context) {
         this(context, null);
@@ -106,26 +108,40 @@ public class Hotseat extends CellLayout implements Insettable {
 
     public Hotseat(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-        if (Utilities.showQSB(context)) {
-            boolean useGoogleStyle = LauncherPrefs.get(context).get(LauncherPrefs.QSB_STYLE_GOOGLE);
-            int qsbLayout = useGoogleStyle
-                    ? R.layout.search_container_hotseat_google
-                    : R.layout.search_container_hotseat;
-            mQsb = LayoutInflater.from(context).inflate(qsbLayout, this, false);
-        } else {
-            mQsb = LayoutInflater.from(context).inflate(R.layout.empty_view, this, false);
-        }
-
+        mQsb = createQsbView(context);
         addView(mQsb);
         mIconsAlphaChannels = new MultiValueAlpha(getShortcutsAndWidgets(),
                 ALPHA_CHANNEL_CHANNELS_COUNT);
         mIconsAlphaChannels.setUpdateVisibility(true);
+        updateQsbAnimationChannels();
+        mIconsTranslationXFactory = new MultiPropertyFactory<>(getShortcutsAndWidgets(),
+                VIEW_TRANSLATE_X, ICONS_TRANSLATION_X_CHANNELS_COUNT, Float::sum);
+    }
+
+    private View createQsbView(Context context) {
+        if (Utilities.isGSAEnabled(context)
+                && LauncherPrefs.DOCK_SEARCH.get(context)
+                && LauncherPrefs.COMPACT_SEARCH_BAR.get(context)) {
+            return LayoutInflater.from(context).inflate(R.layout.search_container_hotseat_compact,
+                    this, false);
+        }
+        if (!Utilities.showQSB(context)) {
+            return LayoutInflater.from(context).inflate(R.layout.empty_view, this, false);
+        }
+        boolean useGoogleStyle = LauncherPrefs.get(context).get(LauncherPrefs.QSB_STYLE_GOOGLE);
+        int qsbLayout = useGoogleStyle
+                ? R.layout.search_container_hotseat_google
+                : R.layout.search_container_hotseat;
+        return LayoutInflater.from(context).inflate(qsbLayout, this, false);
+    }
+
+    private void updateQsbAnimationChannels() {
         if (mQsb instanceof Reorderable qsbReorderable) {
             mQsbTranslationX = qsbReorderable.getTranslateDelegate()
                     .getTranslationX(MultiTranslateDelegate.INDEX_NAV_BAR_ANIM);
+        } else {
+            mQsbTranslationX = null;
         }
-        mIconsTranslationXFactory = new MultiPropertyFactory<>(getShortcutsAndWidgets(),
-                VIEW_TRANSLATE_X, ICONS_TRANSLATION_X_CHANNELS_COUNT, Float::sum);
         mQsbAlphaChannels = new MultiValueAlpha(mQsb, ALPHA_CHANNEL_CHANNELS_COUNT);
         mQsbAlphaChannels.setUpdateVisibility(true);
     }
@@ -281,6 +297,12 @@ public class Hotseat extends CellLayout implements Insettable {
         }
 
         Rect padding = grid.getHotseatLayoutPadding(getContext());
+        if (isCompactSearchBarEnabled() && !grid.isVerticalBarLayout()) {
+            int compactSearchSpace = grid.getHotseatProfile().getQsbHeight()
+                    + grid.hotseatQsbSpace;
+            lp.height += compactSearchSpace;
+            padding.top += compactSearchSpace;
+        }
         setPadding(padding.left, padding.top, padding.right, padding.bottom);
         setLayoutParams(lp);
         InsettableFrameLayout.dispatchInsets(this, insets);
@@ -325,7 +347,10 @@ public class Hotseat extends CellLayout implements Insettable {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
         DeviceProfile dp = mActivity.getDeviceProfile();
-        mQsb.measure(makeMeasureSpec(dp.hotseatQsbWidth, MeasureSpec.EXACTLY),
+        int qsbWidth = isCompactSearchBarEnabled() && !dp.isQsbInline
+                ? MeasureSpec.getSize(widthMeasureSpec)
+                : dp.hotseatQsbWidth;
+        mQsb.measure(makeMeasureSpec(qsbWidth, MeasureSpec.EXACTLY),
                 makeMeasureSpec(dp.getHotseatProfile().getQsbHeight(), MeasureSpec.EXACTLY));
     }
 
@@ -345,8 +370,15 @@ public class Hotseat extends CellLayout implements Insettable {
         }
         int right = left + qsbMeasuredWidth;
 
-        int bottom = b - t - dp.getQsbOffsetY();
-        int top = bottom - dp.getHotseatProfile().getQsbHeight();
+        int top;
+        int bottom;
+        if (isCompactSearchBarEnabled() && !dp.isQsbInline) {
+            top = 0;
+            bottom = top + dp.getHotseatProfile().getQsbHeight();
+        } else {
+            bottom = b - t - dp.getQsbOffsetY();
+            top = bottom - dp.getHotseatProfile().getQsbHeight();
+        }
         mQsb.layout(left, top, right, bottom);
     }
 
@@ -372,6 +404,10 @@ public class Hotseat extends CellLayout implements Insettable {
     /** Returns the alpha channel for Qsb */
     public MultiProperty getQsbAlpha(@HotseatQsbAlphaId int channelId) {
         return mQsbAlphaChannels.get(channelId);
+    }
+
+    public boolean isCompactSearchBarEnabled() {
+        return LauncherPrefs.COMPACT_SEARCH_BAR.get(getContext());
     }
 
     /**
@@ -402,14 +438,18 @@ public class Hotseat extends CellLayout implements Insettable {
                 "mIconsAlphaChannels",
                 "ALPHA_CHANNEL_TASKBAR_ALIGNMENT",
                 "ALPHA_CHANNEL_PREVIEW_RENDERER",
-                "ALPHA_CHANNEL_TASKBAR_STASH");
+                "ALPHA_CHANNEL_TASKBAR_STASH",
+                "ALPHA_CHANNEL_ASSISTANT_VISIBILITY",
+                "ALPHA_CHANNEL_STATE_VISIBILITY");
         mQsbAlphaChannels.dump(
                 prefix + "\t",
                 writer,
                 "mQsbAlphaChannels",
                 "ALPHA_CHANNEL_TASKBAR_ALIGNMENT",
                 "ALPHA_CHANNEL_PREVIEW_RENDERER",
-                "ALPHA_CHANNEL_TASKBAR_STASH"
+                "ALPHA_CHANNEL_TASKBAR_STASH",
+                "ALPHA_CHANNEL_ASSISTANT_VISIBILITY",
+                "ALPHA_CHANNEL_STATE_VISIBILITY"
         );
     }
 

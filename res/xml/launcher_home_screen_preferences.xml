@@ -259,6 +259,14 @@
             android:defaultValue="true"
             launcher:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:key="pref_compact_search_bar"
+            android:title="@string/compact_search_bar_title"
+            android:summary="@string/compact_search_bar_summary"
+            android:defaultValue="false"
+            android:dependency="pref_dock_search"
+            launcher:iconSpaceReserved="false" />
+
         <com.android.launcher3.settings.preferences.CustomSeekBarPreference
             android:key="pref_hotseat_qsb_opacity"
             android:title="@string/background_opacity_title"
