@@ -35,11 +35,11 @@
     <dimen name="all_apps_search_bar_margin_side">38dp</dimen>
     <dimen name="all_apps_search_bar_margin_top">28dp</dimen>
     <dimen name="all_apps_search_bar_height">55dp</dimen>
-    <dimen name="compact_search_bar_width">128dp</dimen>
+    <dimen name="compact_search_bar_width">125dp</dimen>
     <dimen name="compact_search_bar_height">36dp</dimen>
     <dimen name="compact_search_bar_icon_size">20dp</dimen>
-    <dimen name="compact_search_bar_icon_text_gap">8dp</dimen>
-    <dimen name="compact_search_bar_text_size">14sp</dimen>
+    <dimen name="compact_search_bar_icon_text_gap">9dp</dimen>
+    <dimen name="compact_search_bar_text_size">16sp</dimen>
     
     <!-- Wallpaper carousel -->
     <dimen name="wallpaper_carousel_height">120dp</dimen>
