@@ -33,7 +33,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/compact_search_bar_icon_text_gap"
-            android:fontFamily="@font/SlateForOnePlus-Medium"
+            android:fontFamily="variable-headline-large-emphasized"
             android:gravity="center"
             android:text="@string/label_search"
             android:textColor="?android:attr/textColorPrimary"
