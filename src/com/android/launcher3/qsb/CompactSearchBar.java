@@ -1,6 +1,7 @@
 package com.android.launcher3.qsb;
 
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -10,6 +11,7 @@ import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.PaintDrawable;
+import android.net.Uri;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
@@ -20,6 +22,7 @@ import android.widget.Toast;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.Reorderable;
+import com.android.launcher3.Utilities;
 import com.android.launcher3.graphics.ThemeManager;
 import com.android.launcher3.util.MultiTranslateDelegate;
 import com.android.launcher3.util.Themes;
@@ -28,12 +31,16 @@ public class CompactSearchBar extends FrameLayout
         implements Reorderable, SharedPreferences.OnSharedPreferenceChangeListener {
 
     private static final String TAG = "CompactSearchBar";
+    private static final String ACTION_GOOGLE_SEARCH = "google_search";
+    private static final String ACTION_LENS = "lens";
+    private static final String ACTION_MIC = "mic";
+    private static final String ACTION_GEMINI = "gemini";
 
     private final MultiTranslateDelegate mTranslateDelegate = new MultiTranslateDelegate(this);
     private final Context mContext;
     private float mScaleForReorderBounce = 1f;
 
-    private ImageView mGeminiIcon;
+    private ImageView mActionIcon;
     private View mInner;
     private ThemeManager.ThemeChangeListener mThemeChangeListener;
 
@@ -51,15 +58,15 @@ public class CompactSearchBar extends FrameLayout
     protected void onFinishInflate() {
         super.onFinishInflate();
 
-        mGeminiIcon = findViewById(R.id.gemini_icon);
+        mActionIcon = findViewById(R.id.gemini_icon);
         mInner = findViewById(R.id.compact_search_bar_inner);
 
-        setIcons();
+        setIcon();
         setUpBackground();
-        setUpSearchClick();
+        setUpClick();
 
         mThemeChangeListener = () -> {
-            setIcons();
+            setIcon();
             setUpBackground();
         };
         ThemeManager.INSTANCE.get(mContext).addChangeListener(mThemeChangeListener);
@@ -84,20 +91,52 @@ public class CompactSearchBar extends FrameLayout
     @Override
     public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
         if (LauncherPrefs.DOCK_THEME.getSharedPrefKey().equals(key)
+                || LauncherPrefs.DOCK_MUSIC_SEARCH.getSharedPrefKey().equals(key)
+                || LauncherPrefs.COMPACT_SEARCH_BAR_ACTION.getSharedPrefKey().equals(key)
                 || LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey().equals(key)
                 || LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey().equals(key)
                 || LauncherPrefs.SEARCH_RADIUS_SIZE.getSharedPrefKey().equals(key)) {
-            setIcons();
+            setIcon();
             setUpBackground();
         }
     }
 
-    private void setIcons() {
-        if (mGeminiIcon == null) return;
+    private void setIcon() {
+        if (mActionIcon == null) return;
         boolean isThemed = LauncherPrefs.DOCK_THEME.get(mContext);
-        mGeminiIcon.setImageResource(isThemed
-                ? R.drawable.ic_gemini_themed
-                : R.drawable.ic_gemini_color);
+        switch (getAction()) {
+            case ACTION_LENS:
+                mActionIcon.setImageResource(isThemed
+                        ? R.drawable.ic_lens_themed
+                        : R.drawable.ic_lens_color);
+                break;
+            case ACTION_MIC:
+                if (Utilities.isMusicSearchEnabled(mContext)) {
+                    mActionIcon.setImageResource(isThemed
+                            ? R.drawable.ic_music_themed
+                            : R.drawable.ic_music_color);
+                } else {
+                    mActionIcon.setImageResource(isThemed
+                            ? R.drawable.ic_mic_themed
+                            : R.drawable.ic_mic_color);
+                }
+                break;
+            case ACTION_GEMINI:
+                mActionIcon.setImageResource(isThemed
+                        ? R.drawable.ic_gemini_themed
+                        : R.drawable.ic_gemini_color);
+                break;
+            case ACTION_GOOGLE_SEARCH:
+            default:
+                mActionIcon.setImageResource(isThemed
+                        ? R.drawable.ic_super_g_themed
+                        : R.drawable.ic_super_g_color);
+                break;
+        }
+    }
+
+    private String getAction() {
+        return LauncherPrefs.COMPACT_SEARCH_BAR_ACTION.get(mContext);
     }
 
     private void setUpBackground() {
@@ -133,11 +172,29 @@ public class CompactSearchBar extends FrameLayout
                 * ((float) LauncherPrefs.SEARCH_RADIUS_SIZE.get(mContext) / 100f);
     }
 
-    private void setUpSearchClick() {
-        View.OnClickListener listener = view -> launchSearchActivity();
+    private void setUpClick() {
+        View.OnClickListener listener = view -> launchAction();
         setOnClickListener(listener);
         if (mInner != null) {
             mInner.setOnClickListener(listener);
+        }
+    }
+
+    private void launchAction() {
+        switch (getAction()) {
+            case ACTION_LENS:
+                launchLens();
+                break;
+            case ACTION_MIC:
+                launchMicOrMusicSearch();
+                break;
+            case ACTION_GEMINI:
+                launchGemini();
+                break;
+            case ACTION_GOOGLE_SEARCH:
+            default:
+                launchSearchActivity();
+                break;
         }
     }
 
@@ -168,6 +225,51 @@ public class CompactSearchBar extends FrameLayout
             Log.d(TAG, "Launch intent not found for " + searchPackage);
         }
 
+        Toast.makeText(mContext, R.string.activity_not_found, Toast.LENGTH_SHORT).show();
+    }
+
+    private void launchLens() {
+        try {
+            mContext.startActivity(new Intent(Intent.ACTION_VIEW)
+                    .setComponent(new ComponentName(Utilities.GSA_PACKAGE, Utilities.LENS_ACTIVITY))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    .setData(Uri.parse(Utilities.LENS_URI))
+                    .putExtra("LensHomescreenShortcut", true));
+        } catch (Exception e) {
+            Log.e(TAG, "Lens launch failed", e);
+            Toast.makeText(mContext, R.string.activity_not_found, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void launchMicOrMusicSearch() {
+        try {
+            Intent intent = new Intent();
+            if (Utilities.isMusicSearchEnabled(mContext)) {
+                intent.setAction("com.google.android.googlequicksearchbox.MUSIC_SEARCH");
+                intent.setPackage(QsbContainerView.getSearchWidgetPackageName(mContext));
+            } else {
+                intent.setAction("android.intent.action.VOICE_COMMAND");
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            mContext.startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Mic launch failed", e);
+            Toast.makeText(mContext, R.string.activity_not_found, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void launchGemini() {
+        try {
+            Intent intent = mContext.getPackageManager().getLaunchIntentForPackage(
+                    Utilities.GEMINI_PACKAGE);
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                mContext.startActivity(intent);
+                return;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Gemini launch failed", e);
+        }
         Toast.makeText(mContext, R.string.activity_not_found, Toast.LENGTH_SHORT).show();
     }
 

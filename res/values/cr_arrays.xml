@@ -28,6 +28,21 @@
         <item>omnijaws</item>
     </string-array>
 
+    <!-- Hotseat searchbar -->
+    <string-array name="compact_search_bar_action_entries">
+        <item>@string/compact_search_bar_action_google</item>
+        <item>@string/compact_search_bar_action_lens</item>
+        <item>@string/compact_search_bar_action_mic</item>
+        <item>@string/compact_search_bar_action_gemini</item>
+    </string-array>
+
+    <string-array name="compact_search_bar_action_values" translatable="false">
+        <item>google_search</item>
+        <item>lens</item>
+        <item>mic</item>
+        <item>gemini</item>
+    </string-array>
+
     <!-- App drawer searchbar -->
     <string-array name="allapps_search_placement_entries">
         <item>@string/drawer_search_location_hidden</item>
