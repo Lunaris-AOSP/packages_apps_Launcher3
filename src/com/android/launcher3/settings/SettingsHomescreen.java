@@ -121,6 +121,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                 LauncherPrefs.HOTSEAT_OPACITY.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.DOCK_SEARCH.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.COMPACT_SEARCH_BAR.getSharedPrefKey().equals(key) ||
+                LauncherPrefs.COMPACT_SEARCH_BAR_ACTION.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.QSB_STYLE_GOOGLE.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.DOCK_THEME.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SEARCH_RADIUS_SIZE.getSharedPrefKey().equals(key) ||
@@ -377,7 +378,8 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
         private final SharedPreferences.OnSharedPreferenceChangeListener mPrefListener =
                 (prefs, key) -> {
-                    if (LauncherPrefs.QSB_STYLE_GOOGLE.getSharedPrefKey().equals(key)
+                    if (LauncherPrefs.DOCK_SEARCH.getSharedPrefKey().equals(key)
+                            || LauncherPrefs.QSB_STYLE_GOOGLE.getSharedPrefKey().equals(key)
                             || LauncherPrefs.COMPACT_SEARCH_BAR.getSharedPrefKey().equals(key)) {
                         updateQsbStylePrefs();
                     }
@@ -388,7 +390,11 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                     .get(LauncherPrefs.QSB_STYLE_GOOGLE);
             boolean isCompact = LauncherPrefs.get(getContext())
                     .get(LauncherPrefs.COMPACT_SEARCH_BAR);
+            boolean isDockSearch = LauncherPrefs.get(getContext())
+                    .get(LauncherPrefs.DOCK_SEARCH);
             setQsbPrefEnabled(LauncherPrefs.QSB_STYLE_GOOGLE.getSharedPrefKey(), !isCompact);
+            setQsbPrefEnabled(LauncherPrefs.COMPACT_SEARCH_BAR_ACTION.getSharedPrefKey(),
+                    isDockSearch && isCompact);
             setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey(),
                     !isGoogleStyle || isCompact);
             setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey(),
