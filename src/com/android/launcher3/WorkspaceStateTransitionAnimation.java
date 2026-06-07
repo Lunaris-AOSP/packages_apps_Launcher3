@@ -27,6 +27,7 @@ import static com.android.launcher3.LauncherAnimUtils.VIEW_ALPHA;
 import static com.android.launcher3.LauncherAnimUtils.VIEW_TRANSLATE_X;
 import static com.android.launcher3.LauncherAnimUtils.VIEW_TRANSLATE_Y;
 import static com.android.launcher3.LauncherAnimUtils.WORKSPACE_SCALE_PROPERTY_FACTORY;
+import static com.android.launcher3.Hotseat.ALPHA_CHANNEL_STATE_VISIBILITY;
 import static com.android.launcher3.LauncherState.FLAG_HAS_SYS_UI_SCRIM;
 import static com.android.launcher3.LauncherState.FLAG_HOTSEAT_INACCESSIBLE;
 import static com.android.launcher3.LauncherState.HINT_STATE;
@@ -65,6 +66,7 @@ import com.android.launcher3.states.EditModeState;
 import com.android.launcher3.states.SpringLoadedState;
 import com.android.launcher3.states.StateAnimationConfig;
 import com.android.launcher3.util.DynamicResource;
+import com.android.launcher3.util.MultiPropertyFactory;
 import com.android.systemui.plugins.ResourceProvider;
 
 /**
@@ -163,6 +165,10 @@ public class WorkspaceStateTransitionAnimation {
                 workspaceFadeInterpolator);
         float hotseatIconsAlpha = (elements & HOTSEAT_ICONS) != 0 ? 1 : 0;
         propertySetter.setViewAlpha(hotseat, hotseatIconsAlpha, hotseatFadeInterpolator);
+        float compactQsbAlpha = state == NORMAL || !hotseat.isCompactSearchBarEnabled() ? 1 : 0;
+        propertySetter.setFloat(hotseat.getQsbAlpha(ALPHA_CHANNEL_STATE_VISIBILITY),
+                MultiPropertyFactory.MULTI_PROPERTY_VALUE, compactQsbAlpha,
+                hotseatFadeInterpolator);
 
         // Update the accessibility flags for hotseat based on launcher state.
         hotseat.setImportantForAccessibility(
