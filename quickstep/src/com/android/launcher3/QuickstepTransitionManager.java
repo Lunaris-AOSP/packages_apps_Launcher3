@@ -2145,6 +2145,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         HOTSEAT_SCALE_PROPERTY_FACTORY.get(SCALE_INDEX_REVEAL_ANIM).set(hotseat, scale);
         workspace.setAlpha(amount);
         hotseat.setAlpha(amount);
+
+        View qsb = hotseat.getQsb();
+        if (qsb instanceof com.android.launcher3.qsb.CompactSearchBar compactSearchBar) {
+            compactSearchBar.setRevealAmount(amount);
+        }
     }
 
     private void runOnMainSync(Runnable runnable) {

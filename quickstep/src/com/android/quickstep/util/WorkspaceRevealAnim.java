@@ -83,6 +83,15 @@ public class WorkspaceRevealAnim {
         addRevealAnimatorsForView(workspace, WORKSPACE_SCALE_PROPERTY);
         addRevealAnimatorsForView(launcher.getHotseat(), HOTSEAT_SCALE_PROPERTY);
 
+        View qsb = launcher.getHotseat().getQsb();
+        if (qsb instanceof com.android.launcher3.qsb.CompactSearchBar compactSearchBar) {
+            ObjectAnimator reveal = ObjectAnimator.ofFloat(compactSearchBar,
+                    com.android.launcher3.qsb.CompactSearchBar.REVEAL_AMOUNT, 0f, 1f);
+            reveal.setDuration(DURATION_MS);
+            reveal.setInterpolator(Interpolators.DECELERATED_EASE);
+            mAnimators.play(reveal);
+        }
+
         // Add overview scrim animation.
         if (animateOverviewScrim) {
             PendingAnimation overviewScrimBuilder = new PendingAnimation(DURATION_MS);
