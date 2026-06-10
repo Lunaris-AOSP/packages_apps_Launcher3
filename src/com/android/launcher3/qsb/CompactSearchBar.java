@@ -81,7 +81,6 @@ public class CompactSearchBar extends FrameLayout
             mThemeChangeListener = null;
         }
         LauncherPrefs.getPrefs(mContext).unregisterOnSharedPreferenceChangeListener(this);
-        setOnClickListener(null);
         if (mInner != null) {
             mInner.setOnClickListener(null);
             mInner.setBackground(null);
@@ -174,7 +173,6 @@ public class CompactSearchBar extends FrameLayout
 
     private void setUpClick() {
         View.OnClickListener listener = view -> launchAction();
-        setOnClickListener(listener);
         if (mInner != null) {
             mInner.setOnClickListener(listener);
         }
