@@ -246,6 +246,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     private static final int TASKBAR_TO_HOME_DURATION_SLOW = 1000;
     protected static final int CONTENT_SCALE_DURATION = 350;
 
+    private static final int WORKSPACE_UNLOCK_REVEAL_ANIMATION_TIMEOUT_MS = 2000;
+
     private static final int MAX_NUM_TASKS = 5;
 
     // Cross-fade duration between App Widget and App when launching from widget.
@@ -2011,15 +2013,19 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     }
 
     public void onLauncherWindowFocusChanged(boolean hasFocus) {
-        if (hasFocus && mWorkspaceUnlockRevealPrepared
-                && mKeyguardUnlockAnimationController == null) {
-            finishWorkspaceUnlockReveal();
+        if (hasFocus && mWorkspaceUnlockRevealPrepared) {
+            if (mKeyguardUnlockAnimationController == null
+                    || !mKeyguardUnlockAnimationController.getAnimationPlayer().isRunning()) {
+                 finishWorkspaceUnlockReveal();
+            }
         }
     }
 
     public void onUserPresent() {
-        if (mKeyguardUnlockAnimationController == null
-                || !mKeyguardUnlockAnimationController.getAnimationPlayer().isRunning()) {
+        if (mKeyguardUnlockAnimationController != null
+                && mKeyguardUnlockAnimationController.getAnimationPlayer().isRunning()) {
+            mKeyguardUnlockAnimationController.getAnimationPlayer().cancel();
+        } else {
             finishWorkspaceUnlockReveal();
         }
     }
@@ -2037,11 +2043,15 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             prepareWorkspaceUnlockReveal();
             return;
         }
-        if (mKeyguardUnlockAnimationController != null || mHasPlayedWorkspaceUnlockReveal) {
+        if (mHasPlayedWorkspaceUnlockReveal) {
             return;
         }
 
-        mHandler.removeCallbacks(mWorkspaceUnlockRevealStateVerifier);
+        if (mKeyguardUnlockAnimationController != null) {
+            mKeyguardUnlockAnimationController.getAnimationPlayer().cancel();
+            mKeyguardUnlockAnimationController = null;
+        }
+
         mHasPlayedWorkspaceUnlockReveal = true;
         setWorkspaceUnlockRevealAmount(0f);
         mLauncher.getAnimationCoordinator().setAnimation(this, pendingAnimation -> {
@@ -2071,10 +2081,26 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         if (mKeyguardUnlockAnimationController != null) {
             mKeyguardUnlockAnimationController.setEndAction(this::finishWorkspaceUnlockReveal);
             mKeyguardUnlockAnimationController.start();
+            scheduleWorkspaceUnlockRevealAnimationTimeout();
         } else {
             finishWorkspaceUnlockReveal();
         }
     }
+
+    private void scheduleWorkspaceUnlockRevealAnimationTimeout() {
+        mHandler.removeCallbacks(mWorkspaceUnlockRevealAnimationTimeoutRunnable);
+        mHandler.postDelayed(mWorkspaceUnlockRevealAnimationTimeoutRunnable,
+                WORKSPACE_UNLOCK_REVEAL_ANIMATION_TIMEOUT_MS);
+    }
+
+    private final Runnable mWorkspaceUnlockRevealAnimationTimeoutRunnable = () -> {
+        Log.w(TAG, "Unlock reveal animation timed out; forcing finish.");
+        if (mKeyguardUnlockAnimationController != null) {
+            mKeyguardUnlockAnimationController.getAnimationPlayer().cancel();
+        } else if (mWorkspaceUnlockRevealPrepared || !mHasPlayedWorkspaceUnlockReveal) {
+            finishWorkspaceUnlockReveal();
+        }
+    };
 
     private void cancelWorkspaceUnlockReveal() {
         cancelWorkspaceUnlockReveal(true /* resetViews */);
@@ -2082,6 +2108,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     private void cancelWorkspaceUnlockReveal(boolean resetViews) {
         mHandler.removeCallbacks(mWorkspaceUnlockRevealStateVerifier);
+        mHandler.removeCallbacks(mWorkspaceUnlockRevealAnimationTimeoutRunnable);
         if (mKeyguardUnlockAnimationController != null) {
             AnimatorPlaybackController keyguardUnlockAnimationController =
                     mKeyguardUnlockAnimationController;
@@ -2098,6 +2125,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     private void finishWorkspaceUnlockReveal() {
         mHandler.removeCallbacks(mWorkspaceUnlockRevealStateVerifier);
+        mHandler.removeCallbacks(mWorkspaceUnlockRevealAnimationTimeoutRunnable);
         mKeyguardUnlockAnimationController = null;
         mHasPlayedWorkspaceUnlockReveal = true;
         mWorkspaceUnlockRevealPrepared = false;
