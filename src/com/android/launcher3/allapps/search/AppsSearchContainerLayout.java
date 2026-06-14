@@ -153,7 +153,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
         Drawable gIcon = getContext().getDrawable(R.drawable.ic_allapps_g_color);
         Drawable gIconThemed = getContext().getDrawable(R.drawable.ic_allapps_g_themed);
-        Drawable sIcon = getContext().getDrawable(R.drawable.ic_allapps_search);
+        Drawable sIcon = getContext().getDrawable(R.drawable.ic_allapps_search_color);
         Drawable actions = getContext().getDrawable(R.drawable.ic_allapps_actions_color);
         Drawable actionsThemed = getContext().getDrawable(R.drawable.ic_allapps_actions_themed);
 
