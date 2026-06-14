@@ -167,17 +167,11 @@ public class AppsSearchContainerLayout extends ExtendedEditText
             setTranslationX(shift);
         }
 
-        if (Utilities.showQSB(getContext()) && !LauncherPrefs.DOCK_THEME.get(getContext())) {
-            setCompoundDrawablesRelativeWithIntrinsicBounds(gIcon, null, null, null);
-        } else if (Utilities.showQSB(getContext()) && LauncherPrefs.DOCK_THEME.get(getContext())) {
-            setCompoundDrawablesRelativeWithIntrinsicBounds(gIconThemed, null, null, null);
-        } else {
-            setCompoundDrawablesRelativeWithIntrinsicBounds(sIcon, null, null, null);
-        }
-
-        boolean showQSB = Utilities.showQSB(getContext());
-        boolean isDockThemed = ThemeManager.INSTANCE.get(getContext()).isMonoThemeEnabled();
+        boolean isCompact = LauncherPrefs.COMPACT_SEARCH_BAR.get(getContext());
+        boolean isDockSearch = LauncherPrefs.DOCK_SEARCH.get(getContext());
         boolean hasGoogleApp = Utilities.isGSAEnabled(getContext());
+        boolean showQSB = Utilities.showQSB(getContext()) || (isCompact && isDockSearch && hasGoogleApp);
+        boolean isDockThemed = ThemeManager.INSTANCE.get(getContext()).isMonoThemeEnabled();
 
         if (showQSB) {
             if (!isDockThemed) {
@@ -260,15 +254,20 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
         offsetTopAndBottom(mContentOverlap);
 
-        setUpBackground();
+        setUpBackground(showQSB);
     }
 
-    private void setUpBackground() {
+    private void setUpBackground(boolean showQSBStyle) {
         Context context = getContext();
         float cornerRadius = getCornerRadius(context);
-        int color = Themes.getAttrColor(context, R.attr.qsbFillColor);
-        if (LauncherPrefs.DOCK_THEME.get(context))
-            color = Themes.getAttrColor(context, R.attr.qsbFillColorThemed);
+        int color;
+        if (showQSBStyle) {
+            color = Themes.getAttrColor(context, R.attr.qsbFillColor);
+            if (LauncherPrefs.DOCK_THEME.get(context))
+                color = Themes.getAttrColor(context, R.attr.qsbFillColorThemed);
+        } else {
+            color = Themes.getAttrColor(context, R.attr.popupColorPrimary);
+        }
         PaintDrawable pd = new PaintDrawable(color);
         pd.setCornerRadius(cornerRadius);
         setClipToOutline(cornerRadius > 0);
