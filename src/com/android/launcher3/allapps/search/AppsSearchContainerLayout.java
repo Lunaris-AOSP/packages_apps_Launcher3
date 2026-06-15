@@ -260,14 +260,12 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     private void setUpBackground(boolean showQSBStyle) {
         Context context = getContext();
         float cornerRadius = getCornerRadius(context);
-        int color;
-        if (showQSBStyle) {
-            color = Themes.getAttrColor(context, R.attr.qsbFillColor);
-            if (LauncherPrefs.DOCK_THEME.get(context))
-                color = Themes.getAttrColor(context, R.attr.qsbFillColorThemed);
-        } else {
-            color = Themes.getAttrColor(context, R.attr.popupColorPrimary);
-        }
+
+        int color = Themes.getAttrColor(context,
+                showQSBStyle && LauncherPrefs.DOCK_THEME.get(context)
+                        ? R.attr.qsbFillColorThemed
+                        : R.attr.qsbFillColor);
+
         PaintDrawable pd = new PaintDrawable(color);
         pd.setCornerRadius(cornerRadius);
         setClipToOutline(cornerRadius > 0);
