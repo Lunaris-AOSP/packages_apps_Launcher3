@@ -27,6 +27,8 @@ import android.util.AttributeSet;
 import android.view.HapticFeedbackConstants;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -69,6 +71,10 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
         implements OnClickListener, Insettable, SharedPreferences.OnSharedPreferenceChangeListener {
 
     public static final String TAG = "OverviewActionsView";
+
+    private static final AccelerateInterpolator PRESS_DOWN_INTERPOLATOR = new AccelerateInterpolator(1.5f);
+    private static final OvershootInterpolator SPRING_BACK_INTERPOLATOR = new OvershootInterpolator(2.5f);
+
     private static final boolean DEBUG = false;
     private final Rect mInsets = new Rect();
 
@@ -340,6 +346,28 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
         if (lensButtonSpace != null) lensButtonSpace.setVisibility(mLens && Utilities.isGSAEnabled(getContext()) ? VISIBLE : GONE);
     }
 
+    private void animateButtonPress(View view, @Nullable Runnable onPhase1Complete) {
+        view.animate()
+                .scaleX(0.88f)
+                .scaleY(0.88f)
+                .alpha(0.75f)
+                .setDuration(100)
+                .setInterpolator(PRESS_DOWN_INTERPOLATOR)
+                .withEndAction(() -> {
+                    if (onPhase1Complete != null) {
+                        onPhase1Complete.run();
+                    }
+                    view.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .alpha(1f)
+                            .setDuration(200)
+                            .setInterpolator(SPRING_BACK_INTERPOLATOR)
+                            .start();
+                })
+                .start();
+    }
+
     private void performMemoryBoost() {
         if (mIsPerformingMemoryBoost) {
             return;
@@ -352,33 +380,16 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
         
         mIsPerformingMemoryBoost = true;
         clearAllButton.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-        clearAllButton.animate()
-            .scaleX(0.95f)
-            .scaleY(0.95f)
-            .alpha(0.8f)
-            .setDuration(100)
-            .withEndAction(() -> {
+        animateButtonPress(clearAllButton, () ->
                 UI_HELPER_EXECUTOR.execute(() -> {
                     MemoryUtils.releaseMemory();
-                    
                     clearAllButton.postDelayed(() -> {
-                        clearAllButton.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .alpha(1f)
-                            .setDuration(100)
-                            .withEndAction(() -> {
-                                mIsPerformingMemoryBoost = false;
-                            })
-                            .start();
-                        
-                        Toast.makeText(getContext(), 
-                            R.string.memory_boost_applied, 
-                            Toast.LENGTH_SHORT).show();
+                        mIsPerformingMemoryBoost = false;
+                        Toast.makeText(getContext(),
+                                R.string.memory_boost_applied,
+                                Toast.LENGTH_SHORT).show();
                     }, 500);
-                });
-            })
-            .start();
+                }));
     }
 
     public void setMemoryBoostInProgress(boolean inProgress) {
@@ -412,19 +423,19 @@ public class OverviewActionsView<T extends OverlayUICallbacks> extends FrameLayo
         final int id = view.getId();
         if (id == R.id.action_screenshot) {
             VibratorWrapper.INSTANCE.get(getContext()).vibrate(VibratorWrapper.EFFECT_CLICK);
-            mCallbacks.onScreenshot();
+            animateButtonPress(view, mCallbacks::onScreenshot);
         } else if (id == R.id.action_split) {
             VibratorWrapper.INSTANCE.get(getContext()).vibrate(VibratorWrapper.EFFECT_CLICK);
-            mCallbacks.onSplit();
+            animateButtonPress(view, mCallbacks::onSplit);
         } else if (id == R.id.action_save_app_pair) {
             VibratorWrapper.INSTANCE.get(getContext()).vibrate(VibratorWrapper.EFFECT_CLICK);
-            mCallbacks.onSaveAppPair();
+            animateButtonPress(view, mCallbacks::onSaveAppPair);
         } else if (id == R.id.action_clear_all) {
             VibratorWrapper.INSTANCE.get(getContext()).vibrate(VibratorWrapper.EFFECT_CLICK);
-            mCallbacks.onClearAllTasksRequested();
+            animateButtonPress(view, mCallbacks::onClearAllTasksRequested);
         } else if (id == R.id.action_lens) {
             VibratorWrapper.INSTANCE.get(getContext()).vibrate(VibratorWrapper.EFFECT_CLICK);
-            mCallbacks.onLens();
+            animateButtonPress(view, mCallbacks::onLens);
         }
     }
 
