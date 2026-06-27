@@ -1236,7 +1236,7 @@ public class Launcher extends StatefulActivity<LauncherState>
 
     @Override
     protected void onResume() {
-        boostInteraction(800);
+        boostInteraction(500);
         TraceHelper.INSTANCE.beginSection(ON_RESUME_EVT);
         super.onResume();
 

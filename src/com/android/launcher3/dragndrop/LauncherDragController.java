@@ -80,7 +80,7 @@ public class LauncherDragController extends DragController<Launcher> {
             float initialDragViewScale,
             float dragViewScaleOnDrop,
             DragOptions options) {
-        boostInteraction(700);
+        boostInteraction(500);
         if (PROFILE_DRAWING_DURING_DRAG) {
             android.os.Debug.startMethodTracing("Launcher");
         }
