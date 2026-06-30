@@ -607,4 +607,7 @@
     <string name="rename_app_length_error">App name must be %1$d characters or less</string>
     <string name="rename_app_reset">Reset</string>
     <string name="rename_app_reset_message">Name reset to original</string>
+
+    <string name="hotseat_bottom_space_default_title">Default hotseat spacing</string>
+    <string name="hotseat_bottom_space_default_summary">Use the default bottom spacing for the hotseat. Disable for a reduced spacing.</string>
 </resources>

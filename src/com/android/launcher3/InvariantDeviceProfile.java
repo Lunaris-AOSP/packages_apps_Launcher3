@@ -332,13 +332,16 @@ public class InvariantDeviceProfile {
                     FONT_SIZE.getSharedPrefKey().equals(key) ||
                     ENABLE_TWOLINE_ALLAPPS_TOGGLE.getSharedPrefKey().equals(key) ||
                     ROW_HEIGHT.getSharedPrefKey().equals(key) ||
-                    IconDatabase.KEY_ICON_PACK.equals(key)) {
+                    IconDatabase.KEY_ICON_PACK.equals(key) ||
+                    LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT.getSharedPrefKey().equals(key)) {
                 onConfigChanged();
             }
         };
-        prefs.addListener(prefListener, FIXED_LANDSCAPE_MODE, ENABLE_TWOLINE_ALLAPPS_TOGGLE);
+        prefs.addListener(prefListener, FIXED_LANDSCAPE_MODE, ENABLE_TWOLINE_ALLAPPS_TOGGLE,
+                LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT);
         lifeCycle.addCloseable(() -> prefs.removeListener(prefListener,
-                FIXED_LANDSCAPE_MODE, ENABLE_TWOLINE_ALLAPPS_TOGGLE));
+                FIXED_LANDSCAPE_MODE, ENABLE_TWOLINE_ALLAPPS_TOGGLE,
+                LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT));
 
         SimpleBroadcastReceiver localeReceiver = new SimpleBroadcastReceiver(context,
                 mMainExecutor, i -> onConfigChanged());
@@ -1673,10 +1676,14 @@ public class InvariantDeviceProfile {
             horizontalMargin[INDEX_TWO_PANEL_PORTRAIT] = a.getFloat(
                     R.styleable.ProfileDisplayOption_horizontalMarginTwoPanelPortrait,
                     horizontalMargin[INDEX_DEFAULT]);
-
+        
+           boolean useDefaultHotseatBottomSpace = LauncherPrefs.get(context)
+                    .get(LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT);
             hotseatBarBottomSpace[INDEX_DEFAULT] = a.getFloat(
                     R.styleable.ProfileDisplayOption_hotseatBarBottomSpace,
-                    res.getFloat(R.dimen.hotseat_bar_bottom_space_default));
+                    res.getFloat(useDefaultHotseatBottomSpace
+                            ? R.dimen.hotseat_bar_bottom_space_default
+                            : R.dimen.hotseat_bar_bottom_space_small));
             hotseatBarBottomSpace[INDEX_LANDSCAPE] = a.getFloat(
                     R.styleable.ProfileDisplayOption_hotseatBarBottomSpaceLandscape,
                     hotseatBarBottomSpace[INDEX_DEFAULT]);

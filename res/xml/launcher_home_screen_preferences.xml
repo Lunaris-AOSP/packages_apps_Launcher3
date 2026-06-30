@@ -67,6 +67,14 @@
             android:persistent="true"
             launcher:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:key="pref_hotseat_bottom_space_default"
+            android:title="@string/hotseat_bottom_space_default_title"
+            android:summary="@string/hotseat_bottom_space_default_summary"
+            android:defaultValue="true"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
     </PreferenceCategory>
 
     <PreferenceCategory
