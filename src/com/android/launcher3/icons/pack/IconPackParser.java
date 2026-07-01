@@ -10,6 +10,8 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 class IconPackParser {
@@ -52,6 +54,42 @@ class IconPackParser {
         }
 
         return iconPack;
+    }
+
+    static List<IconPack.IconEntry> parseAllEntries(PackageManager pm, Resources res, String pkg)
+            throws IOException, XmlPullParserException {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+
+        collectDrawableNames(pm, res, pkg, "appfilter", names);
+
+        if (names.isEmpty()) {
+            collectDrawableNames(pm, res, pkg, "drawable", names);
+        }
+
+        List<IconPack.IconEntry> entries = new ArrayList<>(names.size());
+        for (String name : names) {
+            int id = res.getIdentifier(name, "drawable", pkg);
+            if (id != 0) {
+                entries.add(new IconPack.IconEntry(name, id));
+            }
+        }
+        return entries;
+    }
+
+    private static void collectDrawableNames(PackageManager pm, Resources res, String pkg,
+            String xmlResName, LinkedHashSet<String> out) throws IOException, XmlPullParserException {
+        int resId = res.getIdentifier(xmlResName, "xml", pkg);
+        if (resId == 0) return;
+        XmlResourceParser parseXml = pm.getXml(pkg, resId, null);
+        while (parseXml.next() != XmlPullParser.END_DOCUMENT) {
+            if (parseXml.getEventType() == XmlPullParser.START_TAG
+                    && "item".equals(parseXml.getName())) {
+                String drawable = parseXml.getAttributeValue(null, "drawable");
+                if (drawable != null) {
+                    out.add(drawable);
+                }
+            }
+        }
     }
 
     private static void addItem(XmlResourceParser parseXml,

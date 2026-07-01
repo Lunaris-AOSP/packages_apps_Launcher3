@@ -610,4 +610,7 @@
 
     <string name="hotseat_bottom_space_default_title">Default hotseat spacing</string>
     <string name="hotseat_bottom_space_default_summary">Use the default bottom spacing for the hotseat. Disable for a reduced spacing.</string>
+
+    <string name="app_info_custom_icon_title">Custom icon</string>
+    <string name="app_info_custom_icon_summary">Pick any icon from any icon pack</string>
 </resources>
