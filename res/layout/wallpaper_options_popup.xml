@@ -4,18 +4,24 @@
     android:id="@+id/popup_container"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:clipToPadding="false"
+    android:clipChildren="false"
+    android:importantForAccessibility="yes"
     class="com.android.launcher3.popup.Launcher3PopupDialog$Launcher3OptionsPopUp">
-    <LinearLayout
-        android:orientation="vertical"
+    <FrameLayout
         android:id="@+id/wallpaper_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:paddingHorizontal="@dimen/wallpaper_carousel_horizontal_padding"
+        android:paddingVertical="@dimen/wallpaper_carousel_vertical_padding"
         android:elevation="2dp">
         <com.android.launcher3.popup.WallpaperCarouselView
             android:orientation="horizontal"
             android:id="@+id/wallpaper_carousel"
             android:layout_width="match_parent"
             android:layout_height="@dimen/wallpaper_carousel_height"
-            android:layout_margin="@dimen/system_shortcut_margin_start"/>
-    </LinearLayout>
+            android:gravity="center_vertical"
+            android:clipToPadding="true"
+            android:clipChildren="true"/>
+    </FrameLayout>
 </view>

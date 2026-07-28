@@ -44,7 +44,17 @@
     <dimen name="compact_search_bar_text_size">16sp</dimen>
     
     <!-- Wallpaper carousel -->
-    <dimen name="wallpaper_carousel_height">120dp</dimen>
+    <dimen name="wallpaper_carousel_height">84dp</dimen>
+    <dimen name="wallpaper_carousel_selected_width">140dp</dimen>
+    <dimen name="wallpaper_carousel_selected_height">72dp</dimen>
+    <dimen name="wallpaper_carousel_selected_radius">24dp</dimen>
+    <dimen name="wallpaper_carousel_pill_width">60dp</dimen>
+    <dimen name="wallpaper_carousel_pill_height">72dp</dimen>
+    <dimen name="wallpaper_carousel_item_gap">10dp</dimen>
+    <dimen name="wallpaper_carousel_check_size">27dp</dimen>
+    <dimen name="wallpaper_carousel_horizontal_padding">12dp</dimen>
+    <dimen name="wallpaper_carousel_vertical_padding">6dp</dimen>
+    <dimen name="homescreen_options_popup_max_width">360dp</dimen>
 
     <!-- Burn-in protection shift amounts -->
     <dimen name="burn_in_protection_horizontal_shift">12dp</dimen>

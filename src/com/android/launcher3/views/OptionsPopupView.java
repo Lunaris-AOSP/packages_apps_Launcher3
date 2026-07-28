@@ -198,22 +198,38 @@ public class OptionsPopupView<T extends Context & ActivityContext> extends Arrow
         final Context context = (Context) activityContext;
 
         var layout = R.layout.longpress_options_menu;
-        boolean isEmpty = true;
-        if (LauncherPrefs.WALLPAPER_CAROUSEL.get(context)) {
-            final List<com.android.launcher3.data.wallpaper.Wallpaper> wallpapers = 
-                    WallpaperService.INSTANCE.get(context).getTopWallpapersBlocking();
-            isEmpty = wallpapers.isEmpty();
-            Log.d("OptionsPopupView", "Wallpapers in DB: " + wallpapers.size() + ", isEmpty: " + isEmpty);
-            layout = isEmpty ? R.layout.longpress_options_menu : R.layout.wallpaper_options_popup;
+        boolean hasCarousel = LauncherPrefs.WALLPAPER_CAROUSEL.get(context)
+                && items.stream().anyMatch(
+                        item -> item.labelRes == R.string.styles_wallpaper_button_text);
+        if (hasCarousel) {
+            try {
+                hasCarousel = !WallpaperService.INSTANCE.get(context)
+                        .getTopWallpapersBlocking().isEmpty();
+            } catch (RuntimeException e) {
+                Log.e("OptionsPopupView", "Unable to load wallpaper history", e);
+                hasCarousel = false;
+            }
+            if (hasCarousel) {
+                layout = R.layout.wallpaper_options_popup;
+                if (width <= 0) {
+                    width = resolveHomescreenPopupWidth(activityContext, context);
+                }
+            }
         }
 
         OptionsPopupView<T> popup = (OptionsPopupView<T>) activityContext.getLayoutInflater()
                 .inflate(layout, activityContext.getDragLayer(), false);
         popup.mTargetRect = targetRect;
         popup.setShouldAddArrow(shouldAddArrow);
+        final View wallpaperContainer = popup.findViewById(R.id.wallpaper_container);
+        if (wallpaperContainer != null) {
+            popup.removeView(wallpaperContainer);
+            wallpaperContainer.getLayoutParams().width = width;
+        }
 
         for (OptionItem item : items) {
-            var deepLayout = isEmpty ? R.layout.system_shortcut : R.layout.wallpaper_options_popup_item;
+            var deepLayout = hasCarousel
+                    ? R.layout.wallpaper_options_popup_item : R.layout.system_shortcut;
             DeepShortcutView view = popup.inflateAndAdd(deepLayout, popup);
             if (width > 0) {
                 view.getLayoutParams().width = width;
@@ -223,10 +239,29 @@ public class OptionsPopupView<T extends Context & ActivityContext> extends Arrow
             view.setOnClickListener(popup);
             view.setOnLongClickListener(popup);
             popup.mItemMap.put(view, item);
+            if (wallpaperContainer != null
+                    && item.labelRes == R.string.styles_wallpaper_button_text) {
+                popup.addView(wallpaperContainer);
+            }
         }
 
         popup.show();
         return popup;
+    }
+
+    private static int resolveHomescreenPopupWidth(ActivityContext activityContext,
+            Context context) {
+        final var profile = activityContext.getDeviceProfile().getDeviceProperties();
+        final var resources = context.getResources();
+        final int maxWidth = resources.getDimensionPixelSize(
+                R.dimen.homescreen_options_popup_max_width);
+        final int minWidth = resources.getDimensionPixelSize(R.dimen.bg_popup_item_width);
+        final Rect insets = activityContext.getDragLayer().getInsets();
+        final int availableWidth = Math.max(1,
+                profile.getWidthPx() - insets.left - insets.right);
+        final float fraction = profile.isPhone() ? 0.80f : 0.50f;
+        return Math.min(availableWidth,
+                Math.max(minWidth, Math.min(maxWidth, (int) (availableWidth * fraction))));
     }
 
     /**
@@ -234,6 +269,11 @@ public class OptionsPopupView<T extends Context & ActivityContext> extends Arrow
      */
     public static ArrayList<OptionItem> getOptions(Launcher launcher) {
         ArrayList<OptionItem> options = new ArrayList<>();
+        options.add(new OptionItem(launcher,
+                R.string.styles_wallpaper_button_text,
+                R.drawable.ic_palette,
+                IGNORE,
+                OptionsPopupView::startWallpaperPicker));
         options.add(new OptionItem(launcher,
                 R.string.settings_title,
                 R.drawable.ic_setting,
@@ -263,11 +303,6 @@ public class OptionsPopupView<T extends Context & ActivityContext> extends Arrow
                 R.drawable.ic_apps,
                 LAUNCHER_ALL_APPS_TAP_OR_LONGPRESS,
                 OptionsPopupView::enterAllApps));
-        options.add(new OptionItem(launcher,
-                R.string.styles_wallpaper_button_text,
-                R.drawable.ic_palette,
-                IGNORE,
-                OptionsPopupView::startWallpaperPicker));
         return options;
     }
 
