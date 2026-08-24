@@ -84,12 +84,17 @@ constructor(
         val folderName = folderIcon.folderName
         val folderNameVisibility = folderName.visibility
         val isIconVisible = folderIcon.iconVisible
+        val dragLayer = activityContext.dragLayer
+        val openFolders =
+            (0 until dragLayer.childCount)
+                .mapNotNull { dragLayer.getChildAt(it) as? Folder }
+                .map { it to it.visibility }
 
         try {
             folderName.visibility = View.INVISIBLE
             folderIcon.setIconVisible(false)
+            openFolders.forEach { (openFolder, _) -> openFolder.visibility = View.INVISIBLE }
 
-            val dragLayer = activityContext.dragLayer
             val canvas =
                 workspaceBlurRenderNode.beginRecording(dragLayer.width, dragLayer.height)
             try {
@@ -99,6 +104,10 @@ constructor(
             }
             workspaceBlurRenderNode.setPosition(0, 0, dragLayer.width, dragLayer.height)
         } finally {
+            openFolders.forEach { (openFolder, visibility) ->
+                openFolder.visibility = visibility
+                openFolder.invalidate()
+            }
             folderName.visibility = folderNameVisibility
             folderIcon.setIconVisible(isIconVisible)
         }
