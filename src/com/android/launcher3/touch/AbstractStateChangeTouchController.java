@@ -91,6 +91,9 @@ public abstract class AbstractStateChangeTouchController
     @Override
     public boolean onControllerInterceptTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            if (mCurrentAnimation == null && mDetector.isDraggingOrSettling()) {
+                mDetector.finishedScrolling();
+            }
             mNoIntercept = !canInterceptTouch(ev);
             if (mNoIntercept) {
                 return false;
@@ -287,8 +290,7 @@ public abstract class AbstractStateChangeTouchController
     @Override
     public void onDragEnd(float velocity) {
         if (mCurrentAnimation == null) {
-            // Unlikely, but we may have been canceled just before onDragEnd(). We assume whoever
-            // canceled us will handle a new state transition to clean up.
+            mDetector.finishedScrolling();
             return;
         }
 

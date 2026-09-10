@@ -197,6 +197,7 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
 
         if (mStartedOverview) {
             goToOverviewOrHomeOnDragEnd(velocity);
+            clearState();
         } else {
             InteractionJankMonitorWrapper.cancel(Cuj.CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS);
             super.onDragEnd(velocity);
@@ -205,11 +206,6 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
         mMotionPauseDetector.clear();
         mIsTrackpadSwipe = false;
         mNormalToHintOverviewScrimAnimator = null;
-        if (mLauncher.isInState(OVERVIEW)) {
-            // Normally we would cleanup the state based on mCurrentAnimation, but since we stop
-            // using that when we pause to go to Overview, we need to clean up ourselves.
-            clearState();
-        }
     }
 
     @Override
@@ -245,6 +241,7 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
 
         mCurrentAnimation.getTarget().removeListener(mClearStateOnCancelListener);
         mCurrentAnimation.dispatchOnCancel();
+        mCurrentAnimation = null;
         mStartedOverview = true;
         VibratorWrapper.INSTANCE.get(mLauncher).vibrate(OVERVIEW_HAPTIC);
     }
@@ -296,6 +293,12 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
             new OverviewToHomeAnim(mLauncher, () -> onSwipeInteractionCompleted(NORMAL), null)
                     .animateWithVelocity(velocity);
             InteractionJankMonitorWrapper.cancel(Cuj.CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS);
+        } else if (!mReachedOverview && !mLauncher.isInState(OVERVIEW)) {
+            mLauncher.getStateManager().goToState(OVERVIEW, true,
+                    forSuccessCallback(() -> {
+                        mReachedOverview = true;
+                        maybeSwipeInteractionToOverviewComplete();
+                    }));
         }
         if (mReachedOverview) {
             float distanceDp = dpiFromPx(Math.max(
