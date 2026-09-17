@@ -247,6 +247,8 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
     private boolean mSuppressFolderDeletion = false;
     private boolean mSuppressContentUpdate = false;
 
+    private int mAutoShrinkPreviousItemCount = -1;
+
     private boolean mItemAddedBackToSelfViaIcon = false;
     private boolean mIsEditingName = false;
 
@@ -870,7 +872,8 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
 
     private FolderAnimationCreator getFolderAnimationManager() {
         boolean shouldUseSpringMotion = Flags.enableLauncherIconShapes()
-                && Flags.enableExpressiveFolderExpansion();
+                && Flags.enableExpressiveFolderExpansion()
+                && !mFolderIcon.usesWorkspacePreviewLayout();
         if (shouldUseSpringMotion) {
             ShapeDelegate shapeDelegate =
                     ThemeManager.INSTANCE.get(mActivityContext.asContext()).getFolderShape();
@@ -1028,6 +1031,7 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         mSuppressFolderDeletion = false;
         clearDragInfo();
         setState(STATE_CLOSED);
+        maybeApplyAutoShrink();
         mContent.setCurrentPage(0);
     }
 
@@ -1228,6 +1232,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
             // Show the animation, next time something is added to the folder.
             mInfo.setOption(FolderInfo.FLAG_MULTI_PAGE_ANIMATION, false,
                     mActivityContext.getModelWriter());
+        }
+        if (mFolderIcon != null) {
+            mFolderIcon.post(this::maybeApplyAutoShrink);
         }
     }
 
@@ -1597,8 +1604,11 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
 
     /** Remove all matching app or shortcut. Does not change the DB. */
     public void removeFolderContent(boolean animate, ItemInfo... items) {
+        int previousItemCount = getItemCount();
         List<ItemInfo> itemArray = Arrays.asList(items);
-        if (mInfo.getContents().removeAll(itemArray)) {
+        boolean removed = mInfo.getContents().removeAll(itemArray);
+
+        if (removed) {
             mActivityContext.getModelWriter().notifyItemModified(mInfo);
         }
 
@@ -1621,6 +1631,33 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         }
 
         mFolderIcon.onItemsChanged(animate);
+        if (removed) {
+            requestAutoShrink(previousItemCount);
+        }
+    }
+
+    private void requestAutoShrink(int previousItemCount) {
+        mAutoShrinkPreviousItemCount =
+                Math.max(mAutoShrinkPreviousItemCount, previousItemCount);
+        mFolderIcon.post(this::maybeApplyAutoShrink);
+    }
+
+    private void maybeApplyAutoShrink() {
+        if (mAutoShrinkPreviousItemCount < 0
+                || mSuppressContentUpdate
+                || mIsDragInProgress
+                || mState != STATE_CLOSED) {
+            return;
+        }
+
+        int previousItemCount = mAutoShrinkPreviousItemCount;
+        mAutoShrinkPreviousItemCount = -1;
+
+        int itemCount = getItemCount();
+        if (mDestroyed || itemCount <= 1 || itemCount >= previousItemCount) return;
+
+        mFolderIcon.syncPreviewItems();
+        mLauncherDelegate.autoShrinkFolder(mFolderIcon);
     }
 
     @VisibleForTesting

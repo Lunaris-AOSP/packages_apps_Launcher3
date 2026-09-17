@@ -929,6 +929,49 @@ class GridSizeMigrationTest {
         LauncherPrefs.get(context).putSync(WORKSPACE_SIZE.to(srcGridSize))
     }
 
+    @Test
+    fun resizedFolderMigration_keepsFootprintAndContents() {
+        verifyResizedFolderMigration(2, 3, Point(4, 4), 2, 3)
+    }
+
+    @Test
+    fun resizedFolderMigration_smallerGridKeepsFolderAndContents() {
+        verifyResizedFolderMigration(4, 4, Point(3, 3), 3, 3)
+    }
+
+    private fun verifyResizedFolderMigration(
+        spanX: Int, spanY: Int, targetGrid: Point, expectedSpanX: Int, expectedSpanY: Int,
+    ) {
+        val folderId = addItem(ITEM_TYPE_FOLDER, 1, CONTAINER_DESKTOP, 0, 0, null, 1, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, folderId, 0, 0, testPackage1, 2, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, folderId, 1, 0, testPackage2, 3, TMP_TABLE)
+        db.update(TMP_TABLE, ContentValues().apply {
+            put(SPANX, spanX)
+            put(SPANY, spanY)
+        }, "$_ID=$folderId", null)
+
+        context.appComponent.createNewGridSizeMigrationLogic().migrateWorkspace(
+            DbReader(db, TMP_TABLE, context),
+            DbReader(db, TABLE_NAME, context),
+            dbHelper,
+            targetGrid,
+            mutableListOf(),
+        )
+
+        db.query(TABLE_NAME, arrayOf(_ID, SPANX, SPANY), "$ITEM_TYPE=$ITEM_TYPE_FOLDER",
+            null, null, null, null).use { cursor ->
+            assertThat(cursor.count).isEqualTo(1)
+            cursor.moveToFirst()
+            assertThat(cursor.getInt(1)).isEqualTo(expectedSpanX)
+            assertThat(cursor.getInt(2)).isEqualTo(expectedSpanY)
+            val migratedFolderId = cursor.getInt(0)
+            db.query(TABLE_NAME, arrayOf(_ID), "$CONTAINER=$migratedFolderId",
+                null, null, null, null).use { children ->
+                assertThat(children.count).isEqualTo(2)
+            }
+        }
+    }
+
     private fun addItem(
         type: Int,
         screen: Int,

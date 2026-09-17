@@ -31,20 +31,25 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.FloatProperty;
 import android.util.Log;
 import android.view.View;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 import com.android.launcher3.BubbleTextView;
+import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.LauncherAppState;
+import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.apppairs.AppPairIcon;
 import com.android.launcher3.apppairs.AppPairIconDrawingParams;
@@ -90,7 +95,11 @@ public class PreviewItemManager {
     // as member variables for shared usage and to avoid computation on each frame
     private float mIntrinsicIconSize = -1;
     private int mTotalWidth = -1;
+    private int mTotalHeight = -1;
+    private int mPrevSpanX = -1;
+    private int mPrevSpanY = -1;
     private int mPrevTopPadding = -1;
+    private boolean mPrevUsesWorkspacePreviewLayout;
     private Drawable mReferenceDrawable = null;
 
     private int mNumOfPrevItems = 0;
@@ -105,6 +114,7 @@ public class PreviewItemManager {
     // do not get cropped in their resting state.
     private final float mClipThreshold;
     private float mCurrentPageItemsTransX = 0;
+    private float mPageSlideDistance;
     private boolean mShouldSlideInFirstPage;
 
     static final int INITIAL_ITEM_ANIMATION_DURATION = 350;
@@ -112,7 +122,6 @@ public class PreviewItemManager {
 
     private static final int SLIDE_IN_FIRST_PAGE_ANIMATION_DURATION_DELAY = 100;
     private static final int SLIDE_IN_FIRST_PAGE_ANIMATION_DURATION = 300;
-    private static final int ITEM_SLIDE_IN_OUT_DISTANCE_PX = 200;
 
     public PreviewItemManager(FolderIcon icon) {
         mContext = icon.getContext();
@@ -140,7 +149,8 @@ public class PreviewItemManager {
                 ? ((AppPairIcon) destView).getIconDrawableArea().getDrawable()
                 : ((BubbleTextView) destView).getIcon();
         computePreviewDrawingParams(animateDrawable.getIntrinsicWidth(),
-                destView.getMeasuredWidth());
+                destView.getMeasuredWidth(),
+                destView.getMeasuredHeight());
         mReferenceDrawable = animateDrawable;
         return animateDrawable;
     }
@@ -148,25 +158,293 @@ public class PreviewItemManager {
     public void recomputePreviewDrawingParams() {
         if (mReferenceDrawable != null) {
             computePreviewDrawingParams(mReferenceDrawable.getIntrinsicWidth(),
-                    mIcon.getMeasuredWidth());
+                    mIcon.getMeasuredWidth(),
+                    mIcon.getMeasuredHeight());
         }
     }
 
-    private void computePreviewDrawingParams(int drawableSize, int totalSize) {
-        if (mIntrinsicIconSize != drawableSize || mTotalWidth != totalSize ||
-                mPrevTopPadding != mIcon.getPaddingTop()) {
-            mIntrinsicIconSize = drawableSize;
-            mTotalWidth = totalSize;
-            mPrevTopPadding = mIcon.getPaddingTop();
+    private void computePreviewDrawingParams(
+            int drawableSize, int totalWidth, int totalHeight) {
+        int spanX = mIcon.getCurrentSpanX();
+        int spanY = mIcon.getCurrentSpanY();
+        boolean usesWorkspacePreview = mIcon.usesWorkspacePreviewLayout();
 
-            mIcon.mBackground.setup(mIcon.getContext(), mIcon.mActivity, mIcon, mTotalWidth,
-                    mIcon.getPaddingTop());
+        boolean geometryChanged =
+                mTotalWidth != totalWidth
+                        || mTotalHeight != totalHeight
+                        || mPrevSpanX != spanX
+                        || mPrevSpanY != spanY
+                        || mPrevUsesWorkspacePreviewLayout != usesWorkspacePreview
+                        || mPrevTopPadding != mIcon.getPaddingTop();
+
+        if (mIntrinsicIconSize != drawableSize || geometryChanged) {
+            boolean animateResize =
+                    geometryChanged
+                            && mIntrinsicIconSize > 0
+                            && !mFirstPageParams.isEmpty()
+                            && mIcon.isLaidOut()
+                            && mPrevUsesWorkspacePreviewLayout
+                            && usesWorkspacePreview;
+
+            Rect previousBackgroundBounds = null;
+            FolderPreviewLayout.Snapshot previousSnapshot = null;
+
+            if (animateResize) {
+                previousBackgroundBounds = new Rect();
+                mIcon.mBackground.getBounds(previousBackgroundBounds);
+                previousSnapshot = calculateWorkspacePreviewSnapshot(
+                        mIcon.mInfo.getContents(), mPrevSpanX, mPrevSpanY);
+            }
+
+            mIntrinsicIconSize = drawableSize;
+            mTotalWidth = totalWidth;
+            mTotalHeight = totalHeight;
+            mPrevSpanX = spanX;
+            mPrevSpanY = spanY;
+            mPrevTopPadding = mIcon.getPaddingTop();
+            mPrevUsesWorkspacePreviewLayout = usesWorkspacePreview;
+
+            DeviceProfile deviceProfile = mIcon.mActivity.getDeviceProfile();
+            float density = deviceProfile.getWorkspaceIconProfile().getIconSizePx() / 60.f;
+            int gap = Math.round(8f * density);
+            float backgroundTop = mIcon.getPaddingTop() + deviceProfile.folderIconOffsetYPx;
+            float labelHeightAndGap = mIcon.isMultiSpanFolder() ? (mIcon.getFolderLabelHeight() + gap + backgroundTop) : 0f;
+
+            mIcon.mBackground.setup(
+                    mIcon.getContext(),
+                    mIcon.mActivity,
+                    mIcon,
+                    mTotalWidth,
+                    Math.round(mTotalHeight - labelHeightAndGap),
+                    mIcon.getPaddingTop(),
+                    spanX,
+                    spanY);
+
             mIcon.mPreviewLayoutRule.init(
-                    mIcon.mBackground.previewSize, mIntrinsicIconSize,
+                    mIcon.mBackground.previewSize,
+                    mIntrinsicIconSize,
                     Utilities.isRtl(mIcon.getResources()),
-                    mIcon.mActivity.getDeviceProfile().getFolderProfile().getNumColumns()
+                    mIcon.mActivity.getDeviceProfile()
+                            .getFolderProfile()
+                            .getNumColumns());
+
+            if (animateResize) {
+                FolderPreviewLayout.Snapshot newSnapshot =
+                        calculateWorkspacePreviewSnapshot();
+                animateWorkspacePreviewResize(previousSnapshot, newSnapshot);
+                mIcon.mBackground.animateBoundsFrom(
+                        previousBackgroundBounds,
+                        DROP_IN_ANIMATION_DURATION);
+            } else {
+                updatePreviewItems(false);
+            }
+        }
+    }
+
+    private FolderPreviewLayout.Grid calculateWorkspacePreviewGrid(
+            RectF backgroundBounds,
+            int spanX,
+            int spanY) {
+        Resources resources = mContext.getResources();
+        DeviceProfile deviceProfile = mIcon.mActivity.getDeviceProfile();
+
+        float defaultPadding = Math.min(
+                resources.getDimension(R.dimen.folder_workspace_preview_padding),
+                Math.min(backgroundBounds.width(), backgroundBounds.height()) / 4f);
+        float baseContentSize =
+                deviceProfile.folderIconSizePx - 2 * defaultPadding;
+
+        if (spanX == 1 && spanY == 1) {
+            // Standard legacy 1x1 circular folder preview grid layout
+            float minGap = resources.getDimension(R.dimen.folder_workspace_preview_min_gap);
+            RectF availableBounds = new RectF(backgroundBounds);
+            availableBounds.inset(defaultPadding, defaultPadding);
+
+            float maxItemSize = Math.min(availableBounds.width(), availableBounds.height());
+            float itemSize = Math.min(baseContentSize, maxItemSize);
+
+            return FolderPreviewLayout.calculateGrid(availableBounds, itemSize, minGap);
+        } else {
+            // Match the icon size and spacing used by calculateBackgroundBounds.
+            float standardIconSize = deviceProfile.getWorkspaceIconProfile().getIconSizePx();
+            float itemScale = 0.85f;
+            float itemSize = standardIconSize * itemScale;
+            float idealPadding = itemSize * 0.20f;
+            float idealGap = itemSize * 0.15f;
+
+            float idealWidth = spanX * itemSize + (spanX - 1) * idealGap + 2 * idealPadding;
+            float idealHeight = spanY * itemSize + (spanY - 1) * idealGap + 2 * idealPadding;
+
+            float availableWidth = backgroundBounds.width();
+            float availableHeight = backgroundBounds.height();
+
+            if (idealWidth > availableWidth || idealHeight > availableHeight) {
+                float fitScale = Math.min(availableWidth / idealWidth, availableHeight / idealHeight);
+                itemSize *= fitScale;
+                idealPadding *= fitScale;
+                idealGap *= fitScale;
+            }
+
+            RectF availableBounds = new RectF(backgroundBounds);
+            availableBounds.inset(idealPadding, idealPadding);
+
+            // Calculate expanding gaps, but clamp them to a maximum of 1.5x idealGap to prevent icons from flying apart
+            float columnGap = spanX > 1 ? Math.min(idealGap * 1.5f, (availableBounds.width() - spanX * itemSize) / (spanX - 1)) : 0f;
+            float rowGap = spanY > 1 ? Math.min(idealGap * 1.5f, (availableBounds.height() - spanY * itemSize) / (spanY - 1)) : 0f;
+
+            // Center the grid inside the background bounds.
+            float gridWidth = spanX * itemSize + (spanX - 1) * columnGap;
+            float gridHeight = spanY * itemSize + (spanY - 1) * rowGap;
+
+            // Center the grid inside the background bounds
+            float startX = backgroundBounds.left + (backgroundBounds.width() - gridWidth) / 2f;
+            float startY = backgroundBounds.top + (backgroundBounds.height() - gridHeight) / 2f;
+
+            return new FolderPreviewLayout.Grid(
+                    spanX,
+                    spanY,
+                    startX,
+                    startY,
+                    itemSize,
+                    columnGap,
+                    rowGap
             );
-            updatePreviewItems(false);
+        }
+    }
+
+    private FolderPreviewLayout.Grid calculateWorkspacePreviewGrid(
+            int availableSpaceX,
+            int availableSpaceY,
+            int spanX,
+            int spanY) {
+        DeviceProfile deviceProfile = mIcon.mActivity.getDeviceProfile();
+        float density = deviceProfile.getWorkspaceIconProfile().getIconSizePx() / 60.f;
+        int gap = Math.round(8f * density);
+        float backgroundTop = mIcon.getPaddingTop() + deviceProfile.folderIconOffsetYPx;
+        float labelHeightAndGap = spanX > 1 || spanY > 1
+                ? mIcon.getFolderLabelHeight() + gap + backgroundTop : 0f;
+
+        Rect backgroundBounds = new Rect();
+        PreviewBackground.calculateBackgroundBounds(
+                deviceProfile,
+                availableSpaceX,
+                Math.round(availableSpaceY - labelHeightAndGap),
+                mIcon.getPaddingTop(),
+                spanX,
+                spanY,
+                backgroundBounds);
+        return calculateWorkspacePreviewGrid(new RectF(backgroundBounds), spanX, spanY);
+    }
+
+    FolderPreviewLayout.GridUsage calculateWorkspacePreviewGridUsage(
+            int availableSpaceX,
+            int availableSpaceY,
+            int spanX,
+            int spanY) {
+        FolderPreviewLayout.Grid grid =
+                calculateWorkspacePreviewGrid(availableSpaceX, availableSpaceY, spanX, spanY);
+
+        return FolderPreviewLayout.calculateGridUsage(
+            mIcon.mInfo.getContents().size(),
+            grid);
+    }
+
+    boolean isPreviewTightlyWrapped(
+            int availableSpaceX,
+            int availableSpaceY,
+            int spanX,
+            int spanY) {
+        if (availableSpaceX <= 0
+            || availableSpaceY <= 0
+            || spanX <= 0
+            || spanY <= 0) return false;
+
+        FolderPreviewLayout.Grid grid =
+                calculateWorkspacePreviewGrid(availableSpaceX, availableSpaceY, spanX, spanY);
+
+        return FolderPreviewLayout.isTightlyWrapped(
+            mIcon.mInfo.getContents().size(),
+            grid);
+    }
+
+    FolderPreviewLayout.Snapshot calculateWorkspacePreviewSnapshot() {
+        return calculateWorkspacePreviewSnapshot(mIcon.mInfo.getContents());
+    }
+
+    FolderPreviewLayout.Snapshot calculateWorkspacePreviewSnapshotForPage(int page) {
+        List<View> pageViews = mIcon.getFolder().getItemsOnPage(page);
+        List<ItemInfo> pageItems = new ArrayList<>(pageViews.size());
+
+        for (View view : pageViews) {
+            pageItems.add((ItemInfo) view.getTag());
+        }
+
+        return calculateWorkspacePreviewSnapshot(pageItems);
+    }
+
+    private FolderPreviewLayout.Snapshot calculateWorkspacePreviewSnapshot(
+            List<ItemInfo> items) {
+        return calculateWorkspacePreviewSnapshot(
+                items, mIcon.getCurrentSpanX(), mIcon.getCurrentSpanY());
+    }
+
+    private FolderPreviewLayout.Snapshot calculateWorkspacePreviewSnapshot(
+            List<ItemInfo> items, int spanX, int spanY) {
+        Rect backgroundBounds = new Rect();
+        mIcon.mBackground.getTargetBounds(backgroundBounds);
+
+        RectF snapshotBounds = new RectF(backgroundBounds);
+        FolderPreviewLayout.Grid grid =
+                calculateWorkspacePreviewGrid(snapshotBounds, spanX, spanY);
+
+        int folderColumnCount = mIcon.mActivity.getDeviceProfile()
+                .getFolderProfile().getNumColumns();
+        boolean isRtl = Utilities.isRtl(mIcon.getResources());
+
+        return FolderPreviewLayout.calculateSnapshot(
+                items,
+                snapshotBounds,
+                grid,
+                mIntrinsicIconSize,
+                isRtl,
+                folderColumnCount);
+    }
+
+    @Nullable
+    FolderPreviewLayout.ItemPlacement findDirectItemAt(float x, float y) {
+        if (!mIcon.usesWorkspacePreviewLayout() || mIntrinsicIconSize <= 0) {
+            return null;
+        }
+
+        for (FolderPreviewLayout.ItemPlacement placement
+                : calculateWorkspacePreviewSnapshot().getItems()) {
+            if (placement.getRole() == FolderPreviewLayout.ItemRole.DIRECT
+                    && placement.getBounds().contains(x, y)) {
+                return placement;
+            }
+        }
+
+        return null;
+    }
+
+    @Nullable
+    FolderPreviewLayout.ItemPlacement findWorkspacePreviewPlacement(
+            FolderPreviewLayout.Snapshot snapshot, ItemInfo item) {
+        for (FolderPreviewLayout.ItemPlacement placement : snapshot.getItems()) {
+            if (placement.getItem() == item) {
+                return placement;
+            }
+        }
+        return null;
+    }
+
+    void setWorkspacePreviewItemHidden(ItemInfo item, boolean hidden) {
+        for (PreviewItemDrawingParams params : mFirstPageParams) {
+            if (params.item == item) {
+                params.hidden = hidden;
+                onParamsChanged();
+                return;
+            }
         }
     }
 
@@ -186,6 +464,9 @@ public class PreviewItemManager {
         final float scale = iconSize / mReferenceDrawable.getIntrinsicWidth();
         final float trans = (mIcon.mBackground.previewSize - iconSize) / 2;
 
+        if (params == null) {
+            params = new PreviewItemDrawingParams(0, 0, 0);
+        }
         params.update(trans, trans, scale);
         return params;
     }
@@ -207,23 +488,51 @@ public class PreviewItemManager {
      * Draws the preview items on {@param canvas}.
      */
     public void draw(Canvas canvas) {
-        int saveCount = canvas.getSaveCount();
+        int saveCount = canvas.save();
         // The items are drawn in coordinates relative to the preview offset
         PreviewBackground bg = mIcon.getFolderBackground();
-        Path clipPath = bg.getClipPath();
-        float firstPageItemsTransX = 0;
-        if (mShouldSlideInFirstPage) {
-            PointF firstPageOffset = new PointF(bg.basePreviewOffsetX + mCurrentPageItemsTransX,
-                    bg.basePreviewOffsetY);
-            boolean shouldClip = mCurrentPageItemsTransX > mClipThreshold;
-            drawParams(canvas, mCurrentPageParams, firstPageOffset, shouldClip, clipPath);
-            firstPageItemsTransX = -ITEM_SLIDE_IN_OUT_DISTANCE_PX + mCurrentPageItemsTransX;
+
+        // Dynamically scale the nested preview icons in unison with the background scale (e.g., during accept-bounce states)
+        if (bg.mScale != 1f) {
+            RectF bounds = new RectF();
+            bg.getScaledBounds(bounds);
+            float centerX = bounds.centerX();
+            float centerY = bounds.centerY();
+            canvas.scale(bg.mScale, bg.mScale, centerX, centerY);
         }
 
-        PointF firstPageOffset = new PointF(bg.basePreviewOffsetX + firstPageItemsTransX,
-                bg.basePreviewOffsetY);
-        boolean shouldClipFirstPage = firstPageItemsTransX < -mClipThreshold;
-        drawParams(canvas, mFirstPageParams, firstPageOffset, shouldClipFirstPage, clipPath);
+        Path clipPath = bg.getClipPath();
+        boolean shouldClipResize = bg.isBoundsAnimating();
+        float firstPageItemsTransX = 0;
+        if (mShouldSlideInFirstPage) {
+            PointF firstPageOffset = new PointF(bg.getPreviewLeft() + mCurrentPageItemsTransX,
+                    bg.getPreviewTop());
+            boolean shouldClip =
+                    Math.abs(mCurrentPageItemsTransX) > mClipThreshold;
+
+            drawParams(
+                    canvas,
+                    mCurrentPageParams,
+                    firstPageOffset,
+                    (shouldClip || shouldClipResize || mIcon.usesWorkspacePreviewLayout()) && !mIcon.isMultiSpanFolder(),
+                    clipPath);
+
+            firstPageItemsTransX = -mPageSlideDistance + mCurrentPageItemsTransX;
+        }
+
+        PointF firstPageOffset = new PointF(bg.getPreviewLeft() + firstPageItemsTransX,
+                bg.getPreviewTop());
+        boolean shouldClipFirstPage =
+                (shouldClipResize
+                        || Math.abs(firstPageItemsTransX) > mClipThreshold
+                        || mIcon.usesWorkspacePreviewLayout())
+                && !mIcon.isMultiSpanFolder();
+        drawParams(
+                canvas,
+                mFirstPageParams,
+                firstPageOffset,
+                shouldClipFirstPage,
+                clipPath);
         canvas.restoreToCount(saveCount);
     }
 
@@ -260,28 +569,236 @@ public class PreviewItemManager {
     }
 
     public void hidePreviewItem(int index, boolean hidden) {
+        int paramIndex = index;
+
         // If there are more params than visible in the preview, they are used for enter/exit
         // animation purposes and they were added to the front of the list.
         // To index the params properly, we need to skip these params.
-        index = index + Math.max(mFirstPageParams.size() - MAX_NUM_ITEMS_IN_PREVIEW, 0);
+        if (!mIcon.usesWorkspacePreviewLayout()) {
+            paramIndex += Math.max(
+                mFirstPageParams.size() - MAX_NUM_ITEMS_IN_PREVIEW,
+                0);
+        }
 
-        PreviewItemDrawingParams params = index < mFirstPageParams.size() ?
-                mFirstPageParams.get(index) : null;
-        if (params != null) {
-            params.hidden = hidden;
+        if (paramIndex < 0 || paramIndex >= mFirstPageParams.size()) {
+            return;
+        }
+
+        mFirstPageParams.get(paramIndex).hidden = hidden;
+    }
+
+    private static void matchParamCount(
+            ArrayList<PreviewItemDrawingParams> params, int itemCount) {
+        while (itemCount < params.size()) {
+            params.remove(params.size() - 1);
+        }
+
+        while (itemCount > params.size()) {
+            params.add(new PreviewItemDrawingParams(0, 0, 0));
+        }
+    }
+
+    private void applyPlacement(
+            FolderPreviewLayout.ItemPlacement placement,
+            PreviewItemDrawingParams params) {
+        RectF bounds = placement.getBounds();
+
+        float scale = bounds.width() / mIntrinsicIconSize;
+        float transX = bounds.left - mIcon.mBackground.getTargetPreviewLeft();
+        float transY = bounds.top - mIcon.mBackground.getTargetPreviewTop();
+
+        params.update(transX, transY, scale);
+    }
+
+    private PreviewItemDrawingParams createPlacementParams(
+            FolderPreviewLayout.ItemPlacement placement) {
+        PreviewItemDrawingParams params = new PreviewItemDrawingParams(0, 0, 0);
+        applyPlacement(placement, params);
+        return params;
+    }
+
+    private PreviewItemDrawingParams createCollapsedParams(
+            FolderPreviewLayout.Snapshot snapshot) {
+        RectF collapseBounds = snapshot.getOverviewBounds();
+        if (collapseBounds == null) {
+            collapseBounds = snapshot.getBackgroundBounds();
+        }
+
+        RectF backgroundBounds = snapshot.getBackgroundBounds();
+        float previewLeft =
+                backgroundBounds.centerX()
+                        - mIcon.mBackground.previewSize / 2f;
+        float previewTop =
+                backgroundBounds.centerY()
+                        - mIcon.mBackground.previewSize / 2f;
+
+        return new PreviewItemDrawingParams(
+                collapseBounds.centerX() - previewLeft,
+                collapseBounds.centerY() - previewTop,
+                0f);
+    }
+
+    private void animateToPlacement(
+            PreviewItemDrawingParams params,
+            FolderPreviewLayout.ItemPlacement placement,
+            Runnable onComplete) {
+        PreviewItemDrawingParams target = createPlacementParams(placement);
+        FolderPreviewItemAnim anim = new FolderPreviewItemAnim(
+                this,
+                params,
+                target.scale,
+                target.transX,
+                target.transY,
+                DROP_IN_ANIMATION_DURATION,
+                onComplete);
+
+        if (params.anim != null) {
+            if (params.anim.hasEqualFinalState(anim)) return;
+            params.anim.cancel();
+        }
+        params.anim = anim;
+        anim.start();
+    }
+
+    @Nullable
+    private static PreviewItemDrawingParams removeParamForItem(
+            List<PreviewItemDrawingParams> params, ItemInfo item) {
+        for (int i = 0; i < params.size(); i++) {
+            if (params.get(i).item == item) {
+                return params.remove(i);
+            }
+        }
+        return null;
+    }
+
+    void animateWorkspacePreviewSnapshot(
+            FolderPreviewLayout.Snapshot oldSnapshot,
+            FolderPreviewLayout.Snapshot newSnapshot,
+            @Nullable ItemInfo droppedItem) {
+        ArrayList<PreviewItemDrawingParams> unmatchedParams = new ArrayList<>();
+
+        for (FolderPreviewLayout.ItemPlacement placement : oldSnapshot.getItems()) {
+            PreviewItemDrawingParams params = createPlacementParams(placement);
+            setDrawable(params, placement.getItem());
+            unmatchedParams.add(params);
+        }
+
+        animateWorkspacePreviewParams(
+                unmatchedParams,
+                newSnapshot,
+                droppedItem,
+                true,
+                null);
+    }
+
+    private void animateWorkspacePreviewParams(
+            ArrayList<PreviewItemDrawingParams> unmatchedParams,
+            FolderPreviewLayout.Snapshot newSnapshot,
+            @Nullable ItemInfo hiddenItem,
+            boolean updateHiddenState,
+            @Nullable FolderPreviewLayout.Snapshot resizeStartSnapshot) {
+        ArrayList<PreviewItemDrawingParams> nextParams =
+                new ArrayList<>();
+
+        for (FolderPreviewLayout.ItemPlacement placement
+                : newSnapshot.getItems()) {
+            PreviewItemDrawingParams params =
+                    removeParamForItem(
+                            unmatchedParams, placement.getItem());
+
+            if (params == null) {
+                params = resizeStartSnapshot == null
+                        ? createPlacementParams(placement)
+                        : createCollapsedParams(resizeStartSnapshot);
+                params.scale = 0f;
+                setDrawable(params, placement.getItem());
+            }
+
+            if (updateHiddenState) {
+                params.hidden = placement.getItem() == hiddenItem;
+            }
+            nextParams.add(params);
+            animateToPlacement(params, placement, null);
+        }
+
+        for (PreviewItemDrawingParams params : unmatchedParams) {
+            float exitTransX = params.transX;
+            float exitTransY = params.transY;
+
+            if (resizeStartSnapshot != null) {
+                PreviewItemDrawingParams collapsed =
+                        createCollapsedParams(newSnapshot);
+                exitTransX = collapsed.transX;
+                exitTransY = collapsed.transY;
+            }
+
+            FolderPreviewItemAnim anim = new FolderPreviewItemAnim(
+                    this,
+                    params,
+                    0f,
+                    exitTransX,
+                    exitTransY,
+                    DROP_IN_ANIMATION_DURATION,
+                    () -> {
+                        mFirstPageParams.remove(params);
+                        onParamsChanged();
+                    });
+
+            params.anim = anim;
+            nextParams.add(0, params);
+            anim.start();
+        }
+
+        mFirstPageParams.clear();
+        mFirstPageParams.addAll(nextParams);
+        onParamsChanged();
+    }
+
+    private void animateWorkspacePreviewResize(
+            FolderPreviewLayout.Snapshot oldSnapshot,
+            FolderPreviewLayout.Snapshot newSnapshot) {
+        animateWorkspacePreviewParams(
+                new ArrayList<>(mFirstPageParams),
+                newSnapshot,
+                null,
+                false,
+                oldSnapshot);
+    }
+
+    private void applySnapshot(
+            FolderPreviewLayout.Snapshot snapshot,
+            ArrayList<PreviewItemDrawingParams> params) {
+        List<FolderPreviewLayout.ItemPlacement> placements = snapshot.getItems();
+
+        for (PreviewItemDrawingParams drawingParams : new ArrayList<>(params)) {
+            if (drawingParams.anim != null) {
+                drawingParams.anim.cancel();
+            }
+        }
+
+        matchParamCount(params, placements.size());
+
+        for (int i = 0; i < placements.size(); i++) {
+            FolderPreviewLayout.ItemPlacement placement = placements.get(i);
+            PreviewItemDrawingParams drawingParams = params.get(i);
+
+            setDrawable(drawingParams, placement.getItem());
+            applyPlacement(placement, drawingParams);
         }
     }
 
     void buildParamsForPage(int page, ArrayList<PreviewItemDrawingParams> params, boolean animate) {
+        if (mIcon.usesWorkspacePreviewLayout() && mIntrinsicIconSize > 0) {
+            FolderPreviewLayout.Snapshot snapshot = page == 0
+                    ? calculateWorkspacePreviewSnapshot()
+                    : calculateWorkspacePreviewSnapshotForPage(page);
+            applySnapshot(snapshot, params);
+            return;
+        }
+
         List<ItemInfo> items = mIcon.getPreviewItemsOnPage(page);
 
-        // We adjust the size of the list to match the number of items in the preview.
-        while (items.size() < params.size()) {
-            params.remove(params.size() - 1);
-        }
-        while (items.size() > params.size()) {
-            params.add(new PreviewItemDrawingParams(0, 0, 0));
-        }
+        matchParamCount(params, items.size());
 
         int numItemsInFirstPagePreview = page == 0 ? items.size() : MAX_NUM_ITEMS_IN_PREVIEW;
         for (int i = 0; i < params.size(); i++) {
@@ -319,12 +836,19 @@ public class PreviewItemManager {
         // out, and animate the first page preview items in.
         mShouldSlideInFirstPage = currentPage != 0;
         if (mShouldSlideInFirstPage) {
+            Rect backgroundBounds = new Rect();
+            mIcon.mBackground.getBounds(backgroundBounds);
+
+            float slideDirection =
+                    Utilities.isRtl(mIcon.getResources()) ? -1f : 1f;
+            mPageSlideDistance = backgroundBounds.width() * slideDirection;
+
             mCurrentPageItemsTransX = 0;
             buildParamsForPage(currentPage, mCurrentPageParams, false);
             onParamsChanged();
 
             ValueAnimator slideAnimator = ObjectAnimator
-                    .ofFloat(this, CURRENT_PAGE_ITEMS_TRANS_X, 0, ITEM_SLIDE_IN_OUT_DISTANCE_PX);
+                    .ofFloat(this, CURRENT_PAGE_ITEMS_TRANS_X, 0f, mPageSlideDistance);
             slideAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
@@ -391,6 +915,11 @@ public class PreviewItemManager {
         int numItems = newItems.size();
         final ArrayList<PreviewItemDrawingParams> params = mFirstPageParams;
         buildParamsForPage(0, params, false);
+
+        if (mIcon.usesWorkspacePreviewLayout()) {
+            onParamsChanged();
+            return;
+        }
 
         // New preview items for items that are moving in (except for the dropped item).
         List<ItemInfo> moveIn = new ArrayList<>();

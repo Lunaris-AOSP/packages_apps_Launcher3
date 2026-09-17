@@ -66,9 +66,13 @@ interface ShapeDelegate {
 
     fun drawShape(canvas: Canvas, offsetX: Float, offsetY: Float, radius: Float, paint: Paint)
 
+    fun drawShapeInBounds(canvas: Canvas, bounds: RectF, paint: Paint)
+
     fun addToPath(path: Path, offsetX: Float, offsetY: Float, radius: Float)
 
     fun addToPath(path: PathWrapper, offsetX: Float, offsetY: Float, radius: Float)
+
+    fun addToPathInBounds(path: Path, bounds: RectF)
 
     fun <T> createRevealAnimator(
         target: T,
@@ -77,6 +81,16 @@ interface ShapeDelegate {
         endRadius: Float,
         isReversed: Boolean,
     ): ValueAnimator where T : View, T : ClipPathView
+
+    fun <T> createRevealAnimator(
+        target: T,
+        startRect: Rect,
+        endRect: Rect,
+        startRadius: Float,
+        endRadius: Float,
+        isReversed: Boolean,
+    ): ValueAnimator where T : View, T : ClipPathView =
+        createRevealAnimator(target, startRect, endRect, endRadius, isReversed)
 
     class Circle : RoundedSquare(1f) {
 
@@ -114,6 +128,11 @@ interface ShapeDelegate {
             canvas.drawRoundRect(cx - radius, cy - radius, cx + radius, cy + radius, cr, cr, paint)
         }
 
+        override fun drawShapeInBounds(canvas: Canvas, bounds: RectF, paint: Paint) {
+            val cornerRadius = getCornerRadius(bounds)
+            canvas.drawRoundRect(bounds, cornerRadius, cornerRadius, paint)
+        }
+
         override fun addToPath(path: Path, offsetX: Float, offsetY: Float, radius: Float) {
             val cx = radius + offsetX
             val cy = radius + offsetY
@@ -138,14 +157,38 @@ interface ShapeDelegate {
             path.cornerRadius = cr
         }
 
+        override fun addToPathInBounds(path: Path, bounds: RectF) {
+            val cornerRadius = getCornerRadius(bounds)
+            path.addRoundRect(bounds, cornerRadius, cornerRadius, Path.Direction.CW)
+        }
+
+        private fun getCornerRadius(bounds: RectF): Float =
+            minOf(bounds.width(), bounds.height()) / 2f * radiusRatio
+
         override fun <T> createRevealAnimator(
             target: T,
             startRect: Rect,
             endRect: Rect,
             endRadius: Float,
             isReversed: Boolean,
+        ): ValueAnimator where T : View, T : ClipPathView =
+            createRevealAnimator(
+                target,
+                startRect,
+                endRect,
+                minOf(startRect.width(), startRect.height()) / 2f * radiusRatio,
+                endRadius,
+                isReversed,
+            )
+
+        override fun <T> createRevealAnimator(
+            target: T,
+            startRect: Rect,
+            endRect: Rect,
+            startRadius: Float,
+            endRadius: Float,
+            isReversed: Boolean,
         ): ValueAnimator where T : View, T : ClipPathView {
-            val startRadius = (startRect.width() / 2f) * radiusRatio
             val pathProvider = { progress: Float, path: PathWrapper ->
                 val radius = (1 - progress) * startRadius + progress * endRadius
                 val left = (1 - progress) * startRect.left + progress * endRect.left
@@ -199,6 +242,12 @@ interface ShapeDelegate {
             canvas.drawPath(tmpPath, paint)
         }
 
+        override fun drawShapeInBounds(canvas: Canvas, bounds: RectF, paint: Paint) {
+            tmpPath.reset()
+            transformPathToBounds(tmpPath, bounds, tmpMatrix)
+            canvas.drawPath(tmpPath, paint)
+        }
+
         override fun addToPath(path: Path, offsetX: Float, offsetY: Float, radius: Float) {
             addToPath(path, offsetX, offsetY, radius, Matrix())
         }
@@ -206,6 +255,10 @@ interface ShapeDelegate {
         override fun addToPath(path: PathWrapper, offsetX: Float, offsetY: Float, radius: Float) {
             addToPath(path.path, offsetX, offsetY, radius, Matrix())
             path.estimateBoundsFromPath()
+        }
+
+        override fun addToPathInBounds(path: Path, bounds: RectF) {
+            transformPathToBounds(path, bounds, Matrix())
         }
 
         private fun addToPath(
@@ -217,6 +270,12 @@ interface ShapeDelegate {
         ) {
             matrix.setScale(radius / 50, radius / 50)
             matrix.postTranslate(offsetX, offsetY)
+            basePath.transform(matrix, path)
+        }
+
+        private fun transformPathToBounds(path: Path, bounds: RectF, matrix: Matrix) {
+            matrix.setScale(bounds.width() / DEFAULT_PATH_SIZE, bounds.height() / DEFAULT_PATH_SIZE)
+            matrix.postTranslate(bounds.left, bounds.top)
             basePath.transform(matrix, path)
         }
 

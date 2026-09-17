@@ -81,21 +81,27 @@ constructor(
         }
 
         val folderIcon = folder.folderIcon
-        val folderNameVisibility: Int = folderIcon.folderName.visibility
+        val folderName = folderIcon.folderName
+        val folderNameVisibility = folderName.visibility
         val isIconVisible = folderIcon.iconVisible
 
-        folderIcon.setTextVisible(false)
-        folderIcon.setIconVisible(false)
+        try {
+            folderName.visibility = View.INVISIBLE
+            folderIcon.setIconVisible(false)
 
-        val dragLayer = activityContext.dragLayer
-        val canvas =
-            workspaceBlurRenderNode.beginRecording(dragLayer.getWidth(), dragLayer.getHeight())
-        dragLayer.draw(canvas)
-        workspaceBlurRenderNode.endRecording()
-        workspaceBlurRenderNode.setPosition(0, 0, dragLayer.getWidth(), dragLayer.getHeight())
-
-        folderIcon.folderName.visibility = folderNameVisibility
-        folderIcon.setIconVisible(isIconVisible)
+            val dragLayer = activityContext.dragLayer
+            val canvas =
+                workspaceBlurRenderNode.beginRecording(dragLayer.width, dragLayer.height)
+            try {
+                dragLayer.draw(canvas)
+            } finally {
+                workspaceBlurRenderNode.endRecording()
+            }
+            workspaceBlurRenderNode.setPosition(0, 0, dragLayer.width, dragLayer.height)
+        } finally {
+            folderName.visibility = folderNameVisibility
+            folderIcon.setIconVisible(isIconVisible)
+        }
     }
 
     override fun drawFolderBlur(canvas: Canvas, pathWrapper: PathWrapper?, view: View) {

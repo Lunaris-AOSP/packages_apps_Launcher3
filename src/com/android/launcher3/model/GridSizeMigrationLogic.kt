@@ -529,6 +529,11 @@ constructor(
         val iterator = itemsToPlace.mRemainingItemsToPlace.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
+            if (entry.itemType == Favorites.ITEM_TYPE_FOLDER) {
+                // Preserve resized folders when the user switches to a smaller workspace grid.
+                entry.minSpanX = entry.minSpanX.coerceIn(1, trgX)
+                entry.minSpanY = entry.minSpanY.coerceIn(1, trgY)
+            }
             if (entry.minSpanX > trgX || entry.minSpanY > trgY) {
                 iterator.remove()
                 continue

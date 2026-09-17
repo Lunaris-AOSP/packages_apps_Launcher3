@@ -591,6 +591,48 @@ class WorkspaceItemProcessorTest {
     }
 
     @Test
+    fun `Workspace folder restores its saved footprint`() {
+        val folder = loadFolderWithSpans(CONTAINER_DESKTOP, 2, 3)
+        assertThat(folder.spanX).isEqualTo(2)
+        assertThat(folder.spanY).isEqualTo(3)
+        assertThat(folder.minSpanX).isEqualTo(2)
+        assertThat(folder.minSpanY).isEqualTo(3)
+    }
+
+    @Test
+    fun `Hotseat folder stays one cell despite saved workspace spans`() {
+        val folder = loadFolderWithSpans(Favorites.CONTAINER_HOTSEAT, 3, 2)
+        assertThat(folder.spanX).isEqualTo(1)
+        assertThat(folder.spanY).isEqualTo(1)
+    }
+
+    @Test
+    fun `Invalid folder spans are normalized on load`() {
+        val folder = loadFolderWithSpans(CONTAINER_DESKTOP, 0, -2)
+        assertThat(folder.spanX).isEqualTo(1)
+        assertThat(folder.spanY).isEqualTo(1)
+        assertThat(folder.minSpanX).isEqualTo(1)
+        assertThat(folder.minSpanY).isEqualTo(1)
+    }
+
+    private fun loadFolderWithSpans(folderContainer: Int, savedSpanX: Int, savedSpanY: Int): FolderInfo {
+        val folder = FolderInfo()
+        mockCursor = mock<LoaderCursor>().apply {
+            user = mUserHandle
+            itemType = ITEM_TYPE_FOLDER
+            id = 1
+            container = folderContainer
+            whenever(spanX).thenReturn(savedSpanX)
+            whenever(spanY).thenReturn(savedSpanY)
+            whenever(findOrMakeFolder(eq(1), any())).thenReturn(folder)
+        }
+        itemProcessorUnderTest = createWorkspaceItemProcessorUnderTest()
+        itemProcessorUnderTest.processItem()
+        verify(mockCursor).checkAndAddItem(eq(folder), any(), anyOrNull())
+        return folder
+    }
+
+    @Test
     fun `When valid TYPE_REAL App Widget then add item`() {
 
         // Given
