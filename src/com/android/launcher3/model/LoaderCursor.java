@@ -122,6 +122,7 @@ public class LoaderCursor extends CursorWrapper {
     private final int mSpanYIndex;
     private final int mRankIndex;
     private final int mOptionsIndex;
+    private final int mIconSizeDpIndex;
     private final int mAppWidgetSourceIndex;
 
     @Nullable
@@ -175,6 +176,8 @@ public class LoaderCursor extends CursorWrapper {
         mSpanYIndex = getColumnIndexOrThrow(Favorites.SPANY);
         mRankIndex = getColumnIndexOrThrow(Favorites.RANK);
         mOptionsIndex = getColumnIndexOrThrow(Favorites.OPTIONS);
+        // Legacy schemas are also read while upgrading the database.
+        mIconSizeDpIndex = getColumnIndex(Favorites.ICON_SIZE_DP);
         mAppWidgetSourceIndex = getColumnIndexOrThrow(Favorites.APPWIDGET_SOURCE);
     }
 
@@ -295,6 +298,10 @@ public class LoaderCursor extends CursorWrapper {
      */
     public int getOptions() {
         return getInt(mOptionsIndex);
+    }
+
+    public int getIconSizeDp() {
+        return mIconSizeDpIndex < 0 ? 0 : Math.max(0, getInt(mIconSizeDpIndex));
     }
 
     /**

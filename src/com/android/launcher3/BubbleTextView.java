@@ -192,7 +192,10 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     private boolean mLayoutHorizontal;
     private final boolean mIsRtl;
-    private final int mIconSize;
+    private final int mDefaultIconSize;
+    private int mIconDrawablePaddingBeforeResize;
+    private boolean mCustomIconPaddingApplied;
+    private int mIconSize;
 
     @ViewDebug.ExportedProperty(category = "launcher")
     private boolean mHideBadge = false;
@@ -329,6 +332,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
         mIconSize = a.getDimensionPixelSize(R.styleable.BubbleTextView_iconSizeOverride,
                 defaultIconSize);
+        mDefaultIconSize = mIconSize;
         a.recycle();
 
         mRunningAppIndicatorHeight =
@@ -398,6 +402,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         mLineIndicatorWidth = 0;
 
         setTag(null);
+        updateIconSize(mDefaultIconSize);
         if (mIconLoadRequest != null) {
             mIconLoadRequest.cancel();
             mIconLoadRequest = null;
@@ -532,6 +537,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     @VisibleForTesting
     @UiThread
     public void applyIconAndLabel(ItemInfoWithIcon info) {
+        updateIconSize(getIconSizeForItem(info));
         FastBitmapDrawable oldIcon = mIcon;
         // Check if we can reuse icon so that any animation is preserved
         if (hasPendingAnimationCompleted(mIcon) || !mIcon.isSameInfo(info.bitmap)) {
@@ -1016,10 +1022,77 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         mCenterVertically = centerVertically;
     }
 
+    private boolean hasCustomWorkspaceIconSize(ItemInfoWithIcon info) {
+        return mDisplay == DISPLAY_WORKSPACE && !mLayoutHorizontal
+                && info instanceof WorkspaceItemInfo workspaceItem
+                && workspaceItem.container == LauncherSettings.Favorites.CONTAINER_DESKTOP
+                && workspaceItem.iconSizeDp > 0;
+    }
+
+    private int getIconSizeForItem(ItemInfoWithIcon info) {
+        return hasCustomWorkspaceIconSize(info)
+                ? Math.max(1, Math.round(((WorkspaceItemInfo) info).iconSizeDp
+                        * getResources().getDisplayMetrics().density))
+                : mDefaultIconSize;
+    }
+
+    /** Updates this view after an individual icon size changes, without reloading its bitmap. */
+    public void applyWorkspaceIconSize() {
+        if (getTag() instanceof ItemInfoWithIcon info) {
+            int size = getIconSizeForItem(info);
+            if (hasCustomWorkspaceIconSize(info) && getWidth() > 0 && getHeight() > 0) {
+                size = Math.min(size, getMaxCustomIconSizePx());
+            }
+            updateIconSize(size);
+        }
+        requestLayout();
+    }
+
+    private void updateIconSize(int size) {
+        if (mIconSize == size) return;
+        mIconSize = size;
+        applyCompoundDrawables(getIconOrTransparentColor());
+        requestLayout();
+        invalidate();
+    }
+
+    /** Largest icon that fits this cell while reserving room for its label. */
+    public int getMaxCustomIconSizePx() {
+        return getMaxCustomIconSizePx(getWidth(), getHeight());
+    }
+
+    private int getMaxCustomIconSizePx(int width, int height) {
+        Paint.FontMetrics fm = getPaint().getFontMetrics();
+        int labelHeight = mShouldShowLabel
+                ? (int) Math.ceil(fm.bottom - fm.top) * getCellSpecMaxTextLineCount()
+                        + Math.round(4 * getResources().getDisplayMetrics().density) : 0;
+        int margin = Math.round(8 * getResources().getDisplayMetrics().density);
+        return Math.max(1, Math.min(width - margin, height - labelHeight - margin));
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int height = MeasureSpec.getSize(heightMeasureSpec);
-        if ((mCenterVertically || !mShouldShowLabel) && !mLayoutHorizontal) {
+        boolean customSize = getTag() instanceof ItemInfoWithIcon info
+                && hasCustomWorkspaceIconSize(info);
+        if (customSize && !mCustomIconPaddingApplied) {
+            mIconDrawablePaddingBeforeResize = getCompoundDrawablePadding();
+            setCompoundDrawablePadding(Math.round(4 * getResources().getDisplayMetrics().density));
+            mCustomIconPaddingApplied = true;
+        } else if (!customSize && mCustomIconPaddingApplied) {
+            setCompoundDrawablePadding(mIconDrawablePaddingBeforeResize);
+            mCustomIconPaddingApplied = false;
+        }
+        if (getTag() instanceof ItemInfoWithIcon info) {
+            int size = getIconSizeForItem(info);
+            updateIconSize(customSize ? Math.min(size, getMaxCustomIconSizePx(
+                    MeasureSpec.getSize(widthMeasureSpec), height)) : size);
+        }
+        if (customSize) {
+            // Keep custom icons independent of the global icon padding as well as its size.
+            setPadding(0, getPaddingTop(), 0, 0);
+        }
+        if ((customSize || mCenterVertically || !mShouldShowLabel) && !mLayoutHorizontal) {
             Paint.FontMetrics fm = getPaint().getFontMetrics();
             int textHeight = mShouldShowLabel ? (int) Math.ceil(fm.bottom - fm.top) * getCellSpecMaxTextLineCount(): 0;
             int cellHeightPx = mIconSize + getCompoundDrawablePadding() + textHeight;

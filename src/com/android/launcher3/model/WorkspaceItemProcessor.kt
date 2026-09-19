@@ -389,6 +389,7 @@ class WorkspaceItemProcessor(
             c.applyCommonProperties(info)
             info.intent = intent
             info.rank = c.rank
+            info.iconSizeDp = c.iconSizeDp
             info.spanX = 1
             info.spanY = 1
             info.runtimeStatusFlags = info.runtimeStatusFlags or disabledState
