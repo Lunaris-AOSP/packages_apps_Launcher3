@@ -139,6 +139,22 @@ public class ShortcutAndWidgetContainer extends ViewGroup implements FolderIcon.
         } else {
             lp.setup(mCellWidth, mCellHeight, invertLayoutHorizontally(), mCountX, mCountY,
                     mBorderSpace);
+            expandCustomIconLayout(child, lp);
+        }
+    }
+
+    private void expandCustomIconLayout(View child, CellLayoutLayoutParams lp) {
+        if (mContainerType == WORKSPACE && child instanceof BubbleTextView icon) {
+            int cellWidth = lp.width;
+            int cellHeight = lp.height;
+            icon.expandCustomIconLayout(lp);
+            if (lp.width != cellWidth || lp.height != cellHeight) {
+                // Keep enlarged icons at the edge of the grid within the workspace.
+                int width = mCountX * mCellWidth + (mCountX - 1) * mBorderSpace.x;
+                int height = mCountY * mCellHeight + (mCountY - 1) * mBorderSpace.y;
+                lp.x = Math.max(0, Math.min(lp.x, width - lp.width));
+                lp.y = Math.max(0, Math.min(lp.y, height - lp.height));
+            }
         }
     }
 
@@ -188,6 +204,7 @@ public class ShortcutAndWidgetContainer extends ViewGroup implements FolderIcon.
                             ? dp.mWorkspaceProfile.getWorkspaceCellPaddingXPx()
                             : (int) (dp.mWorkspaceProfile.getEdgeMarginPx() / 2f);
             child.setPadding(cellPaddingX, cellPaddingY, cellPaddingX, 0);
+            expandCustomIconLayout(child, lp);
         }
         int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(lp.width, MeasureSpec.EXACTLY);
         int childheightMeasureSpec = MeasureSpec.makeMeasureSpec(lp.height, MeasureSpec.EXACTLY);

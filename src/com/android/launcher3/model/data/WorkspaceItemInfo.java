@@ -106,6 +106,9 @@ public class WorkspaceItemInfo extends ItemInfoWithIcon {
 
     public int options;
 
+    /** Absolute icon size in dp on the desktop, or zero to use the global size setting. */
+    public int iconSizeDp;
+
     @Nullable
     private ShortcutInfo mShortcutInfo = null;
 
@@ -118,6 +121,7 @@ public class WorkspaceItemInfo extends ItemInfoWithIcon {
         title = info.title;
         intent = new Intent(info.intent);
         status = info.status;
+        iconSizeDp = info.iconSizeDp;
         personKeys = info.personKeys.clone();
     }
 
@@ -148,6 +152,7 @@ public class WorkspaceItemInfo extends ItemInfoWithIcon {
         writer.put(Favorites.TITLE, title)
                 .put(Favorites.INTENT, getIntent())
                 .put(Favorites.OPTIONS, options)
+                .put(Favorites.ICON_SIZE_DP, iconSizeDp)
                 .put(Favorites.RESTORED, status);
 
         if (!getMatchingLookupFlag().useLowRes()) {

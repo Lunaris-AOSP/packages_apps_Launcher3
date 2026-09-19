@@ -131,24 +131,26 @@ object LauncherDbUtils {
         context: Context,
     ) {
         val userSerial = UserCache.INSTANCE[context].getSerialNumberForUser(Process.myUserHandle())
+        // Older backups do not contain newly added columns. Leave their default values intact.
+        val sourceColumns = fromDb.query(fromTable, null, null, null, null, null, null).use {
+            it.columnNames.toSet()
+        }
+        val columns = LauncherSettings.Favorites.getColumns(userSerial)
+            .split(", ").filter { it in sourceColumns }.joinToString(", ")
         dropTable(toDb, toTable)
         LauncherSettings.Favorites.addTableToDb(toDb, userSerial, false, toTable)
         if (fromDb != toDb) {
             toDb.run {
                 execSQL("ATTACH DATABASE '${fromDb.path}' AS from_db")
                 execSQL(
-                    "INSERT INTO $toTable SELECT ${LauncherSettings.Favorites.getColumns(userSerial)} FROM from_db.$fromTable"
+                    "INSERT INTO $toTable ($columns) SELECT $columns FROM from_db.$fromTable"
                 )
                 execSQL("DETACH DATABASE 'from_db'")
             }
         } else {
             toDb.run {
                 execSQL(
-                    "INSERT INTO $toTable SELECT ${
-                        LauncherSettings.Favorites.getColumns(
-                            userSerial
-                        )
-                    } FROM $fromTable"
+                    "INSERT INTO $toTable ($columns) SELECT $columns FROM $fromTable"
                 )
             }
         }

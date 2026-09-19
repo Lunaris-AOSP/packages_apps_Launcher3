@@ -583,4 +583,9 @@
     <!-- Accessibility announcements for workspace folder resizing. -->
     <string name="folder_resized">Folder resized to width %1$d height %2$d</string>
     <string name="folder_frame_name">Resize folder %1$s</string>
+    <string name="icon_frame_name">Resize icon %1$s</string>
+    <string name="icon_resized">Icon resized</string>
+    <string name="increase_icon_size">Increase icon size</string>
+    <string name="decrease_icon_size">Decrease icon size</string>
+    <string name="reset_icon_size">Reset icon size</string>
 </resources>
