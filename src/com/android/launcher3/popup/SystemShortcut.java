@@ -31,11 +31,13 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.text.InputFilter;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.InflateException;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -755,6 +757,25 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
                 return null;
             };
 
+    public static final Factory<Launcher> RESET_ICON_SIZE = (launcher, itemInfo, originalView) -> {
+        if (!(itemInfo instanceof WorkspaceItemInfo workspaceItem)
+                || workspaceItem.container != LauncherSettings.Favorites.CONTAINER_DESKTOP
+                || workspaceItem.iconSizeDp == 0
+                || !(originalView instanceof BubbleTextView icon)) {
+            return null;
+        }
+        return new SystemShortcut<Launcher>(R.drawable.ic_custom_seekbar_reset,
+                R.string.reset_icon_size, launcher, itemInfo, originalView, false) {
+            @Override
+            public void onClick(View view) {
+                AbstractFloatingView.closeAllOpenViews(launcher);
+                workspaceItem.iconSizeDp = 0;
+                icon.applyWorkspaceIconSize();
+                launcher.getModelWriter().updateItemInDatabase(workspaceItem);
+            }
+        };
+    };
+
     public static class RenameApp<T extends ActivityContext> extends SystemShortcut<T> {
         private static final int MAX_APP_NAME_LENGTH = 32;
 
@@ -776,35 +797,21 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
             AlertDialog.Builder builder = new AlertDialog.Builder(context);
             builder.setTitle(R.string.rename_app_title);
 
-            final EditText input = new EditText(context);
+            View content = View.inflate(context, R.layout.dialog_rename_app, null);
+            final EditText input = content.findViewById(R.id.app_name_input);
             input.setText(mItemInfo.title);
             input.setSelection(0, mItemInfo.title != null ? mItemInfo.title.length() : 0);
             input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_APP_NAME_LENGTH)});
-            input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+            final CheckBox hideName = content.findViewById(R.id.hide_app_name);
+            hideName.setChecked(CustomAppNameStore.isNameHidden(context, mItemInfo));
 
-            builder.setView(input);
-
-            builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                String newName = input.getText().toString().trim();
-                if (validateAndUpdateName(newName, context)) {
-                    Toast.makeText(context,
-                            R.string.app_renamed_successfully,
-                            Toast.LENGTH_SHORT).show();
-                } else if (newName.isEmpty()) {
-                    Toast.makeText(context,
-                            R.string.rename_app_empty_error,
-                            Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(context,
-                            context.getString(R.string.rename_app_length_error,
-                                    MAX_APP_NAME_LENGTH),
-                            Toast.LENGTH_SHORT).show();
-                }
-            });
+            builder.setView(content);
+            builder.setPositiveButton(android.R.string.ok, null);
 
             builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> dialog.cancel());
 
-            if (CustomAppNameStore.getCustomName((Context) mTarget, mItemInfo) != null) {
+            if (CustomAppNameStore.getCustomName(context, mItemInfo) != null
+                    || hideName.isChecked()) {
                 builder.setNeutralButton(R.string.rename_app_reset, (dialog2, which2) -> {
                     resetToOriginalName(context);
                     Toast.makeText(context,
@@ -815,6 +822,19 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
 
             AlertDialog dialog = builder.create();
             dialog.show();
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+                String newName = input.getText().toString().trim();
+                if (validateAndUpdateName(newName, hideName.isChecked(), context)) {
+                    Toast.makeText(context, R.string.rename_app_updated,
+                            Toast.LENGTH_SHORT).show();
+                    dialog.dismiss();
+                } else {
+                    input.setError(newName.isEmpty()
+                            ? context.getString(R.string.rename_app_empty_error)
+                            : context.getString(R.string.rename_app_length_error,
+                                    MAX_APP_NAME_LENGTH));
+                }
+            });
 
             input.requestFocus();
             InputMethodManager imm = (InputMethodManager)
@@ -824,22 +844,24 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
             }
         }
 
-        private boolean validateAndUpdateName(String newName, Context context) {
+        private boolean validateAndUpdateName(String newName, boolean hideName, Context context) {
             if (newName.isEmpty()) {
                 return false;
             }
 
-            if (newName.length() > MAX_APP_NAME_LENGTH) {
+            boolean nameChanged = !TextUtils.equals(newName, mItemInfo.title);
+            if (nameChanged && newName.length() > MAX_APP_NAME_LENGTH) {
                 return false;
             }
 
-            mItemInfo.title = newName;
-
-            CustomAppNameStore.saveCustomName(context, mItemInfo, newName);
-            if (mItemInfo instanceof WorkspaceItemInfo) {
-                WorkspaceItemInfo wsInfo = (WorkspaceItemInfo) mItemInfo;
-                LauncherAppState.getInstance(context).getModel().getWriter(false, null, null)
-                        .updateItemInDatabase(wsInfo);
+            CustomAppNameStore.setNameHidden(context, mItemInfo, hideName);
+            if (nameChanged) {
+                mItemInfo.title = newName;
+                CustomAppNameStore.saveCustomName(context, mItemInfo, newName);
+                if (mItemInfo instanceof WorkspaceItemInfo wsInfo) {
+                    LauncherAppState.getInstance(context).getModel().getWriter(false, null, null)
+                            .updateItemInDatabase(wsInfo);
+                }
             }
 
             forceUiUpdate(context);
@@ -849,6 +871,7 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
 
         private void resetToOriginalName(Context context) {
             CustomAppNameStore.saveCustomName(context, mItemInfo, null);
+            CustomAppNameStore.setNameHidden(context, mItemInfo, false);
             CharSequence systemTitle = getSystemTitle(context, mItemInfo);
             if (systemTitle != null) {
                 mItemInfo.title = systemTitle;

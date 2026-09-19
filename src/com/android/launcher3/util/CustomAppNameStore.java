@@ -17,6 +17,7 @@ import com.android.launcher3.model.data.ItemInfo;
 public final class CustomAppNameStore {
 
     private static final String CUSTOM_NAMES_PREFS = "custom_app_names";
+    private static final String HIDDEN_NAMES_PREFS = "hidden_app_names";
 
     private CustomAppNameStore() { }
 
@@ -51,5 +52,26 @@ public final class CustomAppNameStore {
         }
         return context.getSharedPreferences(CUSTOM_NAMES_PREFS, Context.MODE_PRIVATE)
                 .getString(key, null);
+    }
+
+    public static void setNameHidden(Context context, ItemInfo info, boolean hidden) {
+        String key = customNameKey(info);
+        if (key == null) {
+            return;
+        }
+        SharedPreferences.Editor editor = context.getSharedPreferences(HIDDEN_NAMES_PREFS,
+                Context.MODE_PRIVATE).edit();
+        if (hidden) {
+            editor.putBoolean(key, true);
+        } else {
+            editor.remove(key);
+        }
+        editor.apply();
+    }
+
+    public static boolean isNameHidden(Context context, ItemInfo info) {
+        String key = customNameKey(info);
+        return key != null && context.getSharedPreferences(HIDDEN_NAMES_PREFS, Context.MODE_PRIVATE)
+                .getBoolean(key, false);
     }
 }

@@ -320,6 +320,8 @@ public class LauncherSettings {
          */
         public static final String OPTIONS = "options";
 
+        public static final String ICON_SIZE_DP = "iconSizeDp";
+
         /**
          * Stores the source container that the widget was added from.
          * <p>Type: INTEGER</p>
@@ -359,6 +361,7 @@ public class LauncherSettings {
             columnsToTypes.put(RANK, "INTEGER NOT NULL DEFAULT 0");
             columnsToTypes.put(OPTIONS, "INTEGER NOT NULL DEFAULT 0");
             columnsToTypes.put(APPWIDGET_SOURCE, "INTEGER NOT NULL DEFAULT -1");
+            columnsToTypes.put(ICON_SIZE_DP, "INTEGER NOT NULL DEFAULT 0");
             return columnsToTypes;
         }
 

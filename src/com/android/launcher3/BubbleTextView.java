@@ -81,6 +81,7 @@ import androidx.annotation.VisibleForTesting;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 
 import com.android.launcher3.accessibility.BaseAccessibilityDelegate;
+import com.android.launcher3.celllayout.CellLayoutLayoutParams;
 import com.android.launcher3.dot.DotInfo;
 import com.android.launcher3.dot.NotificationBadgeCounter;
 import com.android.launcher3.dragndrop.DragOptions.PreDragCondition;
@@ -105,6 +106,7 @@ import com.android.launcher3.popup.Popup;
 import com.android.launcher3.popup.PopupController;
 import com.android.launcher3.search.StringMatcherUtility;
 import com.android.launcher3.util.CancellableTask;
+import com.android.launcher3.util.CustomAppNameStore;
 import com.android.launcher3.util.IntArray;
 import com.android.launcher3.util.MultiTranslateDelegate;
 import com.android.launcher3.util.SafeCloseable;
@@ -139,6 +141,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     private static final float MIN_LETTER_SPACING = -0.05f;
     private static final int MAX_SEARCH_LOOP_COUNT = 20;
+    private static final int MAX_CUSTOM_ICON_SIZE_DP = 160;
     private static final Character NEW_LINE = '\n';
     private static final String EMPTY = "";
     private static final StringMatcherUtility.StringMatcher MATCHER =
@@ -192,7 +195,10 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     private boolean mLayoutHorizontal;
     private final boolean mIsRtl;
-    private final int mIconSize;
+    private final int mDefaultIconSize;
+    private int mIconDrawablePaddingBeforeResize;
+    private boolean mCustomIconPaddingApplied;
+    private int mIconSize;
 
     @ViewDebug.ExportedProperty(category = "launcher")
     private boolean mHideBadge = false;
@@ -256,6 +262,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     private boolean mDisableRelayout = false;
 
     private boolean mShouldShowLabel;
+    private boolean mIsAppNameHidden;
     private boolean mThemeAllAppsIcons;
 
     private CancellableTask mIconLoadRequest;
@@ -329,6 +336,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
         mIconSize = a.getDimensionPixelSize(R.styleable.BubbleTextView_iconSizeOverride,
                 defaultIconSize);
+        mDefaultIconSize = mIconSize;
         a.recycle();
 
         mRunningAppIndicatorHeight =
@@ -398,6 +406,8 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         mLineIndicatorWidth = 0;
 
         setTag(null);
+        mIsAppNameHidden = false;
+        updateIconSize(mDefaultIconSize);
         if (mIconLoadRequest != null) {
             mIconLoadRequest.cancel();
             mIconLoadRequest = null;
@@ -483,6 +493,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     @UiThread
     public void applyIconAndLabel(Drawable icon, CharSequence title, CharSequence description) {
         applyCompoundDrawables(icon);
+        mIsAppNameHidden = false;
         applyLabel(title, description, false, false);
     }
 
@@ -532,6 +543,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     @VisibleForTesting
     @UiThread
     public void applyIconAndLabel(ItemInfoWithIcon info) {
+        updateIconSize(getIconSizeForItem(info));
         FastBitmapDrawable oldIcon = mIcon;
         // Check if we can reuse icon so that any animation is preserved
         if (hasPendingAnimationCompleted(mIcon) || !mIcon.isSameInfo(info.bitmap)) {
@@ -647,6 +659,10 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     @UiThread
     public void applyLabel(ItemInfo info) {
+        mIsAppNameHidden = info.itemType == LauncherSettings.Favorites.ITEM_TYPE_APPLICATION
+                && (mDisplay == DISPLAY_WORKSPACE || mDisplay == DISPLAY_FOLDER
+                        || displayIsAppDrawer())
+                && CustomAppNameStore.isNameHidden(getContext(), info);
         applyLabel(info.title, info.contentDescription, Flags.useNewIconForArchivedApps()
                 && info instanceof ItemInfoWithIcon infoWithIcon
                 && infoWithIcon.isInactiveArchive(), info.isDisabled());
@@ -657,12 +673,13 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
      */
     @UiThread
     public void applyLabel(CharSequence label) {
+        mIsAppNameHidden = false;
         applyLabel(label, null, false, false);
     }
 
     private void applyLabel(@Nullable CharSequence label, @Nullable CharSequence contentDescription,
             boolean isTextWithArchivingIcon, boolean isItemDisabled) {
-        if (mShouldShowLabel && label != null) {
+        if (shouldShowLabel() && label != null) {
             mLastOriginalText = label;
             mLastModifiedText = mLastOriginalText;
             mBreakPointsIntArray = StringMatcherUtility.getListOfBreakpoints(label, MATCHER);
@@ -671,6 +688,10 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
             } else {
                 setText(label);
             }
+        } else {
+            mLastOriginalText = null;
+            mLastModifiedText = null;
+            setText(null);
         }
         if (contentDescription != null) {
             setContentDescription(isItemDisabled
@@ -1016,12 +1037,87 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         mCenterVertically = centerVertically;
     }
 
+    private boolean hasCustomWorkspaceIconSize(ItemInfoWithIcon info) {
+        return mDisplay == DISPLAY_WORKSPACE && !mLayoutHorizontal
+                && info instanceof WorkspaceItemInfo workspaceItem
+                && workspaceItem.container == LauncherSettings.Favorites.CONTAINER_DESKTOP
+                && workspaceItem.iconSizeDp > 0;
+    }
+
+    private int getIconSizeForItem(ItemInfoWithIcon info) {
+        return hasCustomWorkspaceIconSize(info)
+                ? Math.min(getMaxCustomIconSizePx(),
+                        Math.max(1, Math.round(((WorkspaceItemInfo) info).iconSizeDp
+                                * getResources().getDisplayMetrics().density)))
+                : mDefaultIconSize;
+    }
+
+    public void applyWorkspaceIconSize() {
+        if (getTag() instanceof ItemInfoWithIcon info) {
+            updateIconSize(getIconSizeForItem(info));
+        }
+        requestLayout();
+    }
+
+    private void updateIconSize(int size) {
+        if (mIconSize == size) return;
+        mIconSize = size;
+        applyCompoundDrawables(getIconOrTransparentColor());
+        requestLayout();
+        invalidate();
+    }
+
+    public int getMaxCustomIconSizePx() {
+        return Math.max(1, Math.round(
+                MAX_CUSTOM_ICON_SIZE_DP * getResources().getDisplayMetrics().density));
+    }
+
+    private int getCustomIconLabelHeight() {
+        if (!shouldShowLabel()) return 0;
+        Paint.FontMetrics fm = getPaint().getFontMetrics();
+        return (int) Math.ceil(fm.bottom - fm.top) * getCellSpecMaxTextLineCount()
+                + Math.round(4 * getResources().getDisplayMetrics().density);
+    }
+
+    void expandCustomIconLayout(CellLayoutLayoutParams lp) {
+        if (!lp.isLockedToGrid || !(getTag() instanceof ItemInfoWithIcon info)
+                || !hasCustomWorkspaceIconSize(info)) return;
+        int size = getIconSizeForItem(info);
+        int margin = Math.round(8 * getResources().getDisplayMetrics().density);
+        int width = Math.max(lp.width, size + margin);
+        int height = Math.max(lp.height, size + getCustomIconLabelHeight() + margin);
+        lp.x -= (width - lp.width) / 2;
+        lp.y -= (height - lp.height) / 2;
+        lp.width = width;
+        lp.height = height;
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int height = MeasureSpec.getSize(heightMeasureSpec);
-        if ((mCenterVertically || !mShouldShowLabel) && !mLayoutHorizontal) {
+        boolean customSize = getTag() instanceof ItemInfoWithIcon info
+                && hasCustomWorkspaceIconSize(info);
+        if (customSize && !mCustomIconPaddingApplied) {
+            mIconDrawablePaddingBeforeResize = getCompoundDrawablePadding();
+            mCustomIconPaddingApplied = true;
+        } else if (!customSize && mCustomIconPaddingApplied) {
+            setCompoundDrawablePadding(mIconDrawablePaddingBeforeResize);
+            mCustomIconPaddingApplied = false;
+        }
+        if (customSize) {
+            setCompoundDrawablePadding(shouldShowLabel()
+                    ? Math.round(4 * getResources().getDisplayMetrics().density) : 0);
+        }
+        if (getTag() instanceof ItemInfoWithIcon info) {
+            updateIconSize(getIconSizeForItem(info));
+        }
+        if (customSize) {
+            setPadding(0, getPaddingTop(), 0, 0);
+        }
+        if ((customSize || mCenterVertically || !shouldShowLabel()) && !mLayoutHorizontal) {
             Paint.FontMetrics fm = getPaint().getFontMetrics();
-            int textHeight = mShouldShowLabel ? (int) Math.ceil(fm.bottom - fm.top) * getCellSpecMaxTextLineCount(): 0;
+            int textHeight = shouldShowLabel()
+                    ? (int) Math.ceil(fm.bottom - fm.top) * getCellSpecMaxTextLineCount() : 0;
             int cellHeightPx = mIconSize + getCompoundDrawablePadding() + textHeight;
             setPadding(getPaddingLeft(), (height - cellHeightPx) / 2, getPaddingRight(),
                     getPaddingBottom());
@@ -1134,15 +1230,16 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     }
 
     public boolean shouldShowLabel() {
-        return mShouldShowLabel;
+        return mShouldShowLabel && !mIsAppNameHidden;
     }
 
     public boolean shouldTextBeVisible() {
         // Text should be visible everywhere but the hotseat.
         Object tag = getParent() instanceof FolderIcon ? ((View) getParent()).getTag() : getTag();
         ItemInfo info = tag instanceof ItemInfo ? (ItemInfo) tag : null;
-        return info == null || (info.container != LauncherSettings.Favorites.CONTAINER_HOTSEAT
-                && info.container != LauncherSettings.Favorites.CONTAINER_HOTSEAT_PREDICTION);
+        return shouldShowLabel() && (info == null
+                || (info.container != LauncherSettings.Favorites.CONTAINER_HOTSEAT
+                        && info.container != LauncherSettings.Favorites.CONTAINER_HOTSEAT_PREDICTION));
     }
 
     /**
