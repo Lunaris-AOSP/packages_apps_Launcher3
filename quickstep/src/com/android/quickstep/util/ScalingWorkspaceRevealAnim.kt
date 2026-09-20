@@ -261,6 +261,12 @@ class ScalingWorkspaceRevealAnim(
         hotseat.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         animation.addListener(
             object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    val animators = animation as AnimatorSet
+                    Animations.setOngoingAnimation(workspace, animators)
+                    Animations.setOngoingAnimation(hotseat, animators)
+                }
+
                 override fun onAnimationCancel(animation: Animator) {
                     super.onAnimationCancel(animation)
                     Log.d(TAG, "onAnimationCancel")
@@ -314,13 +320,8 @@ class ScalingWorkspaceRevealAnim(
 
     fun start() {
         val animators = getAnimators()
-        // Make sure to cache the current animation, so it can be properly interrupted.
-        // TODO(b/367591368): ideally these animations would be refactored to be controlled
-        //  centrally so each instances doesn't need to care about this coordination.
         launcher.stateManager.setCurrentAnimation(animators, LauncherState.NORMAL)
         animators.start()
-        Animations.setOngoingAnimation(launcher.workspace, animators)
-        Animations.setOngoingAnimation(launcher.hotseat, animators)
     }
 
     private fun isAppLaunchBlurEnabled(): Boolean {

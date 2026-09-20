@@ -129,6 +129,7 @@ import androidx.annotation.RequiresApi;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import com.android.app.animation.Animations;
 import com.android.app.viewcapture.ViewCaptureFactory;
 import com.android.launcher3.AbstractFloatingView;
 import com.android.launcher3.BuildConfig;
@@ -791,6 +792,15 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         super.onDestroy();
         if (mViewCapture != null) mViewCapture.close();
         removeBackAnimationCallback(mSplitSelectStateController.getSplitBackHandler());
+    }
+
+    @Override
+    public void onStateSetStart(LauncherState state) {
+        if (state == ALL_APPS) {
+            Animations.Companion.cancelOngoingAnimation(getWorkspace());
+            Animations.Companion.cancelOngoingAnimation(getHotseat());
+        }
+        super.onStateSetStart(state);
     }
 
     @Override
