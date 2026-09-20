@@ -1,16 +1,16 @@
-/*
- * SPDX-FileCopyrightText: DerpFest AOSP
- * SPDX-License-Identifier: Apache-2.0
- */
 package com.android.launcher3.popup
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.LayoutTransition
+import android.animation.ValueAnimator
 import android.app.WallpaperManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Outline
-import android.graphics.Path
-import android.graphics.RectF
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.Gravity
@@ -22,7 +22,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
+import com.android.app.animation.Interpolators
 import com.android.launcher3.R
+import com.android.launcher3.Utilities
 import com.android.launcher3.data.wallpaper.Wallpaper
 import com.android.launcher3.data.wallpaper.service.WallpaperService
 import com.android.launcher3.util.Themes
@@ -41,6 +43,9 @@ import kotlinx.coroutines.withContext
  * Wallpaper history previews in the style of Android 17 QPR1 Beta 6: selected item is a landscape
  * rounded rectangle; others are upright round pills. Chips scale up to fill the menu width so the
  * row reaches the right edge.
+ *
+ * Selecting a chip morphs the row, then reveals the new wallpaper with Pixel's circular wipe from
+ * the tapped thumbnail.
  */
 class WallpaperCarouselView
 @JvmOverloads
@@ -49,6 +54,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 
     private var currentItemIndex = 0
     private var wallpapers: List<Wallpaper> = emptyList()
+    private var chipSizes = ChipSizes(0, 0)
 
     private val baseSelectedWidth =
         resources.getDimensionPixelSize(R.dimen.wallpaper_carousel_selected_width)
@@ -65,7 +71,18 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
     private val loadingView = ProgressBar(context).apply { isIndeterminate = true }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // Survives popup dismiss so the wallpaper apply and reveal can finish.
+    private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var applyJob: Job? = null
+    private var selectAnimator: ValueAnimator? = null
+    private var revealView: WallpaperRevealView? = null
+    private var selectionBusy = false
+    private val chipTransition =
+        LayoutTransition().apply {
+            enableTransitionType(LayoutTransition.CHANGING)
+            setDuration(resources.getInteger(android.R.integer.config_shortAnimTime).toLong())
+            setInterpolator(LayoutTransition.CHANGING, WallpaperRevealView.WIPE_INTERPOLATOR)
+        }
 
     init {
         orientation = HORIZONTAL
@@ -73,10 +90,6 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
         clipToPadding = true
         clipChildren = true
         addView(loadingView)
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
         observeWallpapers()
     }
 
@@ -101,26 +114,29 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
     }
 
     private fun displayWallpapers(wallpapers: List<Wallpaper>) {
+        selectAnimator?.cancel()
+        layoutTransition = null
         removeAllViews()
         this.wallpapers = wallpapers
 
         val appliedIndex = wallpapers.indexOfFirst { it.rank == 0 }.let { if (it >= 0) it else 0 }
         currentItemIndex = appliedIndex
 
-        val sizes = resolveChipSizes(wallpapers.size)
+        chipSizes = resolveChipSizes(wallpapers.size)
         wallpapers.forEachIndexed { index, wallpaper ->
             val chip =
                 createChip(
                     index,
                     wallpaper,
                     selected = index == currentItemIndex,
-                    selectedWidth = sizes.selectedWidth,
-                    pillWidth = sizes.pillWidth,
+                    selectedWidth = chipSizes.selectedWidth,
+                    pillWidth = chipSizes.pillWidth,
                 )
             addView(chip)
             loadWallpaperImage(wallpaper, chip.getChildAt(0) as ImageView)
         }
         loadingView.visibility = GONE
+        layoutTransition = chipTransition
     }
 
     /**
@@ -179,19 +195,19 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
                     LayoutParams(width, height).apply {
                         marginStart = if (index > 0) itemGap else 0
                     }
+                tag = wallpaper
             }
 
         val image =
             ImageView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(width, height)
+                layoutParams =
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                    )
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 clipToOutline = true
-                outlineProvider =
-                    if (selected) {
-                        roundedRectOutline(selectedRadius)
-                    } else {
-                        roundedRectOutline(width / 2f)
-                    }
+                outlineProvider = ChipOutline(if (selected) selectedRadius else width / 2f)
                 setImageDrawable(
                     ContextCompat.getDrawable(context, R.drawable.ic_deepshortcut_placeholder)
                 )
@@ -203,32 +219,176 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
         }
 
         chip.setOnClickListener {
-            if (index == currentItemIndex) return@setOnClickListener
-            currentItemIndex = index
-            setWallpaper(wallpaper, chip)
+            if (index == currentItemIndex || selectionBusy) return@setOnClickListener
+            selectWallpaper(index, wallpaper, chip)
         }
         return chip
     }
 
-    private fun roundedRectOutline(cornerRadius: Float): ViewOutlineProvider {
-        return object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                val radius = cornerRadius.coerceAtMost(minOf(view.width, view.height) / 2f)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    val path =
-                        Path().apply {
-                            addRoundRect(
-                                RectF(0f, 0f, view.width.toFloat(), view.height.toFloat()),
-                                radius,
-                                radius,
-                                Path.Direction.CW,
-                            )
-                        }
-                    outline.setPath(path)
+    private fun selectWallpaper(index: Int, wallpaper: Wallpaper, chip: FrameLayout) {
+        val previousIndex = currentItemIndex
+        currentItemIndex = index
+        selectionBusy = true
+
+        val previousChip = getChildAt(previousIndex) as? FrameLayout
+        val previousFrame = previousChip?.let { previewBitmap(it) }
+        val nextFrame = previewBitmap(chip)
+        animateSelection(previousIndex, index)
+        applyJob?.cancel()
+        startReveal(chip, wallpaper, previousFrame, nextFrame, previousIndex, index)
+        applyWallpaper(wallpaper, previousIndex, index, revealView)
+    }
+
+    private fun previewBitmap(chip: FrameLayout): Bitmap? {
+        val image = chip.getChildAt(0) as? ImageView
+        return (image?.drawable as? BitmapDrawable)?.bitmap?.takeIf { !it.isRecycled }
+    }
+
+    private fun startReveal(
+        chip: FrameLayout,
+        wallpaper: Wallpaper,
+        previousFrame: Bitmap?,
+        nextFrame: Bitmap?,
+        previousIndex: Int,
+        newIndex: Int,
+    ) {
+        revealView?.cancelAndRemove()
+        if (previousFrame == null || nextFrame == null) {
+            revealView = null
+            return
+        }
+        val reveal = WallpaperRevealView(context)
+        revealView = reveal
+        reveal.play(chip, previousFrame, nextFrame) { success ->
+            if (revealView === reveal) {
+                revealView = null
+            }
+            selectionBusy = false
+            if (!success && isAttachedToWindow && currentItemIndex == newIndex) {
+                currentItemIndex = previousIndex
+                animateSelection(newIndex, previousIndex)
+            }
+        }
+    }
+
+    private fun applyWallpaper(
+        wallpaper: Wallpaper,
+        previousIndex: Int,
+        newIndex: Int,
+        reveal: WallpaperRevealView?,
+    ) {
+        applyJob?.cancel()
+        applyJob =
+            persistScope.launch {
+                val success =
+                    WallpaperService.INSTANCE.get(context.applicationContext)
+                        .applyWallpaper(wallpaper, WallpaperManager.getInstance(context))
+                if (reveal != null) {
+                    reveal.onApplyFinished(success)
                 } else {
-                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+                    selectionBusy = false
+                    if (!success && isAttachedToWindow && currentItemIndex == newIndex) {
+                        currentItemIndex = previousIndex
+                        animateSelection(newIndex, previousIndex)
+                    }
                 }
             }
+    }
+
+    private fun animateSelection(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex || childCount == 0) return
+        chipSizes = resolveChipSizes(childCount)
+
+        val fromWidths = IntArray(childCount) { getChildAt(it).layoutParams.width }
+        val toWidths =
+            IntArray(childCount) { index ->
+                if (index == toIndex) chipSizes.selectedWidth else chipSizes.pillWidth
+            }
+        val fromRadii =
+            FloatArray(childCount) { index ->
+                chipOutline(getChildAt(index) as FrameLayout)?.radius
+                    ?: if (index == fromIndex) selectedRadius else fromWidths[index] / 2f
+            }
+        val toRadii =
+            FloatArray(childCount) { index ->
+                if (index == toIndex) selectedRadius else toWidths[index] / 2f
+            }
+
+        animateCheck(fromIndex, toIndex)
+
+        for (i in 0 until childCount) {
+            (getChildAt(i) as FrameLayout).layoutParams.width = toWidths[i]
+        }
+        requestLayout()
+
+        selectAnimator?.cancel()
+        selectAnimator =
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = resources.getInteger(android.R.integer.config_shortAnimTime).toLong()
+                interpolator = WallpaperRevealView.WIPE_INTERPOLATOR
+                addUpdateListener { animation ->
+                    val t = animation.animatedValue as Float
+                    for (i in 0 until childCount) {
+                        val chip = getChildAt(i) as FrameLayout
+                        chipOutline(chip)?.let { outline ->
+                            outline.radius = Utilities.mapRange(t, fromRadii[i], toRadii[i])
+                            chip.getChildAt(0)?.invalidateOutline()
+                        }
+                    }
+                }
+                addListener(
+                    object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            selectAnimator = null
+                        }
+                    }
+                )
+                start()
+            }
+    }
+
+    private fun animateCheck(fromIndex: Int, toIndex: Int) {
+        val fromChip = getChildAt(fromIndex) as? FrameLayout
+        val toChip = getChildAt(toIndex) as? FrameLayout
+        fromChip?.findViewWithTag<View>(CHECK_TAG)?.let { check ->
+            check
+                .animate()
+                .alpha(0f)
+                .scaleX(0.6f)
+                .scaleY(0.6f)
+                .setDuration(CHECK_ANIM_MS)
+                .setInterpolator(Interpolators.EMPHASIZED_ACCELERATE)
+                .withEndAction { fromChip.removeView(check) }
+                .start()
+        }
+        toChip?.let { chip ->
+            if (chip.findViewWithTag<View>(CHECK_TAG) != null) return
+            val check =
+                createCheckBadge().apply {
+                    alpha = 0f
+                    scaleX = 0.6f
+                    scaleY = 0.6f
+                }
+            chip.addView(check)
+            check
+                .animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(CHECK_ANIM_MS)
+                .setInterpolator(Interpolators.EMPHASIZED_DECELERATE)
+                .start()
+        }
+    }
+
+    private fun chipOutline(chip: FrameLayout): ChipOutline? {
+        return (chip.getChildAt(0) as? ImageView)?.outlineProvider as? ChipOutline
+    }
+
+    private class ChipOutline(var radius: Float) : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            val r = radius.coerceAtMost(minOf(view.width, view.height) / 2f)
+            outline.setRoundRect(0, 0, view.width, view.height, r)
         }
     }
 
@@ -242,6 +402,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             }
         val padding = (checkSize * 0.22f).toInt()
         return ImageView(context).apply {
+            tag = CHECK_TAG
             layoutParams =
                 FrameLayout.LayoutParams(checkSize, checkSize).apply { gravity = Gravity.CENTER }
             setImageResource(R.drawable.ic_tick)
@@ -259,16 +420,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
     private fun loadWallpaperImage(wallpaper: Wallpaper, imageView: ImageView) {
         val path = wallpaper.imagePath
         scope.launch {
-            val bitmap =
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                            val file = File(path)
-                            if (!file.exists() || !file.canRead()) return@runCatching null
-                            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                            BitmapFactory.decodeFile(file.path, opts)
-                        }
-                        .getOrNull()
-                }
+            val bitmap = decodePreview(path, inSampleSize = 2)
             if (!isAttachedToWindow) return@launch
             if (bitmap != null) {
                 imageView.alpha = 0f
@@ -278,47 +430,42 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
         }
     }
 
-    private fun setWallpaper(wallpaper: Wallpaper, chip: FrameLayout) {
-        val spinner =
-            ProgressBar(context).apply {
-                isIndeterminate = true
-                layoutParams =
-                    FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-                        .apply { gravity = Gravity.CENTER }
-            }
-        for (i in chip.childCount - 1 downTo 1) {
-            chip.removeViewAt(i)
-        }
-        chip.addView(spinner)
-
-        applyJob?.cancel()
-        applyJob =
-            scope.launch {
-                val success =
-                    WallpaperService.INSTANCE.get(context)
-                        .applyWallpaper(wallpaper, WallpaperManager.getInstance(context))
-
-                if (!isAttachedToWindow) return@launch
-                chip.removeView(spinner)
-
-                if (success) {
-                    observeWallpapers()
+    private suspend fun decodePreview(path: String, inSampleSize: Int): Bitmap? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                    val file = File(path)
+                    if (!file.exists() || !file.canRead()) return@runCatching null
+                    val opts = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
+                    BitmapFactory.decodeFile(file.path, opts)
                 }
-            }
-    }
+                .getOrNull()
+        }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0 && w != oldw && wallpapers.isNotEmpty()) {
+        if (
+            w > 0 &&
+                w != oldw &&
+                wallpapers.isNotEmpty() &&
+                !selectionBusy &&
+                selectAnimator?.isRunning != true
+        ) {
             displayWallpapers(wallpapers)
         }
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        selectAnimator?.cancel()
         scope.cancel()
+        // Leave persistScope + reveal running so the wipe can cover setBitmap().
         removeAllViews()
     }
 
     private data class ChipSizes(val selectedWidth: Int, val pillWidth: Int)
+
+    companion object {
+        private const val CHECK_TAG = "wallpaper_check"
+        private const val CHECK_ANIM_MS = 200L
+    }
 }
