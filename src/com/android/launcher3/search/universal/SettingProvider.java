@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Process;
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import com.android.launcher3.LauncherPrefs;
@@ -13,6 +14,7 @@ import com.android.launcher3.search.StringMatcherUtility;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class SettingProvider implements SearchProvider {
 
@@ -35,6 +37,13 @@ public class SettingProvider implements SearchProvider {
         return LauncherPrefs.SEARCH_SETTINGS.get(context);
     }
 
+    private static final long CACHE_MS = TimeUnit.MINUTES.toMillis(10);
+
+    private record Entry(String title, String screenTitle, String key, Intent intent) {}
+
+    private List<Entry> mEntries;
+    private long mLoadedAt;
+
     @Override
     public List<UniversalSearchResult> query(Context context, String query, int max) {
         List<UniversalSearchResult> out = new ArrayList<>();
@@ -44,10 +53,35 @@ public class SettingProvider implements SearchProvider {
         StringMatcherUtility.StringMatcher matcher =
                 StringMatcherUtility.StringMatcher.getInstance();
         String lower = query.toLowerCase();
+        for (Entry entry : entries(context)) {
+            if (out.size() >= max) {
+                break;
+            }
+            if (!StringMatcherUtility.matches(lower, entry.title, matcher)) {
+                continue;
+            }
+            out.add(new UniversalSearchResult(
+                    UniversalSearchResult.SOURCE_SETTING,
+                    entry.key,
+                    entry.title,
+                    entry.screenTitle,
+                    new Intent(entry.intent),
+                    Process.myUserHandle(),
+                    ShortcutProvider.score(lower, entry.title)));
+        }
+        return out;
+    }
+
+    private synchronized List<Entry> entries(Context context) {
+        long now = SystemClock.elapsedRealtime();
+        if (mEntries != null && now - mLoadedAt < CACHE_MS) {
+            return mEntries;
+        }
+        List<Entry> entries = new ArrayList<>();
         try (Cursor c = context.getContentResolver().query(
                 INDEXABLES_RAW, null, null, null, null)) {
             if (c == null) {
-                return out;
+                return entries;
             }
             int titleIndex = c.getColumnIndex(COLUMN_TITLE);
             int screenIndex = c.getColumnIndex(COLUMN_SCREEN_TITLE);
@@ -56,31 +90,28 @@ public class SettingProvider implements SearchProvider {
             int pkgIndex = c.getColumnIndex(COLUMN_TARGET_PACKAGE);
             int classIndex = c.getColumnIndex(COLUMN_TARGET_CLASS);
             if (titleIndex < 0) {
-                return out;
+                return entries;
             }
-            while (c.moveToNext() && out.size() < max) {
+            while (c.moveToNext()) {
                 String title = c.getString(titleIndex);
-                if (TextUtils.isEmpty(title)
-                        || !StringMatcherUtility.matches(lower, title, matcher)) {
+                if (TextUtils.isEmpty(title)) {
                     continue;
                 }
                 Intent intent = buildIntent(c, actionIndex, pkgIndex, classIndex);
                 if (intent == null) {
                     continue;
                 }
-                out.add(new UniversalSearchResult(
-                        UniversalSearchResult.SOURCE_SETTING,
-                        keyIndex < 0 ? title : c.getString(keyIndex),
-                        title,
+                entries.add(new Entry(title,
                         screenIndex < 0 ? null : c.getString(screenIndex),
-                        intent,
-                        Process.myUserHandle(),
-                        ShortcutProvider.score(lower, title)));
+                        keyIndex < 0 ? title : c.getString(keyIndex),
+                        intent));
             }
         } catch (SecurityException | IllegalArgumentException e) {
-            return out;
+            return entries;
         }
-        return out;
+        mEntries = entries;
+        mLoadedAt = now;
+        return entries;
     }
 
     private static Intent buildIntent(Cursor c, int actionIndex, int pkgIndex, int classIndex) {

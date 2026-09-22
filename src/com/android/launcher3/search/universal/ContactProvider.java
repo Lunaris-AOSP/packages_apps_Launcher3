@@ -66,7 +66,7 @@ public class ContactProvider implements SearchProvider {
 
     @Override
     public boolean isEnabled(Context context) {
-        return LauncherPrefs.SEARCH_CONTACTS.get(context) && hasPermission(context);
+        return LauncherPrefs.SEARCH_CONTACTS.get(context);
     }
 
     @Override
@@ -74,6 +74,10 @@ public class ContactProvider implements SearchProvider {
         List<UniversalSearchResult> out = new ArrayList<>();
         if (query.isEmpty()) {
             return out;
+        }
+        if (!hasPermission(context)) {
+            return SearchProvider.permissionRequest(context, getSource(),
+                    com.android.launcher3.R.string.search_permission_contacts);
         }
         Uri uri = Uri.withAppendedPath(
                 ContactsContract.Contacts.CONTENT_FILTER_URI, Uri.encode(query));

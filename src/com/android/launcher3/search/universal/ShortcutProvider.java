@@ -6,6 +6,7 @@ import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.os.Process;
+import android.os.SystemClock;
 
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.search.StringMatcherUtility;
@@ -23,6 +24,11 @@ public class ShortcutProvider implements SearchProvider {
             | LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST
             | LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
             | LauncherApps.ShortcutQuery.FLAG_MATCH_CACHED;
+    // Short enough that a new conversation shows up while the drawer is still open.
+    private static final long CACHE_MS = 15_000;
+
+    private List<ShortcutInfo> mShortcuts;
+    private long mLoadedAt;
 
     @Override
     public int getSource() {
@@ -47,17 +53,7 @@ public class ShortcutProvider implements SearchProvider {
         if (launcherApps == null) {
             return out;
         }
-        LauncherApps.ShortcutQuery q = new LauncherApps.ShortcutQuery();
-        q.setQueryFlags(QUERY_FLAGS);
-        List<ShortcutInfo> shortcuts;
-        try {
-            shortcuts = launcherApps.getShortcuts(q, Process.myUserHandle());
-        } catch (SecurityException | IllegalStateException e) {
-            return out;
-        }
-        if (shortcuts == null) {
-            return out;
-        }
+        List<ShortcutInfo> shortcuts = shortcuts(launcherApps);
         StringMatcherUtility.StringMatcher matcher =
                 StringMatcherUtility.StringMatcher.getInstance();
         String lower = query.toLowerCase();
@@ -102,6 +98,24 @@ public class ShortcutProvider implements SearchProvider {
             out.add(result);
         }
         return out;
+    }
+
+    private synchronized List<ShortcutInfo> shortcuts(LauncherApps launcherApps) {
+        long now = SystemClock.elapsedRealtime();
+        if (mShortcuts != null && now - mLoadedAt < CACHE_MS) {
+            return mShortcuts;
+        }
+        LauncherApps.ShortcutQuery q = new LauncherApps.ShortcutQuery();
+        q.setQueryFlags(QUERY_FLAGS);
+        List<ShortcutInfo> shortcuts;
+        try {
+            shortcuts = launcherApps.getShortcuts(q, Process.myUserHandle());
+        } catch (SecurityException | IllegalStateException e) {
+            shortcuts = null;
+        }
+        mShortcuts = shortcuts == null ? List.of() : shortcuts;
+        mLoadedAt = now;
+        return mShortcuts;
     }
 
     private static boolean usable(Drawable icon) {

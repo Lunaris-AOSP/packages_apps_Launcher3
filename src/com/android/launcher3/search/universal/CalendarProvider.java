@@ -41,7 +41,7 @@ public class CalendarProvider implements SearchProvider {
 
     @Override
     public boolean isEnabled(Context context) {
-        return LauncherPrefs.SEARCH_EVENTS.get(context) && hasPermission(context);
+        return LauncherPrefs.SEARCH_EVENTS.get(context);
     }
 
     @Override
@@ -49,6 +49,10 @@ public class CalendarProvider implements SearchProvider {
         List<UniversalSearchResult> out = new ArrayList<>();
         if (query.length() < 2) {
             return out;
+        }
+        if (!hasPermission(context)) {
+            return SearchProvider.permissionRequest(context, getSource(),
+                    com.android.launcher3.R.string.search_permission_calendar);
         }
         long now = System.currentTimeMillis();
         long start = now - TimeUnit.DAYS.toMillis(30);

@@ -30,4 +30,8 @@
     <string name="search_events_summary">Include calendar events. Needs permission to read your calendar.</string>
     <string name="search_actions_title">Web and in-app search</string>
     <string name="search_actions_summary">Offer to search the web or inside an app for what you typed</string>
+    <string name="search_permission_summary">Tap to allow access in app info</string>
+    <string name="search_permission_contacts">Allow contacts access to search contacts</string>
+    <string name="search_permission_calendar">Allow calendar access to search events</string>
+    <string name="search_permission_files">Allow media access to search files</string>
 </resources>

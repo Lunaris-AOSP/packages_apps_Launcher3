@@ -62,7 +62,7 @@ public class MediaProvider implements SearchProvider {
 
     @Override
     public boolean isEnabled(Context context) {
-        return LauncherPrefs.SEARCH_FILES.get(context) && hasPermission(context);
+        return LauncherPrefs.SEARCH_FILES.get(context);
     }
 
     @Override
@@ -70,6 +70,10 @@ public class MediaProvider implements SearchProvider {
         List<UniversalSearchResult> out = new ArrayList<>();
         if (query.length() < 2) {
             return out;
+        }
+        if (!hasPermission(context)) {
+            return SearchProvider.permissionRequest(context, getSource(),
+                    com.android.launcher3.R.string.search_permission_files);
         }
         Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL);
         String selection = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ?";

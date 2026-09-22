@@ -174,7 +174,34 @@ public abstract class BaseAllAppsAdapter
          * Returns true if the items represent the same object
          */
         public boolean isSameAs(AdapterItem other) {
-            return (other.viewType == viewType) && (other.getClass() == getClass());
+            if (other == null || other.viewType != viewType || other.getClass() != getClass()) {
+                return false;
+            }
+            if (viewType == VIEW_TYPE_ICON || viewType == VIEW_TYPE_PRIVATE_SPACE_APP_ICON) {
+                if (itemInfo == null || other.itemInfo == null) {
+                    return itemInfo == other.itemInfo;
+                }
+                // Both itemInfo and other.itemInfo are non-null here
+                return java.util.Objects.equals(itemInfo.user, other.itemInfo.user)
+                        && java.util.Objects.equals(itemInfo.getTargetComponent(),
+                                other.itemInfo.getTargetComponent());
+            }
+            if (viewType == VIEW_TYPE_FOLDER) {
+                if (folderInfo == null || other.folderInfo == null) {
+                    return folderInfo == other.folderInfo;
+                }
+                return java.util.Objects.equals(folderInfo.title, other.folderInfo.title)
+                        && folderInfo.getContents().size() == other.folderInfo.getContents().size();
+            }
+            if (viewType == VIEW_TYPE_SEARCH_SECTION_HEADER) {
+                return searchSection == other.searchSection;
+            }
+            if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW) {
+                return searchResult != null && other.searchResult != null
+                        && searchResult.source == other.searchResult.source
+                        && java.util.Objects.equals(searchResult.id, other.searchResult.id);
+            }
+            return true;
         }
 
         /**
@@ -182,6 +209,10 @@ public abstract class BaseAllAppsAdapter
          * as well. Returning true will prevent redrawing of thee item.
          */
         public boolean isContentSame(AdapterItem other) {
+            if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW) {
+                // Titles, subtitles and live state change per query even for the same id.
+                return false;
+            }
             return itemInfo == null && other.itemInfo == null;
         }
 

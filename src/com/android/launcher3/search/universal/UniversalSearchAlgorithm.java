@@ -23,6 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
 
     private static final int MAX_PER_SOURCE = 4;
+    private static final long DEBOUNCE_MS = 60;
+    // Past this, show what has arrived and fold slower providers in when they finish.
+    private static final long PROVIDER_TIMEOUT_MS = 150;
 
     private static final int[] SOURCE_ORDER = {
             UniversalSearchResult.SOURCE_CALCULATOR,
@@ -39,6 +42,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     private final Context mContext;
     private final LauncherAppState mAppState;
     private final Handler mResultHandler;
+    private final Handler mWorker;
     private final boolean mAppLibrary;
     private final List<SearchProvider> mProviders;
     private final AtomicInteger mRequest = new AtomicInteger();
@@ -47,6 +51,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         mContext = context.getApplicationContext();
         mAppState = LauncherAppState.getInstance(context);
         mResultHandler = new Handler(uiExecutor.getLooper());
+        mWorker = new Handler(Executors.UI_HELPER_EXECUTOR.getLooper());
         mAppLibrary = false;
         mProviders = List.of(new CalculatorProvider(), new ShortcutProvider(),
                 new ContactProvider(), new QsTileProvider(), new SettingProvider(),
@@ -58,6 +63,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         if (interruptActiveRequests) {
             mRequest.incrementAndGet();
             mResultHandler.removeCallbacksAndMessages(null);
+            mWorker.removeCallbacksAndMessages(null);
         }
     }
 
@@ -73,15 +79,42 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                 return;
             }
             publish(token, query, new ArrayList<>(appItems), callback);
-            Executors.UI_HELPER_EXECUTOR.execute(() -> {
-                if (token != mRequest.get()) {
-                    return;
-                }
-                ArrayList<AdapterItem> merged = new ArrayList<>(appItems);
-                merged.addAll(collect(query));
-                publish(token, query, withEmptyMessage(merged, query), callback);
-            });
+            mWorker.postDelayed(() -> startProviders(token, query, appItems, callback),
+                    DEBOUNCE_MS);
         });
+    }
+
+    private void startProviders(int token, String query, ArrayList<AdapterItem> appItems,
+            SearchCallback<AdapterItem> callback) {
+        if (token != mRequest.get()) {
+            return;
+        }
+        List<SearchProvider> enabled = new ArrayList<>();
+        for (SearchProvider provider : mProviders) {
+            if (provider.isEnabled(mContext)) {
+                enabled.add(provider);
+            }
+        }
+        Pass pass = new Pass(token, query, appItems, callback, enabled.size());
+        for (int i = 0; i < enabled.size(); i++) {
+            int slot = i;
+            SearchProvider provider = enabled.get(i);
+            Executors.THREAD_POOL_EXECUTOR.execute(() -> {
+                List<UniversalSearchResult> results = token == mRequest.get()
+                        ? queryProvider(provider, query) : List.of();
+                mWorker.post(() -> pass.onProviderDone(slot, results));
+            });
+        }
+        mWorker.postDelayed(pass::onTimeout, PROVIDER_TIMEOUT_MS);
+    }
+
+    private List<UniversalSearchResult> queryProvider(SearchProvider provider, String query) {
+        try {
+            return provider.query(mContext, query, MAX_PER_SOURCE * 2);
+        } catch (RuntimeException e) {
+            // A misbehaving provider must not take the whole search down.
+            return List.of();
+        }
     }
 
     private boolean hasEnabledProvider() {
@@ -93,18 +126,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         return false;
     }
 
-    private List<AdapterItem> collect(String query) {
-        List<UniversalSearchResult> all = new ArrayList<>();
-        for (SearchProvider provider : mProviders) {
-            if (!provider.isEnabled(mContext)) {
-                continue;
-            }
-            try {
-                all.addAll(provider.query(mContext, query, MAX_PER_SOURCE * 2));
-            } catch (RuntimeException e) {
-                // A misbehaving provider must not take the whole search down.
-            }
-        }
+    private List<AdapterItem> group(List<UniversalSearchResult> all) {
         List<AdapterItem> items = new ArrayList<>();
         for (int source : SOURCE_ORDER) {
             List<UniversalSearchResult> forSource = new ArrayList<>();
@@ -124,6 +146,61 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             }
         }
         return items;
+    }
+
+    /** Only touched on {@link #mWorker}. */
+    private class Pass {
+        private final int mToken;
+        private final String mQuery;
+        private final ArrayList<AdapterItem> mAppItems;
+        private final SearchCallback<AdapterItem> mCallback;
+        private final List<UniversalSearchResult>[] mResults;
+        private int mPending;
+        private boolean mTimedOut;
+
+        @SuppressWarnings("unchecked")
+        Pass(int token, String query, ArrayList<AdapterItem> appItems,
+                SearchCallback<AdapterItem> callback, int providers) {
+            mToken = token;
+            mQuery = query;
+            mAppItems = appItems;
+            mCallback = callback;
+            mResults = new List[providers];
+            mPending = providers;
+            if (providers == 0) {
+                publishResults();
+            }
+        }
+
+        void onProviderDone(int slot, List<UniversalSearchResult> results) {
+            mResults[slot] = results;
+            mPending--;
+            if (mPending == 0 || mTimedOut) {
+                publishResults();
+            }
+        }
+
+        void onTimeout() {
+            if (mPending > 0) {
+                mTimedOut = true;
+                publishResults();
+            }
+        }
+
+        private void publishResults() {
+            if (mToken != mRequest.get()) {
+                return;
+            }
+            List<UniversalSearchResult> all = new ArrayList<>();
+            for (List<UniversalSearchResult> results : mResults) {
+                if (results != null) {
+                    all.addAll(results);
+                }
+            }
+            ArrayList<AdapterItem> merged = new ArrayList<>(mAppItems);
+            merged.addAll(group(all));
+            publish(mToken, mQuery, withEmptyMessage(merged, mQuery), mCallback);
+        }
     }
 
     private void publish(int token, String query, ArrayList<AdapterItem> items,
