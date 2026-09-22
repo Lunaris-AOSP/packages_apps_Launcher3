@@ -90,17 +90,23 @@ public class QsTileProvider implements SearchProvider {
             }
             Intent intent = TextUtils.isEmpty(tile[1]) ? null
                     : new Intent(tile[1]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (intent == null) {
+            Boolean state = TileToggles.state(context, spec);
+            if (intent == null && state == null) {
                 continue;
             }
-            out.add(new UniversalSearchResult(
+            UniversalSearchResult result = new UniversalSearchResult(
                     UniversalSearchResult.SOURCE_QS_TILE,
                     spec,
                     tile[0],
                     context.getString(com.android.launcher3.R.string.search_section_qs_tiles),
                     intent,
                     Process.myUserHandle(),
-                    ShortcutProvider.score(lower, tile[0])));
+                    ShortcutProvider.score(lower, tile[0]));
+            if (state != null) {
+                result.checked = state;
+                result.toggle = (c, on) -> TileToggles.set(c, spec, on);
+            }
+            out.add(result);
         }
         return out;
     }

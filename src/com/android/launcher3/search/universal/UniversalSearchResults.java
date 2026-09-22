@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewOutlineProvider;
+import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -92,7 +93,29 @@ public class UniversalSearchResults {
             });
         }
         applyIcon(icon, result);
-        view.setOnClickListener(v -> launch(activityContext, v, result));
+        CompoundButton toggle = view.findViewById(R.id.search_result_switch);
+        if (result.toggle == null) {
+            toggle.setVisibility(View.GONE);
+            view.setOnClickListener(v -> launch(activityContext, v, result));
+            view.setOnLongClickListener(null);
+            view.setLongClickable(false);
+            return;
+        }
+        toggle.setVisibility(View.VISIBLE);
+        toggle.setChecked(result.checked);
+        view.setOnClickListener(v -> {
+            boolean on = !result.checked;
+            if (result.toggle.set(v.getContext(), on)) {
+                result.checked = on;
+                toggle.setChecked(on);
+            } else if (result.intent != null) {
+                activityContext.startActivitySafely(v, result.intent, null);
+            }
+        });
+        view.setOnLongClickListener(result.intent == null ? null : v -> {
+            activityContext.startActivitySafely(v, result.intent, null);
+            return true;
+        });
     }
 
     private static void applyIcon(ImageView icon, UniversalSearchResult result) {

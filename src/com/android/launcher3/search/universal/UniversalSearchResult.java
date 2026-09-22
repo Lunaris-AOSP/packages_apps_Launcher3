@@ -1,5 +1,6 @@
 package com.android.launcher3.search.universal;
 
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.os.UserHandle;
@@ -30,6 +31,12 @@ public class UniversalSearchResult {
     public String shortcutId;
     public String phoneNumber;
     public boolean thumbnail;
+    public Toggle toggle;
+    public boolean checked;
+
+    public interface Toggle {
+        boolean set(Context context, boolean on);
+    }
 
     public UniversalSearchResult(int source, String id, CharSequence title, CharSequence subtitle,
             Intent intent, UserHandle user, int score) {

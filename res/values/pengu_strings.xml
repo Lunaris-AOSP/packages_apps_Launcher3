@@ -15,7 +15,7 @@
     <string name="search_settings_summary">Include Settings entries so you can jump straight to a page</string>
     <string name="search_section_qs_tiles">Quick settings</string>
     <string name="search_qs_tiles_title">Quick settings tiles</string>
-    <string name="search_qs_tiles_summary">Include your quick settings tiles in drawer search</string>
+    <string name="search_qs_tiles_summary">Find quick settings tiles and switch them on or off right from search</string>
     <string name="search_section_calculator">Calculator</string>
     <string name="search_section_files">Files</string>
     <string name="search_section_events">Calendar</string>
