@@ -92,6 +92,74 @@
         android:persistent="true"
         launcher:iconSpaceReserved="false" />
 
+    <PreferenceCategory
+        android:title="@string/search_sources_title">
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_shortcuts"
+            android:title="@string/search_shortcuts_title"
+            android:summary="@string/search_shortcuts_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_conversations"
+            android:title="@string/search_conversations_title"
+            android:summary="@string/search_conversations_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_contacts"
+            android:title="@string/search_contacts_title"
+            android:summary="@string/search_contacts_summary"
+            android:defaultValue="false"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_qs_tiles"
+            android:title="@string/search_qs_tiles_title"
+            android:summary="@string/search_qs_tiles_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_settings"
+            android:title="@string/search_settings_title"
+            android:summary="@string/search_settings_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_calculator"
+            android:title="@string/search_calculator_title"
+            android:summary="@string/search_calculator_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_files"
+            android:title="@string/search_files_title"
+            android:summary="@string/search_files_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_events"
+            android:title="@string/search_events_title"
+            android:summary="@string/search_events_summary"
+            android:defaultValue="false"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_search_actions"
+            android:title="@string/search_actions_title"
+            android:summary="@string/search_actions_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+    </PreferenceCategory>
+
     <SwitchPreferenceCompat
         android:key="pref_drawer_open_keyboard"
         android:title="@string/drawer_open_keyboard_title"

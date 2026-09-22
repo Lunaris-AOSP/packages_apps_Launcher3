@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_section_conversations">Chats</string>
+    <string name="search_section_shortcuts">Shortcuts</string>
+    <string name="search_section_contacts">Contacts</string>
+    <string name="search_section_settings">Settings</string>
+    <string name="search_sources_title">Search</string>
+    <string name="search_shortcuts_title">App shortcuts</string>
+    <string name="search_shortcuts_summary">Include shortcuts published by apps in drawer search</string>
+    <string name="search_conversations_title">Chats</string>
+    <string name="search_conversations_summary">Include recent conversations from messaging apps</string>
+    <string name="search_contacts_title">Contacts</string>
+    <string name="search_contacts_summary">Include contacts. Needs permission to read your contacts.</string>
+    <string name="search_settings_title">Settings</string>
+    <string name="search_settings_summary">Include Settings entries so you can jump straight to a page</string>
+    <string name="search_section_qs_tiles">Quick settings</string>
+    <string name="search_qs_tiles_title">Quick settings tiles</string>
+    <string name="search_qs_tiles_summary">Include your quick settings tiles in drawer search</string>
+    <string name="search_section_calculator">Calculator</string>
+    <string name="search_section_files">Files</string>
+    <string name="search_section_events">Calendar</string>
+    <string name="search_section_actions">Actions</string>
+    <string name="search_action_web">Search the web for \"%1$s\"</string>
+    <string name="search_action_in_app">Search in %1$s</string>
+    <string name="search_calculator_title">Calculator</string>
+    <string name="search_calculator_summary">Answer sums and unit conversions as you type</string>
+    <string name="search_files_title">Files and media</string>
+    <string name="search_files_summary">Include files and media by name</string>
+    <string name="search_events_title">Calendar events</string>
+    <string name="search_events_summary">Include calendar events. Needs permission to read your calendar.</string>
+    <string name="search_actions_title">Web and in-app search</string>
+    <string name="search_actions_summary">Offer to search the web or inside an app for what you typed</string>
+</resources>

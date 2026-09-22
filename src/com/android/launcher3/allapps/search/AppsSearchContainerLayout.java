@@ -53,6 +53,7 @@ import com.android.launcher3.allapps.BaseAllAppsAdapter.AdapterItem;
 import com.android.launcher3.allapps.PrivateProfileManager;
 import com.android.launcher3.allapps.SearchUiManager;
 import com.android.launcher3.search.SearchCallback;
+import com.android.launcher3.search.universal.UniversalSearchAlgorithm;
 import com.android.launcher3.util.ApiWrapper;
 import com.android.launcher3.util.Themes;
 import com.android.launcher3.graphics.ThemeManager;
@@ -284,7 +285,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     public void initializeSearch(ActivityAllAppsContainerView<?> appsView) {
         mAppsView = appsView;
         mSearchBarController.initialize(
-                new DefaultAppSearchAlgorithm(getContext(), true),
+                new UniversalSearchAlgorithm(getContext(), mLauncher.getUiExecutor()),
                 this, mLauncher, this);
     }
 

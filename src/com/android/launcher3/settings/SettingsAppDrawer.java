@@ -42,6 +42,7 @@ import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceGroup.PreferencePositionCallback;
 import androidx.preference.PreferenceScreen;
 import androidx.preference.ListPreference;
+import androidx.preference.TwoStatePreference;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.launcher3.BuildConfig;
@@ -50,6 +51,9 @@ import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
+import com.android.launcher3.search.universal.CalendarProvider;
+import com.android.launcher3.search.universal.ContactProvider;
+import com.android.launcher3.search.universal.MediaProvider;
 import com.android.launcher3.allapps.AppDrawerStyle;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.util.Executors;
@@ -188,6 +192,10 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             SettingsCache.OnChangeListener,
             SharedPreferences.OnSharedPreferenceChangeListener {
 
+        private static final int REQUEST_READ_CONTACTS = 40;
+        private static final int REQUEST_READ_CALENDAR = 41;
+        private static final int REQUEST_READ_MEDIA = 42;
+
         private boolean mRestartOnResume = false;
 
         private String mHighLightKey;
@@ -220,6 +228,9 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             setPreferencesFromResource(R.xml.launcher_app_drawer_preferences, rootKey);
 
             PreferenceScreen screen = getPreferenceScreen();
+            wireContactsToggle(screen);
+            wireCalendarToggle(screen);
+            wireFilesToggle(screen);
 
             mSearchPlacementPref = screen.findPreference(KEY_SEARCH_PLACEMENT);
             mDrawerStylePref = screen.findPreference(KEY_APP_DRAWER_STYLE);
@@ -258,6 +269,91 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
 
             getPreferenceManager().getSharedPreferences()
                     .registerOnSharedPreferenceChangeListener(this);
+        }
+
+        private void wireFilesToggle(PreferenceScreen screen) {
+            Preference pref = screen.findPreference(
+                    LauncherPrefs.SEARCH_FILES.getSharedPrefKey());
+            if (!(pref instanceof TwoStatePreference toggle)) {
+                return;
+            }
+            if (toggle.isChecked() && !MediaProvider.hasPermission(requireContext())) {
+                toggle.setChecked(false);
+            }
+            toggle.setOnPreferenceChangeListener((preference, value) -> {
+                if (!((Boolean) value) || MediaProvider.hasPermission(requireContext())) {
+                    return true;
+                }
+                requestPermissions(MediaProvider.PERMISSIONS, REQUEST_READ_MEDIA);
+                return false;
+            });
+        }
+
+        private void wireCalendarToggle(PreferenceScreen screen) {
+            Preference pref = screen.findPreference(
+                    LauncherPrefs.SEARCH_EVENTS.getSharedPrefKey());
+            if (!(pref instanceof TwoStatePreference toggle)) {
+                return;
+            }
+            if (toggle.isChecked() && !CalendarProvider.hasPermission(requireContext())) {
+                toggle.setChecked(false);
+            }
+            toggle.setOnPreferenceChangeListener((preference, value) -> {
+                if (!((Boolean) value) || CalendarProvider.hasPermission(requireContext())) {
+                    return true;
+                }
+                requestPermissions(
+                        new String[]{android.Manifest.permission.READ_CALENDAR},
+                        REQUEST_READ_CALENDAR);
+                return false;
+            });
+        }
+
+        private void wireContactsToggle(PreferenceScreen screen) {
+            Preference pref = screen.findPreference(
+                    LauncherPrefs.SEARCH_CONTACTS.getSharedPrefKey());
+            if (!(pref instanceof TwoStatePreference toggle)) {
+                return;
+            }
+            if (toggle.isChecked() && !ContactProvider.hasPermission(requireContext())) {
+                toggle.setChecked(false);
+            }
+            toggle.setOnPreferenceChangeListener((preference, value) -> {
+                if (!((Boolean) value) || ContactProvider.hasPermission(requireContext())) {
+                    return true;
+                }
+                requestPermissions(
+                        new String[]{android.Manifest.permission.READ_CONTACTS},
+                        REQUEST_READ_CONTACTS);
+                return false;
+            });
+        }
+
+        @Override
+        public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                int[] grantResults) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+            if (getPreferenceScreen() == null) {
+                return;
+            }
+            String key;
+            if (requestCode == REQUEST_READ_CONTACTS) {
+                key = LauncherPrefs.SEARCH_CONTACTS.getSharedPrefKey();
+            } else if (requestCode == REQUEST_READ_CALENDAR) {
+                key = LauncherPrefs.SEARCH_EVENTS.getSharedPrefKey();
+            } else if (requestCode == REQUEST_READ_MEDIA) {
+                key = LauncherPrefs.SEARCH_FILES.getSharedPrefKey();
+            } else {
+                return;
+            }
+            boolean granted = false;
+            for (int result : grantResults) {
+                granted |= result == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
+            Preference pref = getPreferenceScreen().findPreference(key);
+            if (granted && pref instanceof TwoStatePreference toggle) {
+                toggle.setChecked(true);
+            }
         }
 
         private boolean isKeyInPreferenceGroup(String targetKey, PreferenceGroup parent) {
