@@ -3041,9 +3041,6 @@ public abstract class AbsSwipeUpHandler<
 
     private void onRecentsViewScroll() {
         if (!moveWindowWithRecentsScroll()) return;
-        if (mRecentsView != null && mRecentsView.isOverlapStyleActive()) {
-            return;
-        }
         onCurrentShiftUpdated();
     }
 
@@ -3419,6 +3416,9 @@ public abstract class AbsSwipeUpHandler<
                 TaskViewSimulator taskViewSimulator = remoteHandle.getTaskViewSimulator();
                 if (setRecentsScroll) {
                     taskViewSimulator.setScroll(scrollOffset);
+                }
+                if (mRecentsView != null) {
+                    mRecentsView.updateRecentsStyle(remoteHandle);
                 }
                 TransformParams transformParams = remoteHandle.getTransformParams();
                 if (shouldFadeOutTargetsForKeyboardQuickSwitch(
