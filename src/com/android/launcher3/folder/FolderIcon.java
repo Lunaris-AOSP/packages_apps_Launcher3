@@ -982,6 +982,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     }
 
     public void setFolderBackground(PreviewBackground bg) {
+        mBackground.setInvalidateDelegate(null);
         mBackground = bg;
         mBackground.setInvalidateDelegate(this);
     }
@@ -989,7 +990,20 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     @Override
     public void setIconVisible(boolean visible) {
         mBackgroundIsVisible = visible;
+        if (!visible) {
+            mBackground.hideBlur();
+        }
         invalidate();
+    }
+
+    @Override
+    public void onVisibilityAggregated(boolean isVisible) {
+        super.onVisibilityAggregated(isVisible);
+        if (!isVisible) {
+            mBackground.hideBlur();
+        } else {
+            invalidate();
+        }
     }
 
     public boolean getIconVisible() {

@@ -22,6 +22,7 @@ import androidx.core.graphics.ColorUtils
 import android.graphics.Outline
 import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.Shader
@@ -111,6 +112,77 @@ constructor(
 
         drawCrossWindowBlur(canvas, pathWrapper, view)
         drawWorkspaceBlur(canvas, pathWrapper?.path, view)
+    }
+
+    override fun createFolderPreviewBlur(view: View): FolderPreviewBlur = PreviewBlur(view)
+
+    private inner class PreviewBlur(private val view: View) :
+        FolderPreviewBlur(), View.OnAttachStateChangeListener {
+
+        private var drawable: BackgroundBlurDrawable? = null
+        private var blurStateListener: SafeCloseable? = null
+        private val drawableBounds = Rect()
+
+        init {
+            view.addOnAttachStateChangeListener(this)
+            if (view.isAttachedToWindow) {
+                onViewAttachedToWindow(view)
+            }
+        }
+
+        override fun onViewAttachedToWindow(view: View) {
+            blurStateListener?.close()
+            blurStateListener =
+                blurState.forEach(Executors.MAIN_EXECUTOR) { enabled ->
+                    if (!enabled) {
+                        setVisible(false)
+                    }
+                    view.invalidate()
+                }
+        }
+
+        override fun onViewDetachedFromWindow(view: View) {
+            blurStateListener?.close()
+            blurStateListener = null
+            setVisible(false)
+            drawable = null
+        }
+
+        override fun draw(canvas: Canvas, bounds: RectF, cornerRadius: Float): Boolean {
+            if (!canvas.isHardwareAccelerated) {
+                return false
+            }
+            if (
+                !isBlurEnabled() || !isHomescreen() || !view.isAttachedToWindow || bounds.isEmpty
+            ) {
+                setVisible(false)
+                return false
+            }
+
+            val blurDrawable =
+                drawable
+                    ?: view.viewRootImpl?.createBackgroundBlurDrawable()?.apply {
+                        setBlurRadius(folderBlurRadius.toInt())
+                        drawable = this
+                    }
+                    ?: return false
+
+            blurDrawable.setVisible(true, false)
+            bounds.roundOut(drawableBounds)
+            blurDrawable.bounds = drawableBounds
+            blurDrawable.setCornerRadius(cornerRadius)
+            blurDrawable.draw(canvas)
+            return true
+        }
+
+        override fun setVisible(visible: Boolean) {
+            drawable?.setVisible(visible, false)
+        }
+
+        override fun close() {
+            view.removeOnAttachStateChangeListener(this)
+            onViewDetachedFromWindow(view)
+        }
     }
 
     private fun drawWorkspaceBlur(canvas: Canvas, path: Path?, view: View) {

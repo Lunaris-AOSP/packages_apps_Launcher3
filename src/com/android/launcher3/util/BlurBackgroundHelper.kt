@@ -17,6 +17,7 @@
 package com.android.launcher3.util
 
 import android.graphics.Canvas
+import android.graphics.RectF
 import android.view.View
 import com.android.launcher3.dagger.ActivityContextSingleton
 import com.android.launcher3.folder.Folder
@@ -35,6 +36,14 @@ constructor() {
     open fun prepareToOpenFolder(folder: Folder) {}
 
     open fun drawFolderBlur(canvas: Canvas, pathWrapper: PathWrapper?, view: View) {}
+
+    open fun createFolderPreviewBlur(view: View): FolderPreviewBlur? = null
+
+    abstract class FolderPreviewBlur : SafeCloseable {
+        abstract fun draw(canvas: Canvas, bounds: RectF, cornerRadius: Float): Boolean
+
+        abstract fun setVisible(visible: Boolean)
+    }
 
     open fun folderCloseComplete() {}
 

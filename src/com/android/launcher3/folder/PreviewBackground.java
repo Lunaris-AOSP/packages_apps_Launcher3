@@ -53,6 +53,7 @@ import com.android.launcher3.R;
 import com.android.launcher3.celllayout.DelegatedCellDrawing;
 import com.android.launcher3.graphics.ShapeDelegate;
 import com.android.launcher3.graphics.ThemeManager;
+import com.android.launcher3.util.BlurBackgroundHelper;
 import com.android.launcher3.views.ActivityContext;
 
 /**
@@ -63,6 +64,7 @@ public class PreviewBackground extends DelegatedCellDrawing {
 
     private static final boolean DRAW_SHADOW = false;
     private static final boolean DRAW_STROKE = false;
+    private static final int BLUR_BG_OPACITY = 153;
 
     @VisibleForTesting protected static final int CONSUMPTION_ANIMATION_DURATION = 100;
 
@@ -89,6 +91,8 @@ public class PreviewBackground extends DelegatedCellDrawing {
     private int mStrokeAlpha = MAX_BG_OPACITY;
     private int mShadowAlpha = 255;
     private View mInvalidateDelegate;
+    private BlurBackgroundHelper mBlurBackgroundHelper;
+    private BlurBackgroundHelper.FolderPreviewBlur mPreviewBlur;
 
     int previewSize;
 
@@ -227,7 +231,8 @@ public class PreviewBackground extends DelegatedCellDrawing {
 
     public void setup(Context context, ActivityContext activity, View invalidateDelegate,
             int availableSpaceX, int availableSpaceY, int topPadding, int spanX, int spanY) {
-        mInvalidateDelegate = invalidateDelegate;
+        mBlurBackgroundHelper = activity.getActivityComponent().getBlurBackgroundHelper();
+        setInvalidateDelegate(invalidateDelegate);
 
         TypedArray ta = context.getTheme().obtainStyledAttributes(R.styleable.FolderIconPreview);
         mStrokeColor = ta.getColor(R.styleable.FolderIconPreview_folderIconBorderColor, 0);
@@ -373,8 +378,18 @@ public class PreviewBackground extends DelegatedCellDrawing {
     }
 
     void setInvalidateDelegate(View invalidateDelegate) {
+        if (mInvalidateDelegate != invalidateDelegate && mPreviewBlur != null) {
+            mPreviewBlur.close();
+            mPreviewBlur = null;
+        }
         mInvalidateDelegate = invalidateDelegate;
         invalidate();
+    }
+
+    void hideBlur() {
+        if (mPreviewBlur != null) {
+            mPreviewBlur.setVisible(false);
+        }
     }
 
     public int getBgColor() {
@@ -390,6 +405,22 @@ public class PreviewBackground extends DelegatedCellDrawing {
         mPaint.setColor(getBgColor());
 
         RectF bounds = getBoundsAtScale(mScale);
+        if (canvas.isHardwareAccelerated() && mBlurBackgroundHelper != null
+                && mInvalidateDelegate != null) {
+            if (mPreviewBlur == null) {
+                mPreviewBlur = mBlurBackgroundHelper.createFolderPreviewBlur(mInvalidateDelegate);
+            }
+            if (mPreviewBlur != null) {
+                int saveCount = canvas.save();
+                getDrawnShapePath(mPath);
+                canvas.clipPath(mPath);
+                boolean blurDrawn = mPreviewBlur.draw(canvas, bounds, getDrawnCornerRadius());
+                canvas.restoreToCount(saveCount);
+                if (blurDrawn) {
+                    mPaint.setAlpha(Math.min(mPaint.getAlpha(), BLUR_BG_OPACITY));
+                }
+            }
+        }
         drawShapeInBounds(canvas, bounds, mScale, mPaint);
         drawShadow(canvas);
     }
