@@ -284,9 +284,13 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     public void initializeSearch(ActivityAllAppsContainerView<?> appsView) {
         mAppsView = appsView;
-        mSearchBarController.initialize(
-                new UniversalSearchAlgorithm(getContext(), mLauncher.getUiExecutor()),
-                this, mLauncher, this);
+        UniversalSearchAlgorithm algorithm =
+                new UniversalSearchAlgorithm(getContext(), mLauncher.getUiExecutor());
+        algorithm.setQueryHandler(query -> {
+            setText(query);
+            setSelection(query.length());
+        });
+        mSearchBarController.initialize(algorithm, this, mLauncher, this);
     }
 
     @Override

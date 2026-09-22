@@ -9,7 +9,6 @@ import android.os.Process;
 import android.os.SystemClock;
 
 import com.android.launcher3.LauncherPrefs;
-import com.android.launcher3.search.StringMatcherUtility;
 
 import android.graphics.drawable.Drawable;
 
@@ -54,8 +53,6 @@ public class ShortcutProvider implements SearchProvider {
             return out;
         }
         List<ShortcutInfo> shortcuts = shortcuts(launcherApps);
-        StringMatcherUtility.StringMatcher matcher =
-                StringMatcherUtility.StringMatcher.getInstance();
         String lower = query.toLowerCase();
         Map<String, CharSequence> labels = new HashMap<>();
         Map<String, Drawable> appIcons = new HashMap<>();
@@ -71,8 +68,8 @@ public class ShortcutProvider implements SearchProvider {
             if (label == null) {
                 label = info.getLongLabel();
             }
-            if (label == null
-                    || !StringMatcherUtility.matches(lower, label.toString(), matcher)) {
+            int score = label == null ? 0 : FuzzyMatcher.score(lower, label.toString());
+            if (score == 0) {
                 continue;
             }
             UniversalSearchResult result = new UniversalSearchResult(
@@ -83,7 +80,7 @@ public class ShortcutProvider implements SearchProvider {
                     appLabel(context, info.getPackage(), labels),
                     null,
                     info.getUserHandle(),
-                    score(lower, label.toString()));
+                    score);
             result.packageName = info.getPackage();
             result.shortcutId = info.getId();
             try {

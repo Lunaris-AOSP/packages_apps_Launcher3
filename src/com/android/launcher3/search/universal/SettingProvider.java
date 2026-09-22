@@ -10,7 +10,6 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 
 import com.android.launcher3.LauncherPrefs;
-import com.android.launcher3.search.StringMatcherUtility;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,14 +49,10 @@ public class SettingProvider implements SearchProvider {
         if (query.isEmpty()) {
             return out;
         }
-        StringMatcherUtility.StringMatcher matcher =
-                StringMatcherUtility.StringMatcher.getInstance();
         String lower = query.toLowerCase();
         for (Entry entry : entries(context)) {
-            if (out.size() >= max) {
-                break;
-            }
-            if (!StringMatcherUtility.matches(lower, entry.title, matcher)) {
+            int score = FuzzyMatcher.score(lower, entry.title);
+            if (score == 0) {
                 continue;
             }
             out.add(new UniversalSearchResult(
@@ -67,9 +62,11 @@ public class SettingProvider implements SearchProvider {
                     entry.screenTitle,
                     new Intent(entry.intent),
                     Process.myUserHandle(),
-                    ShortcutProvider.score(lower, entry.title)));
+                    score));
         }
-        return out;
+        // The index is not ordered by relevance, so rank before cutting down.
+        out.sort((a, b) -> b.score - a.score);
+        return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
     }
 
     private synchronized List<Entry> entries(Context context) {

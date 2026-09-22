@@ -20,8 +20,14 @@ import com.android.launcher3.LauncherPrefs;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public class MediaProvider implements SearchProvider {
+
+    private static final Pattern SCREENSHOTS = Pattern.compile("^screen ?shots?$");
+    private static final Pattern DOWNLOADS = Pattern.compile("^downloads?$");
+    // Newest first is already the right order for these, so keep it through the sort.
+    private static final int RECENT_SCORE = 90;
 
     private static final String[] PROJECTION = {
             MediaStore.Files.FileColumns._ID,
@@ -76,8 +82,21 @@ public class MediaProvider implements SearchProvider {
                     com.android.launcher3.R.string.search_permission_files);
         }
         Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL);
-        String selection = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ?";
-        String[] args = {"%" + query + "%"};
+        String keyword = query.trim().toLowerCase();
+        boolean recent = true;
+        String selection;
+        String[] args;
+        if (SCREENSHOTS.matcher(keyword).matches()) {
+            selection = MediaStore.Files.FileColumns.RELATIVE_PATH + " LIKE ?";
+            args = new String[]{"%Screenshots%"};
+        } else if (DOWNLOADS.matcher(keyword).matches()) {
+            selection = MediaStore.Files.FileColumns.RELATIVE_PATH + " LIKE ?";
+            args = new String[]{"Download%"};
+        } else {
+            recent = false;
+            selection = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ?";
+            args = new String[]{"%" + query + "%"};
+        }
         try (Cursor c = context.getContentResolver().query(collection, PROJECTION, selection,
                 args, MediaStore.Files.FileColumns.DATE_MODIFIED + " DESC")) {
             if (c == null) {
@@ -102,7 +121,8 @@ public class MediaProvider implements SearchProvider {
                         UniversalSearchResult.SOURCE_FILE, uri.toString(), name,
                         pathIndex < 0 ? null : c.getString(pathIndex),
                         intent, Process.myUserHandle(),
-                        ShortcutProvider.score(query.toLowerCase(), name));
+                        recent ? RECENT_SCORE
+                                : ShortcutProvider.score(query.toLowerCase(), name));
                 if (mime != null && (mime.startsWith("image/") || mime.startsWith("video/")
                         || mime.startsWith("audio/"))) {
                     result.icon = loadThumbnail(context, uri);

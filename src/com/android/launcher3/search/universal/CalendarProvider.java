@@ -13,7 +13,6 @@ import android.text.TextUtils;
 import android.text.format.DateUtils;
 
 import com.android.launcher3.LauncherPrefs;
-import com.android.launcher3.search.StringMatcherUtility;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -60,8 +59,6 @@ public class CalendarProvider implements SearchProvider {
         Uri.Builder builder = CalendarContract.Instances.CONTENT_URI.buildUpon();
         ContentUris.appendId(builder, start);
         ContentUris.appendId(builder, end);
-        StringMatcherUtility.StringMatcher matcher =
-                StringMatcherUtility.StringMatcher.getInstance();
         String lower = query.toLowerCase();
         try (Cursor c = context.getContentResolver().query(builder.build(), PROJECTION,
                 null, null, CalendarContract.Instances.BEGIN + " ASC")) {
@@ -74,8 +71,8 @@ public class CalendarProvider implements SearchProvider {
             Set<String> seen = new HashSet<>();
             while (c.moveToNext() && out.size() < max) {
                 String title = titleIndex < 0 ? null : c.getString(titleIndex);
-                if (TextUtils.isEmpty(title)
-                        || !StringMatcherUtility.matches(lower, title, matcher)) {
+                int score = TextUtils.isEmpty(title) ? 0 : FuzzyMatcher.score(lower, title);
+                if (score == 0) {
                     continue;
                 }
                 long begin = beginIndex < 0 ? now : c.getLong(beginIndex);
@@ -90,7 +87,7 @@ public class CalendarProvider implements SearchProvider {
                         UniversalSearchResult.SOURCE_EVENT, eventUri.toString(), title,
                         DateUtils.getRelativeTimeSpanString(context, begin, true),
                         intent, Process.myUserHandle(),
-                        ShortcutProvider.score(lower, title)));
+                        score));
             }
         } catch (RuntimeException e) {
             return out;

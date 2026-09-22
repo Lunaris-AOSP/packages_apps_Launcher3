@@ -23,15 +23,88 @@
     <string name="search_action_web">Search the web for \"%1$s\"</string>
     <string name="search_action_in_app">Search in %1$s</string>
     <string name="search_calculator_title">Calculator</string>
-    <string name="search_calculator_summary">Answer sums and unit conversions as you type</string>
+    <string name="search_calculator_summary">Answer sums, unit and currency conversions, time zones and date math as you type. Currency rates are downloaded from the ECB.</string>
     <string name="search_files_title">Files and media</string>
     <string name="search_files_summary">Include files and media by name</string>
     <string name="search_events_title">Calendar events</string>
     <string name="search_events_summary">Include calendar events. Needs permission to read your calendar.</string>
     <string name="search_actions_title">Web and in-app search</string>
-    <string name="search_actions_summary">Offer to search the web or inside an app for what you typed</string>
+    <string name="search_actions_summary">Offer to search the web, inside apps or in your app store, and to look up definitions</string>
     <string name="search_permission_summary">Tap to allow access in app info</string>
     <string name="search_permission_contacts">Allow contacts access to search contacts</string>
     <string name="search_permission_calendar">Allow calendar access to search events</string>
     <string name="search_permission_files">Allow media access to search files</string>
+    <string name="search_section_quick_actions">Quick actions</string>
+    <string name="search_quick_actions_title">Quick actions</string>
+    <string name="search_quick_actions_summary">Understand phrases like \"timer 5m\", \"alarm 7:30\", \"text Sam\", phone numbers and web addresses</string>
+    <string name="search_action_timer">Set a timer for %1$s</string>
+    <string name="search_action_alarm">Set an alarm for %1$s</string>
+    <string name="search_action_call">Call %1$s</string>
+    <string name="search_action_text">Message %1$s</string>
+    <string name="search_action_email">Email %1$s</string>
+    <string name="search_action_add_contact">Add to contacts</string>
+    <string name="search_action_open">Open %1$s</string>
+    <string name="search_action_reminder">Add \"%1$s\" to calendar</string>
+    <plurals name="search_duration_seconds">
+        <item quantity="one">%d second</item>
+        <item quantity="other">%d seconds</item>
+    </plurals>
+    <plurals name="search_duration_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+    <plurals name="search_duration_hours">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
+    <string name="search_section_apps">Apps</string>
+    <string name="search_section_app_content">From apps</string>
+    <string name="search_section_web_suggestions">Web suggestions</string>
+    <string name="search_section_history">Recent searches</string>
+    <string name="search_filter_all">All</string>
+    <string name="search_show_more">Show %1$d more</string>
+    <string name="search_history_clear">Clear search history</string>
+    <string name="search_action_store">Search \"%1$s\" in %2$s</string>
+    <string name="search_action_define">Define \"%1$s\"</string>
+    <string name="search_action_define_in">Look up \"%1$s\" in %2$s</string>
+    <string name="search_time_in">%1$s · %2$s · %3$s</string>
+    <string name="search_menu_copy">Copy</string>
+    <string name="search_menu_call">Call</string>
+    <string name="search_menu_message">Message</string>
+    <string name="search_menu_copy_number">Copy number</string>
+    <string name="search_menu_share">Share</string>
+    <string name="search_menu_open_with">Open with…</string>
+    <string name="search_menu_open_settings">Open settings</string>
+    <string name="search_menu_add_to_home">Add to home screen</string>
+    <string name="search_menu_app_info">App info</string>
+    <string name="search_pin_unsupported">Couldn\'t add to the home screen</string>
+    <string name="search_app_content_title">Content from apps</string>
+    <string name="search_app_content_summary">Include notes, messages and other items apps share with the system search index</string>
+    <string name="search_web_suggestions_title">Web suggestions</string>
+    <string name="search_web_suggestions_summary">Suggest searches as you type. What you type is sent to your search engine.</string>
+    <string name="search_engine_title">Search engine</string>
+    <string name="search_behavior_title">Search behavior</string>
+    <string name="search_history_title">Search history</string>
+    <string name="search_history_summary">Show recent searches and rank what you open often higher</string>
+    <string name="search_auto_keyboard_title">Open keyboard with the drawer</string>
+    <string name="search_auto_keyboard_summary">Focus the search bar as soon as the app drawer opens</string>
+    <string name="search_section_order_title">Section order</string>
+    <string name="search_section_order_summary">Choose which kinds of results come first</string>
+    <string name="search_section_order_reset">Reset</string>
+    <string name="search_section_order_drag">Drag to reorder</string>
+    <string name="search_max_per_section_title">Results per section</string>
+    <string-array name="search_engine_entries">
+        <item>Browser default</item>
+        <item>Google</item>
+        <item>DuckDuckGo</item>
+        <item>Bing</item>
+        <item>Brave Search</item>
+    </string-array>
+    <string-array name="search_engine_values" translatable="false">
+        <item>default</item>
+        <item>google</item>
+        <item>duckduckgo</item>
+        <item>bing</item>
+        <item>brave</item>
+    </string-array>
 </resources>

@@ -7,7 +7,6 @@ import android.provider.Settings;
 import android.text.TextUtils;
 
 import com.android.launcher3.LauncherPrefs;
-import com.android.launcher3.search.StringMatcherUtility;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -77,15 +76,14 @@ public class QsTileProvider implements SearchProvider {
         }
         String specs = Settings.Secure.getString(
                 context.getContentResolver(), TILES_SETTING);
-        StringMatcherUtility.StringMatcher matcher =
-                StringMatcherUtility.StringMatcher.getInstance();
         String lower = query.toLowerCase();
         for (String spec : activeSpecs(specs)) {
             if (out.size() >= max) {
                 break;
             }
             String[] tile = TILES.get(spec);
-            if (tile == null || !StringMatcherUtility.matches(lower, tile[0], matcher)) {
+            int score = tile == null ? 0 : FuzzyMatcher.score(lower, tile[0]);
+            if (score == 0) {
                 continue;
             }
             Intent intent = TextUtils.isEmpty(tile[1]) ? null
@@ -101,7 +99,7 @@ public class QsTileProvider implements SearchProvider {
                     context.getString(com.android.launcher3.R.string.search_section_qs_tiles),
                     intent,
                     Process.myUserHandle(),
-                    ShortcutProvider.score(lower, tile[0]));
+                    score);
             if (state != null) {
                 result.checked = state;
                 result.toggle = (c, on) -> TileToggles.set(c, spec, on);

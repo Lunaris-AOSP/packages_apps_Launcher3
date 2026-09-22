@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.net.Uri;
 import android.os.Process;
 
 import com.android.launcher3.LauncherPrefs;
@@ -13,11 +14,68 @@ import com.android.launcher3.R;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ActionProvider implements SearchProvider {
 
     private static final int MAX_APPS = 3;
+    private static final int MAX_DICTIONARIES = 2;
+    private static final Pattern DEFINE = Pattern.compile(
+            "^(?:define|definition of|meaning of|what does (\\S+) mean)(?: (.+))?$");
+
+    static Intent webSearch(Context context, String query) {
+        String template = engineUrl(LauncherPrefs.SEARCH_ENGINE.get(context));
+        Intent intent = template == null
+                ? new Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
+                : new Intent(Intent.ACTION_VIEW,
+                        Uri.parse(String.format(template, Uri.encode(query))));
+        return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    }
+
+    private static String engineUrl(String engine) {
+        switch (engine) {
+            case "google":
+                return "https://www.google.com/search?q=%s";
+            case "duckduckgo":
+                return "https://duckduckgo.com/?q=%s";
+            case "bing":
+                return "https://www.bing.com/search?q=%s";
+            case "brave":
+                return "https://search.brave.com/search?q=%s";
+            default:
+                return null;
+        }
+    }
+
+    static UniversalSearchResult storeSearch(Context context, String query) {
+        Intent intent = new Intent(Intent.ACTION_VIEW,
+                Uri.parse("market://search?c=apps&q=" + Uri.encode(query)))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PackageManager pm = context.getPackageManager();
+        ResolveInfo store;
+        try {
+            store = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (store == null || store.activityInfo == null
+                || "android".equals(store.activityInfo.packageName)) {
+            return null;
+        }
+        UniversalSearchResult result = new UniversalSearchResult(
+                UniversalSearchResult.SOURCE_WEB, "store",
+                context.getString(R.string.search_action_store, query, store.loadLabel(pm)),
+                null, intent, Process.myUserHandle(), 8);
+        try {
+            result.icon = pm.getApplicationIcon(store.activityInfo.packageName);
+        } catch (PackageManager.NameNotFoundException e) {
+            result.icon = null;
+        }
+        return result;
+    }
 
     @Override
     public int getSource() {
@@ -35,13 +93,11 @@ public class ActionProvider implements SearchProvider {
         if (query.trim().isEmpty()) {
             return out;
         }
-        Intent web = new Intent(Intent.ACTION_WEB_SEARCH)
-                .putExtra(SearchManager.QUERY, query)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         out.add(new UniversalSearchResult(
                 UniversalSearchResult.SOURCE_WEB, "web",
                 context.getString(R.string.search_action_web, query), null,
-                web, Process.myUserHandle(), 10));
+                webSearch(context, query), Process.myUserHandle(), 10));
+        addDefinitions(context, query, out);
 
         PackageManager pm = context.getPackageManager();
         Intent probe = new Intent(Intent.ACTION_SEARCH);
@@ -89,5 +145,53 @@ public class ActionProvider implements SearchProvider {
             added++;
         }
         return out;
+    }
+
+    private static void addDefinitions(Context context, String query,
+            List<UniversalSearchResult> out) {
+        Matcher m = DEFINE.matcher(query.trim().toLowerCase(Locale.getDefault()));
+        if (!m.matches()) {
+            return;
+        }
+        String word = m.group(1) != null ? m.group(1) : m.group(2);
+        if (word == null || word.isBlank()) {
+            return;
+        }
+        word = word.trim();
+        PackageManager pm = context.getPackageManager();
+        List<ResolveInfo> handlers;
+        try {
+            handlers = pm.queryIntentActivities(
+                    new Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain"), 0);
+        } catch (RuntimeException e) {
+            handlers = List.of();
+        }
+        int added = 0;
+        for (ResolveInfo info : handlers) {
+            if (added >= MAX_DICTIONARIES) {
+                break;
+            }
+            if (info.activityInfo == null || !info.activityInfo.exported
+                    || info.activityInfo.packageName.equals(context.getPackageName())) {
+                continue;
+            }
+            Intent intent = new Intent(Intent.ACTION_PROCESS_TEXT)
+                    .setType("text/plain")
+                    .setClassName(info.activityInfo.packageName, info.activityInfo.name)
+                    .putExtra(Intent.EXTRA_PROCESS_TEXT, word)
+                    .putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            UniversalSearchResult result = new UniversalSearchResult(
+                    UniversalSearchResult.SOURCE_WEB, "define/" + info.activityInfo.name,
+                    context.getString(R.string.search_action_define_in, word,
+                            info.loadLabel(pm)),
+                    null, intent, Process.myUserHandle(), 12);
+            result.icon = info.loadIcon(pm);
+            out.add(result);
+            added++;
+        }
+        out.add(new UniversalSearchResult(UniversalSearchResult.SOURCE_WEB, "define",
+                context.getString(R.string.search_action_define, word), null,
+                webSearch(context, "define " + word), Process.myUserHandle(), 11));
     }
 }

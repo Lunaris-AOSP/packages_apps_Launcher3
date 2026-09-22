@@ -47,6 +47,7 @@ import com.android.launcher3.allapps.search.SearchAdapterProvider;
 import com.android.launcher3.folder.FolderIcon;
 import com.android.launcher3.model.data.AppInfo;
 import com.android.launcher3.model.data.FolderInfo;
+import com.android.launcher3.search.universal.SearchHistory;
 import com.android.launcher3.search.universal.UniversalSearchResult;
 import com.android.launcher3.search.universal.UniversalSearchResults;
 import com.android.launcher3.popup.PopupContainerWithArrow;
@@ -78,6 +79,8 @@ public abstract class BaseAllAppsAdapter
 
     public static final int VIEW_TYPE_SEARCH_RESULT_ROW = 1 << 12;
     public static final int VIEW_TYPE_SEARCH_SECTION_HEADER = 1 << 13;
+    public static final int VIEW_TYPE_SEARCH_TOP_RESULT = 1 << 14;
+    public static final int VIEW_TYPE_SEARCH_FILTERS = 1 << 15;
     public static final int NEXT_ID = 11;
 
     // Common view type masks
@@ -126,6 +129,7 @@ public abstract class BaseAllAppsAdapter
         public UniversalSearchResult searchResult = null;
         // Source id for a universal search section header
         public int searchSection = -1;
+        public UniversalSearchResults.Filters searchFilters = null;
         public AdapterItem(int viewType) {
             this.viewType = viewType;
         }
@@ -133,6 +137,18 @@ public abstract class BaseAllAppsAdapter
         public static AdapterItem asSearchResult(UniversalSearchResult result) {
             AdapterItem item = new AdapterItem(VIEW_TYPE_SEARCH_RESULT_ROW);
             item.searchResult = result;
+            return item;
+        }
+
+        public static AdapterItem asSearchTopResult(UniversalSearchResult result) {
+            AdapterItem item = new AdapterItem(VIEW_TYPE_SEARCH_TOP_RESULT);
+            item.searchResult = result;
+            return item;
+        }
+
+        public static AdapterItem asSearchFilters(UniversalSearchResults.Filters filters) {
+            AdapterItem item = new AdapterItem(VIEW_TYPE_SEARCH_FILTERS);
+            item.searchFilters = filters;
             return item;
         }
 
@@ -196,7 +212,8 @@ public abstract class BaseAllAppsAdapter
             if (viewType == VIEW_TYPE_SEARCH_SECTION_HEADER) {
                 return searchSection == other.searchSection;
             }
-            if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW) {
+            if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW
+                    || viewType == VIEW_TYPE_SEARCH_TOP_RESULT) {
                 return searchResult != null && other.searchResult != null
                         && searchResult.source == other.searchResult.source
                         && java.util.Objects.equals(searchResult.id, other.searchResult.id);
@@ -209,7 +226,8 @@ public abstract class BaseAllAppsAdapter
          * as well. Returning true will prevent redrawing of thee item.
          */
         public boolean isContentSame(AdapterItem other) {
-            if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW) {
+            if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW || viewType == VIEW_TYPE_SEARCH_TOP_RESULT
+                    || viewType == VIEW_TYPE_SEARCH_FILTERS) {
                 // Titles, subtitles and live state change per query even for the same id.
                 return false;
             }
@@ -326,6 +344,12 @@ public abstract class BaseAllAppsAdapter
             case VIEW_TYPE_SEARCH_SECTION_HEADER:
                 return new ViewHolder(mLayoutInflater.inflate(
                         R.layout.search_section_header, parent, false));
+            case VIEW_TYPE_SEARCH_TOP_RESULT:
+                return new ViewHolder(mLayoutInflater.inflate(
+                        R.layout.search_top_result, parent, false));
+            case VIEW_TYPE_SEARCH_FILTERS:
+                return new ViewHolder(mLayoutInflater.inflate(
+                        R.layout.search_filters, parent, false));
             case VIEW_TYPE_FOLDER:
                 FrameLayout fl = new FrameLayout(mActivityContext.asContext());
                 ViewGroup.MarginLayoutParams lp = new ViewGroup.MarginLayoutParams(
@@ -355,6 +379,15 @@ public abstract class BaseAllAppsAdapter
                 icon.setOnFocusChangeListener(mIconFocusListener);
                 icon.configureMinimalPopup(
                         holder.getItemViewType() == VIEW_TYPE_PRIVATE_SPACE_APP_ICON);
+                if (holder.getItemViewType() != VIEW_TYPE_PRIVATE_SPACE_APP_ICON) {
+                    AppInfo app = adapterItem.itemInfo;
+                    icon.setOnClickListener(!mApps.hasSearchResults() ? mOnIconClickListener
+                            : v -> {
+                                SearchHistory.recordLaunch(v.getContext(), SearchHistory.appKey(
+                                        app.getTargetComponent(), app.user));
+                                mOnIconClickListener.onClick(v);
+                            });
+                }
                 PrivateProfileManager privateProfileManager = mApps.getPrivateProfileManager();
                 if (privateProfileManager != null) {
                     // Set the alpha of the private space icon to 0 upon expanding the header so the
@@ -396,9 +429,15 @@ public abstract class BaseAllAppsAdapter
                                 mActivityContext.asContext(), item.searchSection));
                 break;
             }
-            case VIEW_TYPE_SEARCH_RESULT_ROW: {
+            case VIEW_TYPE_SEARCH_RESULT_ROW:
+            case VIEW_TYPE_SEARCH_TOP_RESULT: {
                 AdapterItem item = mApps.getAdapterItems().get(position);
                 UniversalSearchResults.bind(mActivityContext, holder.itemView, item.searchResult);
+                break;
+            }
+            case VIEW_TYPE_SEARCH_FILTERS: {
+                AdapterItem item = mApps.getAdapterItems().get(position);
+                UniversalSearchResults.bindFilters(holder.itemView, item.searchFilters);
                 break;
             }
             case VIEW_TYPE_EMPTY_SEARCH: {
