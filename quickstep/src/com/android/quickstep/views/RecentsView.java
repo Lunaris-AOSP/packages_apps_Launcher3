@@ -76,8 +76,6 @@ import static com.android.quickstep.views.OverviewActionsView.HIDDEN_DESKTOP;
 import static com.android.quickstep.views.OverviewActionsView.HIDDEN_NON_ZERO_ROTATION;
 import static com.android.quickstep.views.OverviewActionsView.HIDDEN_NO_RECENTS;
 import static com.android.quickstep.views.OverviewActionsView.HIDDEN_NO_TASKS;
-import static android.view.Surface.ROTATION_0;
-import static android.view.Surface.ROTATION_180;
 import static com.android.quickstep.views.OverviewActionsView.HIDDEN_SPLIT_SELECT_ACTIVE;
 import static com.android.quickstep.views.RecentsViewUtils.DESK_EXPLODE_PROGRESS;
 import static com.android.quickstep.views.TaskView.SPLIT_ALPHA;
@@ -444,11 +442,6 @@ public abstract class RecentsView<
                 }
             };
 
-    private boolean isPerTaskScrollScaleActive() {
-        TaskView running = getRunningTaskView();
-        return running != null && Math.abs(running.getScaleX() - 1f) > 1e-3f;
-    }
-
     /** Same as normal SCALE_PROPERTY, but also updates page offsets that depend on this scale. */
     public static final FloatProperty<RecentsView<?, ?>> RECENTS_SCALE_PROPERTY =
             new FloatProperty<>("recentsScale") {
@@ -461,10 +454,8 @@ public abstract class RecentsView<
                     view.runActionOnRemoteHandles(new Consumer<RemoteTargetHandle>() {
                         @Override
                         public void accept(RemoteTargetHandle remoteTargetHandle) {
-                            if (!view.isPerTaskScrollScaleActive()) {
-                                remoteTargetHandle.getTaskViewSimulator().recentsViewScale.value =
-                                        scale;
-                            }
+                            remoteTargetHandle.getTaskViewSimulator().recentsViewScale.value =
+                                    scale;
                         }
                     });
                     view.setTaskViewsResistanceTranslation(view.mTaskViewsSecondaryTranslation);
@@ -1281,6 +1272,7 @@ public abstract class RecentsView<
                 if (LauncherPrefs.RECENTS_STYLE.getSharedPrefKey().equals(key)) {
                     updateOverlapState();
                     resetTaskVisuals();
+                    updatePageOffsets();
                     requestLayout();
                 } else if (LauncherPrefs.RECENTS_TASK_CORNER_RADIUS.getSharedPrefKey()
                         .equals(key)) {
@@ -1323,7 +1315,8 @@ public abstract class RecentsView<
         return true;
     }
 
-    private String mRecentsStyle = "default"; 
+    private String mRecentsStyle = "default";
+    private final RecentsStyle mTaskStyle = new RecentsStyle();
 
     public void updateOverlapState() {
         mRecentsStyle = LauncherPrefs.RECENTS_STYLE.get(getContext());
@@ -1608,6 +1601,9 @@ public abstract class RecentsView<
     }
 
     public boolean isTaskViewVisible(TaskView tv) {
+        if (isStackRecentsStyleActive()) {
+            return isStackTaskWithinBounds(tv);
+        }
         if (showAsGrid()) {
             int screenStart = getPagedOrientationHandler().getPrimaryScroll(this);
             int screenEnd = screenStart + getPagedOrientationHandler().getMeasuredSize(this);
@@ -1616,6 +1612,14 @@ public abstract class RecentsView<
             // For now, just check if it's the active task or an adjacent task
             return Math.abs(indexOfChild(tv) - getNextPage()) <= 1;
         }
+    }
+
+    private boolean isStackTaskWithinBounds(TaskView taskView) {
+        mTempRectF.set(0f, 0f, taskView.getWidth(), taskView.getHeight());
+        taskView.getMatrix().mapRect(mTempRectF);
+        mTempRectF.offset(taskView.getLeft() - getScrollX(), taskView.getTop() - getScrollY());
+        return mTempRectF.right > 0f && mTempRectF.left < getWidth()
+                && mTempRectF.bottom > 0f && mTempRectF.top < getHeight();
     }
 
     public boolean isTaskViewFullyVisible(TaskView tv) {
@@ -2375,11 +2379,8 @@ public abstract class RecentsView<
             simulator.taskPrimaryTranslation.value = 0;
             simulator.taskSecondaryTranslation.value = 0;
             simulator.fullScreenProgress.value = 0;
-            TaskView running = getRunningTaskView();
-            simulator.recentsViewScale.value = (running != null && !showAsGrid())
-                    ? getPagedOrientationHandler().getPrimaryValue(
-                            running.getScaleX(), running.getScaleY())
-                    : 1f;
+            simulator.recentsViewScale.value = getScaleX();
+            simulator.setRecentsStyleTransform(1f, 0f);
         });
         // Reapply runningTask related attributes as they might have been reset by
         // resetViewTransforms().
@@ -2387,6 +2388,7 @@ public abstract class RecentsView<
         applyAttachAlpha();
 
         updateCurveProperties();
+        doScrollScale();
         // Update the set of visible task's data
         loadVisibleTaskData(TaskView.FLAG_UPDATE_ALL);
         setTaskModalness(0);
@@ -2407,6 +2409,9 @@ public abstract class RecentsView<
 
         if (mEnableOverlap) {
             updatePageOffsets();
+            if (fullscreenProgress == 0f) {
+                loadVisibleTaskData(TaskView.FLAG_UPDATE_ALL);
+            }
         }
     }
 
@@ -2795,7 +2800,8 @@ public abstract class RecentsView<
                 visible = isTaskViewWithinBounds(taskView, visibleStart, visibleEnd,
                         mTaskViewsDismissPrimaryTranslations.getOrDefault(taskView, 0));
             } else {
-                visible = index >= lowerIndex && index <= upperIndex;
+                visible = (index >= lowerIndex && index <= upperIndex)
+                        || (isStackRecentsStyleActive() && isStackTaskWithinBounds(taskView));
             }
             if (visible) {
                 // Default update all non-null tasks, then remove running ones
@@ -4078,16 +4084,12 @@ public abstract class RecentsView<
                         lastTaskViewIndex);
                 int scrollDiff = newScroll[i] - oldScroll[i] + offset;
                 if (scrollDiff != 0) {
-                    if (true) {
-                        if (!mEnableOverlap || isStackRecentsStyleActive()) {
-                            translateTaskWhenDismissed(
-                                    child,
-                                    Math.abs(i - dismissedIndex),
-                                    scrollDiff,
-                                    anim,
-                                    splitTimings);
-                        }
-                    }
+                    translateTaskWhenDismissed(
+                            child,
+                            Math.abs(i - dismissedIndex),
+                            scrollDiff,
+                            anim,
+                            splitTimings);
                     if (child instanceof TaskView taskView) {
                         mTaskViewsDismissPrimaryTranslations.put(taskView, scrollDiffPerPage);
                     }
@@ -4500,10 +4502,6 @@ public abstract class RecentsView<
                 + splitTimings.getGridSlideDurationOffset(), 0f, 1f)
                 : 1f;
 
-        if (view instanceof TaskView taskView && isStackRecentsStyleActive()) {
-            scrollDiffPerPage = Math.round(getStackDismissReflowTarget(taskView, scrollDiffPerPage));
-        }
-
         // Slide tiles in horizontally to fill dismissed area
         pendingAnimation.setFloat(
                 view,
@@ -4525,7 +4523,7 @@ public abstract class RecentsView<
                                         getPagedOrientationHandler().getPrimaryValue(
                                                 view.getTranslationX(),
                                                 view.getTranslationY()
-                                        ));
+                                        ) - ((TaskView) view).getRecentsPrimaryTranslation());
                 redrawLiveTile();
             });
         }
@@ -5092,6 +5090,9 @@ public abstract class RecentsView<
         mLastComputedTaskStartPushOutDistance = null;
         mLastComputedTaskEndPushOutDistance = null;
         updatePageOffsets();
+        if (isStackRecentsStyleActive()) {
+            loadVisibleTaskData(TaskView.FLAG_UPDATE_ALL);
+        }
         runActionOnRemoteHandles(
                 remoteTargetHandle -> remoteTargetHandle.getTaskViewSimulator()
                         .setScroll(getScrollOffset()));
@@ -5224,7 +5225,7 @@ public abstract class RecentsView<
             } else if (child instanceof AddDesktopButton addDesktopButton) {
                 addDesktopButton.setOffsetTranslationX(totalTranslationX);
             }
-            if (mEnableDrawingLiveTile && i == getRunningTaskIndex() && !mEnableOverlap) {
+            if (mEnableDrawingLiveTile && i == getRunningTaskIndex()) {
                 runActionOnRemoteHandles(
                         remoteTargetHandle -> remoteTargetHandle.getTaskViewSimulator()
                                 .taskPrimaryTranslation.value = totalTranslationX);
@@ -5239,120 +5240,30 @@ public abstract class RecentsView<
             }
         }
         updateCurveProperties();
-        if (mEnableOverlap) {
-            doScrollScale();
-            if (mEnableDrawingLiveTile && mRemoteTargetHandles != null) {
-                redrawLiveTile();
-            }
+        doScrollScale();
+        if (mEnableOverlap && mEnableDrawingLiveTile && mRemoteTargetHandles != null) {
+            redrawLiveTile();
         }
     }
 
-    public boolean isOverlapStyleActive() {
-        return mEnableOverlap && mEnableDrawingLiveTile;
+    private boolean isCustomRecentsStyleActive() {
+        return mEnableOverlap && !showAsGrid()
+                && !mContainer.getDeviceProfile().getDeviceProperties().isTablet();
     }
 
     public boolean isStackRecentsStyleActive() {
-        return mRecentsStyle.equals("staple")
-                || mRecentsStyle.equals("ios")
-                || mRecentsStyle.equals("oxygen");
-    }
-
-    public boolean isKamiRecentsStyleActive() {
-        return mRecentsStyle.equals("staple");
-    }
-
-    public float getStackDismissReflowTarget(TaskView taskView, float reflowTarget) {
-        return getStackDismissReflowTarget(taskView, reflowTarget, false);
-    }
-
-    public float getStackDismissReflowTarget(TaskView taskView, float reflowTarget,
-            boolean trailingStackTask) {
-        if (!isStackRecentsStyleActive()) {
-            return reflowTarget;
-        }
-
-        float overlapFactor = getStackStyleOverlapFactor();
-        if (overlapFactor <= 0f) {
-            return reflowTarget;
-        }
-        if (mRecentsStyle.equals("staple")) {
-            float childSize = getPagedOrientationHandler().getMeasuredSize(taskView);
-            if (childSize == 0f) {
-                return reflowTarget;
-            }
-            float stackTranslation = getStackStyleTranslation(reflowTarget, childSize,
-                    overlapFactor);
-            return reflowTarget + stackTranslation * (trailingStackTask ? 2.35f : 1f);
-        }
-
-        boolean touchInLandscape = mOrientationState.getTouchRotation() != ROTATION_0
-                && mOrientationState.getTouchRotation() != ROTATION_180;
-        boolean layoutInLandscape = mOrientationState.getRecentsActivityRotation() != ROTATION_0
-                && mOrientationState.getRecentsActivityRotation() != ROTATION_180;
-        boolean canRotateRecents = mOrientationState.isRecentsActivityRotationAllowed();
-        boolean verticalScroll = !canRotateRecents && touchInLandscape && !layoutInLandscape;
-
-        int curScroll = verticalScroll ? getScrollY() : getScrollX();
-        int containerCenter = curScroll + (verticalScroll ? (getHeight() / 2) : (getWidth() / 2));
-        float childCenter = verticalScroll
-                ? (taskView.getTop() + (taskView.getHeight() / 2f))
-                : (taskView.getLeft() + (taskView.getWidth() / 2f));
-        float childSize = verticalScroll ? taskView.getHeight() : taskView.getWidth();
-        if (childSize == 0f) {
-            return reflowTarget;
-        }
-
-        float currentDist = childCenter - containerCenter;
-        float currentStackOffset = getStackStyleTranslation(currentDist, childSize, overlapFactor);
-        float targetStackOffset = getStackStyleTranslation(
-                currentDist + reflowTarget, childSize, overlapFactor);
-        return reflowTarget + targetStackOffset - currentStackOffset;
+        return isCustomRecentsStyleActive() && (mRecentsStyle.equals("staple")
+                || mRecentsStyle.equals("ios") || mRecentsStyle.equals("oxygen"));
     }
 
     private float getStackStyleOverlapFactor() {
-        if (!mEnableOverlap || mFullscreenProgress >= STACK_STYLE_FULLSCREEN_PROGRESS) {
+        if (!isCustomRecentsStyleActive()
+                || mFullscreenProgress >= STACK_STYLE_FULLSCREEN_PROGRESS) {
             return 0f;
         }
         float stackProgress = Utilities.boundToRange(
                 1f - (mFullscreenProgress / STACK_STYLE_FULLSCREEN_PROGRESS), 0f, 1f);
         return FAST_OUT_SLOW_IN.getInterpolation(stackProgress);
-    }
-
-    private float getStackStyleTranslation(float dist, float childSize, float overlapFactor) {
-        float absDist = Math.abs(dist);
-        if (mRecentsStyle.equals("staple")) {
-            float stapleDistance = childSize * 0.60f;
-            if (absDist <= stapleDistance) {
-                return 0f;
-            }
-            float excess = absDist - stapleDistance;
-            float squish = Math.min(excess, (float) (Math.log10(1 + excess) * 12f));
-            float pullBack = absDist - (stapleDistance + squish);
-            float translation = (dist > 0) ? -pullBack : pullBack;
-            return translation * overlapFactor;
-        }
-
-        if (mRecentsStyle.equals("ios")) {
-            float stapleDistance = childSize * 0.1f;
-            if (dist >= 0 || absDist <= stapleDistance) {
-                return 0f;
-            }
-            float excess = absDist - stapleDistance;
-            float squish = Math.min(excess, (float) (Math.log10(1 + excess) * 45f));
-            float pullBack = absDist - (stapleDistance + squish);
-            return pullBack * overlapFactor;
-        }
-
-        if (mRecentsStyle.equals("oxygen")) {
-            if (dist >= 0 || absDist <= 0f) {
-                return 0f;
-            }
-            float squish = Math.min(absDist, (float) (Math.sqrt(absDist) * 7.5f));
-            float pullBack = absDist - squish;
-            return pullBack * overlapFactor;
-        }
-
-        return 0f;
     }
 
     /**
@@ -7166,280 +7077,83 @@ public abstract class RecentsView<
     }
 
     private void doScrollScale() {
-        if (showAsGrid() || mContainer.getDeviceProfile().getDeviceProperties().isTablet()) return;
-        if (!isPageScrollsInitialized()) return;
-
-        int childCount = Math.min(mPageScrolls.length, getChildCount());
-        if (childCount == 0) return;
-
-        final boolean isStaple = mRecentsStyle.equals("staple");
-        final boolean isIOS = mRecentsStyle.equals("ios");
-        final boolean isOxygen = mRecentsStyle.equals("oxygen");
-
-        float mScrollScale = isOxygen ? 0.92f : 0.85f;
-
-        float overlapFactor = getStackStyleOverlapFactor();
-        final boolean applyOverlap = (overlapFactor > 0);
-
-        //nick@lmo-20231004 if rotating launcher is enabled, rotation works differently
-        // There are many edge cases (going from landscape app to recents, rotating in recents etc)
-        boolean touchInLandscape = mOrientationState.getTouchRotation() != ROTATION_0
-                && mOrientationState.getTouchRotation() != ROTATION_180;
-        boolean layoutInLandscape = mOrientationState.getRecentsActivityRotation() != ROTATION_0
-                && mOrientationState.getRecentsActivityRotation() != ROTATION_180;
-        boolean canRotateRecents = mOrientationState.isRecentsActivityRotationAllowed();
-
-        boolean verticalScroll = !canRotateRecents && touchInLandscape && !layoutInLandscape;
-
-        int curScroll = verticalScroll ? getScrollY() : getScrollX();
-        int containerCenter = curScroll + (verticalScroll ? (getHeight() / 2) : (getWidth() / 2));
-
-        int cachedChildSize = 0;
-
-        for (int i = 0; i < childCount; i++) {
-            View c = getChildAt(i);
-            if (!(c instanceof TaskView)) continue;
-            cachedChildSize = verticalScroll ? c.getHeight() : c.getWidth();
-            break;
+        if (!mEnableOverlap) {
+            return;
         }
-
-        if (cachedChildSize == 0) {
-            View firstChild = getChildAt(0);
-            if (firstChild == null) return;
-            cachedChildSize = verticalScroll ? firstChild.getHeight() : firstChild.getWidth();
+        for (int i = 0; i < getChildCount(); i++) {
+            if (getChildAt(i) instanceof TaskView taskView) {
+                updateTaskRecentsStyle(taskView, i);
+            }
         }
+    }
 
-        int cachedScaleArea = (cachedChildSize > 0) ? (cachedChildSize + mPageSpacing) : 0;
-        final RecentsPagedOrientationHandler orientationHandler = getPagedOrientationHandler();
+    void updateTaskRecentsStyle(TaskView taskView) {
+        if (mEnableOverlap) {
+            updateTaskRecentsStyle(taskView, indexOfChild(taskView));
+        }
+    }
 
-        for (int i = 0; i < childCount; i++) {
-            View child = getChildAt(i);
+    private void updateTaskRecentsStyle(TaskView taskView, int index) {
+        if (!isCustomRecentsStyleActive() && taskView.getRecentsScale() == 1f
+                && taskView.getRecentsPrimaryTranslation() == 0f) {
+            return;
+        }
+        RecentsPagedOrientationHandler orientation = getPagedOrientationHandler();
+        float progress = getStackStyleOverlapFactor();
+        boolean hasScroll = isPageScrollsInitialized()
+                && index >= 0 && index < mPageScrolls.length;
+        float distance = hasScroll
+                ? mPageScrolls[index] - orientation.getPrimaryScroll(this)
+                        + taskView.getPrimaryDismissTranslationProperty().get(taskView)
+                : 0f;
+        mTaskStyle.update(mRecentsStyle, distance, orientation.getPrimarySize(taskView),
+                mPageSpacing, hasScroll ? progress : 0f, mIsRtl);
+        taskView.setRecentsScale(mTaskStyle.scale);
+        taskView.setRecentsTranslation(mTaskStyle.translation);
+        taskView.setTranslationZ(mTaskStyle.elevation);
+        taskView.setRecentsDim(mTaskStyle.dim);
+        updateLiveTileRecentsStyle(taskView);
+    }
 
-            int childSize = cachedChildSize > 0 ? cachedChildSize : 
-                           (verticalScroll ? child.getHeight() : child.getWidth());
-            
-            if (childSize == 0) continue;
-
-            int scaleArea = (cachedScaleArea > 0) ? cachedScaleArea : (childSize + mPageSpacing);
-            int childPosition = mPageScrolls[i];
-            int scrollDelta = Math.abs(curScroll - childPosition);
-
-            float baseScale = mScrollScale;
-            if (scrollDelta <= scaleArea) {
-                baseScale = Utilities.mapToRange(scrollDelta, 0, scaleArea, 1f, mScrollScale, LINEAR);
-            }
-
-            boolean styleApplied = false;
-
-            if (applyOverlap && child instanceof TaskView) {
-                TaskView tv = (TaskView) child;
-                
-                float childCenter = verticalScroll
-                        ? (child.getTop() + (child.getHeight() / 2f))
-                        : (child.getLeft() + (child.getWidth() / 2f));
-                float dist = childCenter - containerCenter;
-                float absDist = Math.abs(dist);
-
-                if (isStaple) {
-                    applyKamiStyle(tv, child, dist, absDist, childSize, baseScale, overlapFactor);
-                    styleApplied = true;
-                } else if (isIOS) {
-                    applyIOSStyle(tv, child, dist, absDist, childSize, baseScale, overlapFactor);
-                    styleApplied = true;
-                } else if (isOxygen) {
-                    applyOxygenStyle(tv, child, dist, absDist, childSize, baseScale, overlapFactor);
-                    styleApplied = true;
-                }
-            }
-
-            final boolean isTaskView = child instanceof TaskView;
-            final TaskView tv = isTaskView ? (TaskView) child : null;
-
-            if (!styleApplied) {
-                if (child.getScaleX() != baseScale) {
-                    child.setScaleX(baseScale);
-                    child.setScaleY(baseScale);
-                }
-                if (tv != null) {
-                    if (child.getTranslationZ() != 0f) child.setTranslationZ(0f);
-                    if (child.getRotationY() != 0f) child.setRotationY(0f);
-                    tv.setColorTint(0f, 0);
-                }
-            }
-
-            if (tv != null) {
-                tv.updateFullscreenParams();
-            }
-
-            if (tv == null || mRemoteTargetHandles == null) continue;
-            final float primaryScale = orientationHandler.getPrimaryValue(
-                    tv.getScaleX(), tv.getScaleY());
-            final float primaryTranslation = orientationHandler.getPrimaryValue(
-                    tv.getTranslationX(), tv.getTranslationY());
-            final int[] taskIds = tv.getTaskIds();
-            for (RemoteTargetHandle rth : mRemoteTargetHandles) {
-                RemoteAnimationTargets targets = rth.getTransformParams().getTargetSet();
-                if (targets == null) continue;
-                for (int id : taskIds) {
-                    if (targets.findTask(id) != null) {
-                        TaskViewSimulator sim = rth.getTaskViewSimulator();
-                        sim.recentsViewScale.value = primaryScale;
-                        sim.taskPrimaryTranslation.value = primaryTranslation;
-                        break;
-                    }
+    public void updateRecentsStyle(RemoteTargetHandle handle) {
+        TaskViewSimulator simulator = handle.getTaskViewSimulator();
+        simulator.setRecentsStyleTransform(1f, 0f);
+        if (!isCustomRecentsStyleActive()) {
+            return;
+        }
+        RemoteAnimationTargets targets = handle.getTransformParams().getTargetSet();
+        if (targets == null) {
+            return;
+        }
+        for (TaskView taskView : getTaskViews()) {
+            for (int taskId : taskView.getTaskIds()) {
+                if (targets.findTask(taskId) != null) {
+                    updateTaskRecentsStyle(taskView);
+                    simulator.setRecentsStyleTransform(
+                            taskView.getRecentsScale(), taskView.getRecentsPrimaryTranslation());
+                    return;
                 }
             }
         }
     }
 
-    // Helper
-    private void applyKamiStyle(TaskView tv, View child, float dist, float absDist, 
-                              float childSize, float baseScale, float overlapFactor) {
-        float stapleDistance = childSize * 0.60f;
-
-        float currentTrans = tv.getPrimaryTaskOffsetTranslationProperty().get(tv);
-
-        if (absDist > stapleDistance) {
-            float excess = absDist - stapleDistance;
-            float squish = (float) (Math.log10(1 + excess) * 12f);
-            squish = Math.min(excess, squish);
-            float targetVisualDist = stapleDistance + squish;
-            float pullBack = absDist - targetVisualDist;
-            float translation = (dist > 0) ? -pullBack : pullBack;
-            
-            float overlapTrans = translation * overlapFactor;
-
-            tv.getPrimaryTaskOffsetTranslationProperty().set(tv, currentTrans + overlapTrans);
-
-            float zOffset = -(excess / childSize) * 20f * overlapFactor;
-            if (child.getTranslationZ() != zOffset) {
-                child.setTranslationZ(zOffset);
-            }
-
-            float stackScaleFactor = 1f - (excess / (childSize * 2.5f)) * 0.15f;
-            stackScaleFactor = Math.max(0.75f, stackScaleFactor);
-
-            float finalScale = baseScale * (1f - (1f - stackScaleFactor) * overlapFactor);
-            if (child.getScaleX() != finalScale) {
-                child.setScaleX(finalScale);
-                child.setScaleY(finalScale);
-            }
-        } else {
-            
-            if (child.getTranslationZ() != 0f) child.setTranslationZ(0f);
-            if (child.getScaleX() != baseScale) {
-                child.setScaleX(baseScale);
-                child.setScaleY(baseScale);
-            }
+    private void updateLiveTileRecentsStyle(TaskView taskView) {
+        if (mRemoteTargetHandles == null) {
+            return;
         }
-    }
-
-    private void applyIOSStyle(TaskView tv, View child, float dist, float absDist, 
-                             float childSize, float baseScale, float overlapFactor) {
-        float currentTrans = tv.getPrimaryTaskOffsetTranslationProperty().get(tv);
-
-        if (dist < 0) {
-            float stapleDistance = childSize * 0.1f;
-            if (absDist > stapleDistance) {
-                float excess = absDist - stapleDistance;
-                float squish = (float) (Math.log10(1 + excess) * 45f);
-                squish = Math.min(excess, squish);
-                float targetVisualDist = stapleDistance + squish;
-                float pullBack = absDist - targetVisualDist;
-                
-                float overlapTrans = pullBack * overlapFactor;
-
-                tv.getPrimaryTaskOffsetTranslationProperty().set(tv, currentTrans + overlapTrans);
-
-                float zOffset = -(excess / childSize) * 24f * overlapFactor;
-                if (child.getTranslationZ() != zOffset) {
-                    child.setTranslationZ(zOffset);
-                }
-
-                float depthProgress = Math.min(1f, excess / (childSize * 1.5f));
-                tv.setColorTint(0.3f * depthProgress * overlapFactor, android.graphics.Color.BLACK);
-
-                float stackScaleFactor = 1f - (depthProgress * 0.15f);
-                float finalScale = baseScale * (1f - (1f - stackScaleFactor) * overlapFactor);
-                
-                if (child.getScaleX() != finalScale) {
-                    child.setScaleX(finalScale);
-                    child.setScaleY(finalScale);
-                }
-                return;
+        for (RemoteTargetHandle handle : mRemoteTargetHandles) {
+            RemoteAnimationTargets targets = handle.getTransformParams().getTargetSet();
+            if (targets == null) {
+                continue;
             }
-        }
-
-        if (child.getTranslationZ() != 0f) child.setTranslationZ(0f);
-        tv.setColorTint(0f, 0);
-        if (child.getScaleX() != baseScale) {
-            child.setScaleX(baseScale);
-            child.setScaleY(baseScale);
-        }
-    }
-
-    private void applyOxygenStyle(TaskView tv, View child, float dist, float absDist, 
-                                float childSize, float baseScale, float overlapFactor) {
-        
-        float currentTrans = tv.getPrimaryTaskOffsetTranslationProperty().get(tv);
-
-        if (dist < 0) {
-            float stapleDistance = 0f;
-            if (absDist > stapleDistance) {
-                float excess = absDist - stapleDistance;
-                float squish = (float) (Math.sqrt(excess) * 7.5f);
-                squish = Math.min(excess, squish);
-                float targetVisualDist = stapleDistance + squish;
-                float pullBack = absDist - targetVisualDist;
-
-                float overlapTrans = pullBack * overlapFactor;
-
-                tv.getPrimaryTaskOffsetTranslationProperty().set(tv, currentTrans + overlapTrans);
-
-                float zOffset = -(excess / childSize) * 12f * overlapFactor;
-                if (child.getTranslationZ() != zOffset) {
-                    child.setTranslationZ(zOffset);
-                }
-
-                float stackScaleFactor = 1f - (excess / (childSize * 3f)) * 0.1f;
-                stackScaleFactor = Math.max(0.85f, stackScaleFactor);
-
-                float finalScale = baseScale * (1f - (1f - stackScaleFactor) * overlapFactor);
-                if (child.getScaleX() != finalScale) {
-                    child.setScaleX(finalScale);
-                    child.setScaleY(finalScale);
-                }
-                return;
-            }
-        }
-        
-        if (child.getTranslationZ() != 0f) child.setTranslationZ(0f);
-        if (child.getScaleX() != baseScale) {
-            child.setScaleX(baseScale);
-            child.setScaleY(baseScale);
-        }
-    }
-
-    public float getScrollScale(RemoteTargetHandle rth) {
-        if (rth == null || showAsGrid() || mContainer.getDeviceProfile().getDeviceProperties().isTablet()) return 1f;
-        if (!isPageScrollsInitialized()) return 1f;
-        int childCount = Math.min(mPageScrolls.length, getChildCount());
-        for (int i = 0; i < childCount; i++) {
-            View child = getChildAt(i);
-            if (!(child instanceof TaskView)) continue;
-            TaskView tv = (TaskView) child;
-            TransformParams params = rth.getTransformParams();
-            RemoteAnimationTargets targets = params.getTargetSet();
-            for (int id : tv.getTaskIds()) {
-                if (targets != null && targets.findTask(id) != null) {
-                    return getPagedOrientationHandler().getPrimaryValue(
-                                tv.getScaleX(),
-                                tv.getScaleY()
-                           );
+            for (int taskId : taskView.getTaskIds()) {
+                if (targets.findTask(taskId) != null) {
+                    handle.getTaskViewSimulator().setRecentsStyleTransform(
+                            taskView.getRecentsScale(), taskView.getRecentsPrimaryTranslation());
+                    break;
                 }
             }
         }
-        return 1f;
     }
 
     /**

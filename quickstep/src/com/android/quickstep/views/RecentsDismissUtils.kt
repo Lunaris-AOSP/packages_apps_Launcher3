@@ -650,13 +650,10 @@ constructor(
         if (taskViewOffsetPairs.isEmpty()) return previousSpring
         var lastTaskViewSpring = previousSpring
         var previousColumnDriverSpring = previousSpring
-        var previousColumnDriverTarget = dismissedTaskGap
-        var lastTaskViewTarget = dismissedTaskGap
         var lastColumnOffset = taskViewOffsetPairs.first().second
-        var reflowingTaskIndex = 0
         taskViewOffsetPairs
             .filter { (taskView, _) ->
-                recentsView.isKamiRecentsStyleActive ||
+                recentsView.isStackRecentsStyleActive ||
                     willTaskBeVisibleAfterDismiss(taskView, dismissedTaskGap.roundToInt())
             }
             .forEach { (taskView, column) ->
@@ -671,12 +668,6 @@ constructor(
                             (if (recentsView.isRtl) -recentsView.mLastComputedTaskSize.right
                             else recentsView.mLastComputedTaskSize.right)
                     } else 0f
-                val taskReflowTarget =
-                    recentsView.getStackDismissReflowTarget(
-                        taskView,
-                        dismissedTaskGap,
-                        recentsView.isKamiRecentsStyleActive && reflowingTaskIndex > 0,
-                    )
                 val taskViewSpringAnimation =
                     SpringAnimation(
                             taskView,
@@ -684,7 +675,7 @@ constructor(
                                 taskView.primaryDismissTranslationProperty
                             ),
                         )
-                        .setSpring(createExpressiveGridReflowSpringForce(taskReflowTarget))
+                        .setSpring(createExpressiveGridReflowSpringForce(dismissedTaskGap))
                         .setStartValue(startValue)
                 // Update live tile on spring animation.
                 if (taskView.isRunningTask && recentsView.enableDrawingLiveTile) {
@@ -700,28 +691,16 @@ constructor(
                 // should both be pulled by the previous spring at the same time.
                 if (column != lastColumnOffset) {
                     previousColumnDriverSpring = lastTaskViewSpring
-                    previousColumnDriverTarget = lastTaskViewTarget
                     lastColumnOffset = column
                 }
                 val driverSpringForTask = previousColumnDriverSpring
-                val driverTargetForTask = previousColumnDriverTarget
-                if (recentsView.isStackRecentsStyleActive) {
-                    driverSpringForTask.addUpdateListener { _, value, _ ->
-                        taskViewSpringAnimation.animateToFinalPosition(
-                            getStackReflowSpringValue(value, driverTargetForTask, taskReflowTarget)
-                        )
-                    }
-                } else {
-                    driverSpringForTask.addUpdateListener { _, value, _ ->
-                        taskViewSpringAnimation.animateToFinalPosition(value)
-                    }
+                driverSpringForTask.addUpdateListener { _, value, _ ->
+                    taskViewSpringAnimation.animateToFinalPosition(value)
                 }
                 lastTaskViewSpring = taskViewSpringAnimation
-                lastTaskViewTarget = taskReflowTarget
-                reflowSpringSet.trackSpring(taskViewSpringAnimation, taskReflowTarget)
+                reflowSpringSet.trackSpring(taskViewSpringAnimation, dismissedTaskGap)
                 recentsView.mTaskViewsDismissPrimaryTranslations[taskView] =
-                    taskReflowTarget.toInt()
-                reflowingTaskIndex++
+                    dismissedTaskGap.toInt()
             }
         return lastTaskViewSpring
     }
@@ -749,18 +728,6 @@ constructor(
             isSplitSelection = true,
         )
         return otherGridRowReflowSpringSet
-    }
-
-    private fun getStackReflowSpringValue(
-        value: Float,
-        driverTarget: Float,
-        taskReflowTarget: Float,
-    ): Float {
-        return if (driverTarget == 0f) {
-            taskReflowTarget
-        } else {
-            value / driverTarget * taskReflowTarget
-        }
     }
 
     /** Animates the grid to compensate the clear all gap after dismissal. */
@@ -984,19 +951,6 @@ constructor(
 
             // Page snapping and relayout to run after all animations have completed.
             val onFinishComplete = {
-                val isCustomStyle = com.android.launcher3.LauncherPrefs.RECENTS_STYLE.get(recentsView.context) != "default"
-                val previousScales = mutableMapOf<Int, Float>()
-                val previousScaleYs = mutableMapOf<Int, Float>()
-
-                if (isCustomStyle) {
-                    taskViews.forEach { tv ->
-                        if (tv !== dismissedTaskView) {
-                            previousScales[tv.taskViewId] = tv.scaleX
-                            previousScaleYs[tv.taskViewId] = tv.scaleY
-                        }
-                    }
-                }
-
                 // Reset task translations as they may have updated via the dismiss animations.
                 resetTaskVisuals()
 
@@ -1029,70 +983,6 @@ constructor(
 
                 // Update the UI after removal and snap to page.
                 updateUiAfterTaskRemoval(dismissedTaskView, pageToSnapTo)
-
-                if (isCustomStyle) {
-                    val scaleAnimators = java.util.ArrayList<android.animation.Animator>()
-                    val currentAnimatedScalesX = mutableMapOf<Int, Float>()
-                    val currentAnimatedScalesY = mutableMapOf<Int, Float>()
-
-                    taskViews.forEach { tv ->
-                        val targetScaleX = tv.scaleX
-                        val targetScaleY = tv.scaleY
-                        val startScaleX = previousScales[tv.taskViewId] ?: targetScaleX
-                        val startScaleY = previousScaleYs[tv.taskViewId] ?: targetScaleY
-
-                        if (startScaleX != targetScaleX || startScaleY != targetScaleY) {
-                            currentAnimatedScalesX[tv.taskViewId] = startScaleX
-                            currentAnimatedScalesY[tv.taskViewId] = startScaleY
-
-                            val animatorX = android.animation.ValueAnimator.ofFloat(startScaleX, targetScaleX)
-                            animatorX.addUpdateListener { anim ->
-                                val value = anim.animatedValue as Float
-                                currentAnimatedScalesX[tv.taskViewId] = value
-                                tv.scaleX = value
-                            }
-
-                            val animatorY = android.animation.ValueAnimator.ofFloat(startScaleY, targetScaleY)
-                            animatorY.addUpdateListener { anim ->
-                                val value = anim.animatedValue as Float
-                                currentAnimatedScalesY[tv.taskViewId] = value
-                                tv.scaleY = value
-                            }
-
-                            scaleAnimators.add(animatorX)
-                            scaleAnimators.add(animatorY)
-                        }
-                    }
-                    if (scaleAnimators.isNotEmpty()) {
-                        val animSet = android.animation.AnimatorSet()
-                        animSet.playTogether(scaleAnimators)
-                        animSet.duration = 300
-                        animSet.interpolator = android.view.animation.PathInterpolator(0.33f, 1f, 0.68f, 1f)
-
-                        // Prevent doScrollScale() during layout passes from overriding our scale
-                        val preDrawListener = object : android.view.ViewTreeObserver.OnPreDrawListener {
-                            override fun onPreDraw(): Boolean {
-                                taskViews.forEach { tv ->
-                                    currentAnimatedScalesX[tv.taskViewId]?.let { tv.scaleX = it }
-                                    currentAnimatedScalesY[tv.taskViewId]?.let { tv.scaleY = it }
-                                }
-                                return true
-                            }
-                        }
-                        recentsView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
-
-                        animSet.addListener(object : android.animation.AnimatorListenerAdapter() {
-                            override fun onAnimationEnd(animation: android.animation.Animator) {
-                                recentsView.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
-                                taskViews.forEach { tv ->
-                                    currentAnimatedScalesX[tv.taskViewId]?.let { tv.scaleX = it }
-                                    currentAnimatedScalesY[tv.taskViewId]?.let { tv.scaleY = it }
-                                }
-                            }
-                        })
-                        animSet.start()
-                    }
-                }
 
                 if (!dismissingForSplitSelection) {
                     InteractionJankMonitorWrapper.end(Cuj.CUJ_LAUNCHER_OVERVIEW_TASK_DISMISS)
