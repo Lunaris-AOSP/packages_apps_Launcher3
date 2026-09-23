@@ -107,4 +107,18 @@
         <item>bing</item>
         <item>brave</item>
     </string-array>
+    <string name="search_section_photos">Photos</string>
+    <string name="search_section_screenshots">Recent screenshots</string>
+    <string name="search_photo">Photo</string>
+    <string name="search_action_in_google_photos">Search \"%1$s\" in Google Photos</string>
+    <string name="search_photos_title">Photos by content</string>
+    <string name="search_photos_summary">Find photos by what is in them, like \"cat\" or \"beach\". Photos are labelled on this device, mostly while charging.</string>
+    <string name="search_recent_screenshots_title">Recent screenshots</string>
+    <string name="search_recent_screenshots_summary">Show your latest screenshots in search before you type</string>
+    <string name="search_whatsapp">WhatsApp</string>
+    <string name="search_history_remove">Remove from recent searches</string>
+    <string name="search_timer_set">Timer set for %1$s</string>
+    <string name="search_alarm_set">Alarm set for %1$s</string>
+    <string name="search_currency_source">%1$s · ECB rates, %2$s</string>
+    <string name="search_currency_source_stale">%1$s · ECB rates from %2$s, offline</string>
 </resources>

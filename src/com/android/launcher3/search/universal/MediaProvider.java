@@ -57,6 +57,38 @@ public class MediaProvider implements SearchProvider {
         }
     }
 
+    static List<UniversalSearchResult> recentScreenshots(Context context, int max) {
+        List<UniversalSearchResult> out = new ArrayList<>();
+        if (!hasPermission(context)) {
+            return out;
+        }
+        Uri images = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL);
+        try (Cursor c = context.getContentResolver().query(images,
+                new String[]{MediaStore.Images.Media._ID},
+                MediaStore.Images.Media.RELATIVE_PATH + " LIKE ?", new String[]{"%Screenshots%"},
+                MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+            while (c != null && c.moveToNext() && out.size() < max) {
+                Uri uri = ContentUris.withAppendedId(images, c.getLong(0));
+                Drawable thumb = loadThumbnail(context, uri);
+                if (thumb == null) {
+                    continue;
+                }
+                UniversalSearchResult result = new UniversalSearchResult(
+                        UniversalSearchResult.SOURCE_SCREENSHOT, uri.toString(), "", null,
+                        new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "image/*")
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                                        | Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                        Process.myUserHandle(), 0);
+                result.icon = thumb;
+                result.thumbnail = true;
+                out.add(result);
+            }
+        } catch (RuntimeException e) {
+            return out;
+        }
+        return out;
+    }
+
     public static boolean hasPermission(Context context) {
         for (String permission : PERMISSIONS) {
             if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
@@ -94,7 +126,9 @@ public class MediaProvider implements SearchProvider {
             args = new String[]{"Download%"};
         } else {
             recent = false;
-            selection = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ?";
+            // Folders are rows here too, with no MIME type; they can't be opened as files.
+            selection = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ? AND "
+                    + MediaStore.Files.FileColumns.MIME_TYPE + " IS NOT NULL";
             args = new String[]{"%" + query + "%"};
         }
         try (Cursor c = context.getContentResolver().query(collection, PROJECTION, selection,

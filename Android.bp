@@ -634,6 +634,7 @@ android_library {
         "QuickstepResLib",
         "androidx.room_room-runtime",
         "androidx.room_room-ktx",
+        "tensorflowlite_java",
     ],
     manifest: "quickstep/AndroidManifest.xml",
     platform_apis: true,

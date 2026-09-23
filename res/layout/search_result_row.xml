@@ -50,7 +50,37 @@
         android:layout_height="40dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:padding="8dp"
+        android:contentDescription="@string/search_menu_call"
         android:src="@drawable/ic_search_call"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/search_result_message"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/search_menu_message"
+        android:padding="8dp"
+        android:src="@drawable/ic_search_conversation"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/search_result_whatsapp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/search_whatsapp"
+        android:padding="8dp"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/search_result_remove"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/search_history_remove"
+        android:padding="10dp"
+        android:src="@drawable/ic_search_close"
         android:visibility="gone" />
 
     <Switch

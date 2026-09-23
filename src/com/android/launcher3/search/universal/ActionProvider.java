@@ -23,16 +23,52 @@ public class ActionProvider implements SearchProvider {
 
     private static final int MAX_APPS = 3;
     private static final int MAX_DICTIONARIES = 2;
+    private static final String GOOGLE_APP = "com.google.android.googlequicksearchbox";
     private static final Pattern DEFINE = Pattern.compile(
             "^(?:define|definition of|meaning of|what does (\\S+) mean)(?: (.+))?$");
 
     static Intent webSearch(Context context, String query) {
-        String template = engineUrl(LauncherPrefs.SEARCH_ENGINE.get(context));
-        Intent intent = template == null
-                ? new Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
-                : new Intent(Intent.ACTION_VIEW,
-                        Uri.parse(String.format(template, Uri.encode(query))));
+        String engine = LauncherPrefs.SEARCH_ENGINE.get(context);
+        String template = engineUrl(engine);
+        Intent intent;
+        if (template == null) {
+            intent = new Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query);
+        } else if ("google".equals(engine) && isInstalled(context, GOOGLE_APP)) {
+            intent = new Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
+                    .setPackage(GOOGLE_APP);
+        } else {
+            intent = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse(String.format(template, Uri.encode(query))));
+        }
         return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    }
+
+    static void applyEngineIcon(Context context, UniversalSearchResult result) {
+        PackageManager pm = context.getPackageManager();
+        String engine = LauncherPrefs.SEARCH_ENGINE.get(context);
+        if ("google".equals(engine) && !GOOGLE_APP.equals(result.intent.getPackage())) {
+            result.iconRes = R.drawable.ic_search_engine_google;
+            return;
+        }
+        try {
+            ResolveInfo handler = pm.resolveActivity(result.intent,
+                    PackageManager.MATCH_DEFAULT_ONLY);
+            // "android" is the chooser, which has no icon worth showing.
+            if (handler != null && handler.activityInfo != null
+                    && !"android".equals(handler.activityInfo.packageName)) {
+                result.icon = handler.loadIcon(pm);
+            }
+        } catch (RuntimeException e) {
+            result.icon = null;
+        }
+    }
+
+    private static boolean isInstalled(Context context, String pkg) {
+        try {
+            return context.getPackageManager().getApplicationInfo(pkg, 0).enabled;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
     }
 
     private static String engineUrl(String engine) {
@@ -69,6 +105,7 @@ public class ActionProvider implements SearchProvider {
                 UniversalSearchResult.SOURCE_WEB, "store",
                 context.getString(R.string.search_action_store, query, store.loadLabel(pm)),
                 null, intent, Process.myUserHandle(), 8);
+        result.packageName = store.activityInfo.packageName;
         try {
             result.icon = pm.getApplicationIcon(store.activityInfo.packageName);
         } catch (PackageManager.NameNotFoundException e) {
@@ -93,10 +130,12 @@ public class ActionProvider implements SearchProvider {
         if (query.trim().isEmpty()) {
             return out;
         }
-        out.add(new UniversalSearchResult(
+        UniversalSearchResult web = new UniversalSearchResult(
                 UniversalSearchResult.SOURCE_WEB, "web",
                 context.getString(R.string.search_action_web, query), null,
-                webSearch(context, query), Process.myUserHandle(), 10));
+                webSearch(context, query), Process.myUserHandle(), 10);
+        applyEngineIcon(context, web);
+        out.add(web);
         addDefinitions(context, query, out);
 
         PackageManager pm = context.getPackageManager();
@@ -190,8 +229,11 @@ public class ActionProvider implements SearchProvider {
             out.add(result);
             added++;
         }
-        out.add(new UniversalSearchResult(UniversalSearchResult.SOURCE_WEB, "define",
+        UniversalSearchResult define = new UniversalSearchResult(
+                UniversalSearchResult.SOURCE_WEB, "define",
                 context.getString(R.string.search_action_define, word), null,
-                webSearch(context, "define " + word), Process.myUserHandle(), 11));
+                webSearch(context, "define " + word), Process.myUserHandle(), 11);
+        applyEngineIcon(context, define);
+        out.add(define);
     }
 }

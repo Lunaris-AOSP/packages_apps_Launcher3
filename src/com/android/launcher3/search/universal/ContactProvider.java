@@ -1,6 +1,7 @@
 package com.android.launcher3.search.universal;
 
 import android.Manifest;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -29,6 +30,29 @@ public class ContactProvider implements SearchProvider {
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?",
                 new String[]{String.valueOf(contactId)}, null)) {
             return c != null && c.moveToFirst() ? c.getString(0) : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    // WhatsApp adds a data row of this type to contacts that use it; viewing it opens the chat.
+    private static final String WHATSAPP_PROFILE = "vnd.android.cursor.item/vnd.com.whatsapp.profile";
+    private static final String WHATSAPP = "com.whatsapp";
+
+    private static Intent whatsappChat(Context context, long contactId) {
+        try (Cursor c = context.getContentResolver().query(ContactsContract.Data.CONTENT_URI,
+                new String[]{ContactsContract.Data._ID},
+                ContactsContract.Data.CONTACT_ID + "=? AND " + ContactsContract.Data.MIMETYPE
+                        + "=?",
+                new String[]{String.valueOf(contactId), WHATSAPP_PROFILE}, null)) {
+            if (c == null || !c.moveToFirst()) {
+                return null;
+            }
+            return new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(ContentUris.withAppendedId(
+                            ContactsContract.Data.CONTENT_URI, c.getLong(0)), WHATSAPP_PROFILE)
+                    .setPackage(WHATSAPP)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         } catch (RuntimeException e) {
             return null;
         }
@@ -113,6 +137,7 @@ public class ContactProvider implements SearchProvider {
                 int phoneIndex = c.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER);
                 if (phoneIndex >= 0 && c.getInt(phoneIndex) > 0) {
                     result.phoneNumber = loadNumber(context, c.getLong(idIndex));
+                    result.whatsapp = whatsappChat(context, c.getLong(idIndex));
                 }
                 out.add(result);
             }

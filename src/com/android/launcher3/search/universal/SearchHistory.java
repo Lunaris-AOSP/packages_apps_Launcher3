@@ -44,6 +44,10 @@ public final class SearchHistory {
         sCurrentQuery = query == null ? "" : query.trim();
     }
 
+    public static String currentQuery() {
+        return sCurrentQuery;
+    }
+
     public static String appKey(ComponentName component, UserHandle user) {
         return "app:" + (component == null ? "" : component.flattenToShortString())
                 + "#" + (user == null ? 0 : user.hashCode());
@@ -109,6 +113,15 @@ public final class SearchHistory {
         synchronized (sLaunches) {
             load(context);
             return new ArrayList<>(sQueries);
+        }
+    }
+
+    static void removeQuery(Context context, String query) {
+        synchronized (sLaunches) {
+            load(context);
+            if (sQueries.remove(query)) {
+                save(context);
+            }
         }
     }
 

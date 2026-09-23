@@ -52,7 +52,8 @@ public class SettingProvider implements SearchProvider {
         String lower = query.toLowerCase();
         for (Entry entry : entries(context)) {
             int score = FuzzyMatcher.score(lower, entry.title);
-            if (score == 0) {
+            // With hundreds of entries, letters-in-order matches are almost all noise.
+            if (score <= FuzzyMatcher.SUBSEQUENCE) {
                 continue;
             }
             out.add(new UniversalSearchResult(

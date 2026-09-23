@@ -111,8 +111,12 @@ public class CalculatorProvider implements SearchProvider {
             return out;
         }
         String answer = convert(lower);
+        String subtitle = trimmed;
         if (answer == null) {
             answer = convertCurrency(context, lower);
+            if (answer != null) {
+                subtitle = currencySource(context, trimmed);
+            }
         }
         if (answer == null) {
             answer = evaluate(trimmed);
@@ -124,7 +128,7 @@ public class CalculatorProvider implements SearchProvider {
                 .addCategory("android.intent.category.APP_CALCULATOR")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         UniversalSearchResult result = new UniversalSearchResult(
-                UniversalSearchResult.SOURCE_CALCULATOR, "calc", answer, trimmed,
+                UniversalSearchResult.SOURCE_CALCULATOR, "calc", answer, subtitle,
                 intent, Process.myUserHandle(), 1000);
         result.copyText = answer;
         out.add(result);
@@ -161,6 +165,15 @@ public class CalculatorProvider implements SearchProvider {
         }
         double result = value / rates.get(from) * rates.get(to);
         return MONEY.format(result) + " " + to.toUpperCase(Locale.ROOT);
+    }
+
+    private static String currencySource(Context context, String query) {
+        long fetchedAt = CurrencyRates.fetchedAt();
+        String date = DateUtils.formatDateTime(context, fetchedAt,
+                DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_ABBREV_MONTH);
+        boolean stale = System.currentTimeMillis() - fetchedAt > DateUtils.DAY_IN_MILLIS;
+        return context.getString(stale ? R.string.search_currency_source_stale
+                : R.string.search_currency_source, query, date);
     }
 
     private static String normalizeSymbols(String query) {

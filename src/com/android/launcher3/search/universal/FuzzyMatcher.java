@@ -17,7 +17,7 @@ public final class FuzzyMatcher {
     public static final int WORD = 50;
     private static final int INITIALS = 45;
     private static final int TYPO = 35;
-    private static final int SUBSEQUENCE = 30;
+    public static final int SUBSEQUENCE = 30;
 
     private FuzzyMatcher() {}
 
@@ -46,7 +46,8 @@ public final class FuzzyMatcher {
         if (query.length() >= 4 && typoPrefix(query, lower)) {
             return TYPO;
         }
-        if (query.length() >= 3 && query.charAt(0) == lower.charAt(0)
+        // Shorter than this, letters-in-order matches nearly everything ("cat" in Calculator).
+        if (query.length() >= 4 && query.charAt(0) == lower.charAt(0)
                 && subsequence(query, lower)) {
             return SUBSEQUENCE;
         }

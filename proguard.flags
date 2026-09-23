@@ -64,3 +64,8 @@
 -keep class com.android.launcher3.lineage.trust.** {
   *;
 }
+# TF Lite, used to label photos for search, is driven from native code by reflection.
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn android.support.annotation.**
+-dontwarn org.checkerframework.**
+-dontwarn com.google.errorprone.annotations.**

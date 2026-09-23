@@ -5,7 +5,6 @@ import android.net.Uri;
 import android.os.Process;
 
 import com.android.launcher3.LauncherPrefs;
-import com.android.launcher3.R;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -54,7 +53,7 @@ public class WebSuggestionProvider implements SearchProvider {
                     UniversalSearchResult.SOURCE_WEB_SUGGESTION, suggestion, suggestion, null,
                     ActionProvider.webSearch(context, suggestion), Process.myUserHandle(),
                     score--);
-            result.iconRes = R.drawable.ic_search_web;
+            ActionProvider.applyEngineIcon(context, result);
             out.add(result);
         }
         return out;

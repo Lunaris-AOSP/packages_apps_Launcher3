@@ -35,6 +35,10 @@ final class CurrencyRates {
 
     private CurrencyRates() {}
 
+    static synchronized long fetchedAt() {
+        return sRates == null ? 0 : sFetchedAt;
+    }
+
     /** Units per euro, keyed by lower-case ISO code, or null when unavailable. */
     static synchronized Map<String, Double> get(Context context) {
         long now = System.currentTimeMillis();

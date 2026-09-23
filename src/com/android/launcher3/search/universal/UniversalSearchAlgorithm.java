@@ -35,6 +35,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     // Past this, show what has arrived and fold slower providers in when they finish.
     private static final long PROVIDER_TIMEOUT_MS = 150;
     private static final int NO_FILTER = -1;
+    private static final int MAX_SCREENSHOTS = 8;
 
     private final Context mContext;
     private final LauncherAppState mAppState;
@@ -61,7 +62,8 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         mProviders = List.of(new CalculatorProvider(), new QuickActionProvider(),
                 new ShortcutProvider(),
                 new ContactProvider(), new QsTileProvider(), new SettingProvider(),
-                new MediaProvider(), new CalendarProvider(), new AppSearchProvider(),
+                new MediaProvider(), new PhotoProvider(), new CalendarProvider(),
+                new AppSearchProvider(),
                 new ActionProvider(), new WebSuggestionProvider());
     }
 
@@ -151,7 +153,22 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
 
     private void publishEmptyQuery(int token, String query, ArrayList<AdapterItem> appItems,
             SearchCallback<AdapterItem> callback) {
-        ArrayList<AdapterItem> items = new ArrayList<>(historyItems());
+        if (token != mRequest.get()) {
+            return;
+        }
+        ArrayList<AdapterItem> items = new ArrayList<>(historyItems(
+                () -> publishEmptyQuery(mRequest.get(), query, appItems, callback)));
+        if (mAppLibrary && LauncherPrefs.SEARCH_RECENT_SCREENSHOTS.get(mContext)) {
+            List<UniversalSearchResult> shots = MediaProvider.recentScreenshots(
+                    mContext, MAX_SCREENSHOTS);
+            if (!shots.isEmpty()) {
+                items.add(AdapterItem.asSearchSection(UniversalSearchResult.SOURCE_SCREENSHOT));
+                items.add(AdapterItem.asSearchThumbnails(shots));
+            }
+        }
+        if (LauncherPrefs.SEARCH_PHOTOS.get(mContext) && MediaProvider.hasPermission(mContext)) {
+            PhotoIndex.indexSoon(mContext);
+        }
         items.addAll(appItems);
         if (items.isEmpty() && !mAppLibrary) {
             return;
@@ -159,7 +176,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         publish(token, query, items, callback);
     }
 
-    private List<AdapterItem> historyItems() {
+    private List<AdapterItem> historyItems(Runnable refresh) {
         List<String> queries = SearchHistory.recentQueries(mContext);
         List<AdapterItem> items = new ArrayList<>();
         if (queries.isEmpty()) {
@@ -172,6 +189,10 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                     null, 0);
             row.iconRes = R.drawable.ic_search_history;
             row.onTap = () -> mQueryHandler.accept(recent);
+            row.onRemove = () -> mWorker.post(() -> {
+                SearchHistory.removeQuery(mContext, recent);
+                refresh.run();
+            });
             items.add(AdapterItem.asSearchResult(row));
         }
         UniversalSearchResult clear = new UniversalSearchResult(
@@ -221,7 +242,9 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         }
         for (UniversalSearchResult result : results) {
             result.query = query;
-            if (!result.isPlaceholder()) {
+            // Photos arrive ranked by how sure the labeller is; history must not reshuffle them.
+            if (!result.isPlaceholder()
+                    && result.source != UniversalSearchResult.SOURCE_PHOTO) {
                 result.score += SearchHistory.boost(mContext, SearchHistory.resultKey(result));
             }
         }
@@ -254,6 +277,9 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             UniversalSearchResult store = ActionProvider.storeSearch(mContext, query.trim());
             if (store != null) {
                 store.query = query;
+                // The store also answers ACTION_SEARCH; one entry for it is enough.
+                all.removeIf(r -> r.source == UniversalSearchResult.SOURCE_WEB
+                        && store.packageName.equals(r.packageName));
                 all.add(store);
             }
         }
@@ -282,7 +308,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         }
 
         ArrayList<AdapterItem> items = new ArrayList<>();
-        if (present.size() >= 2 || mFilter != NO_FILTER) {
+        if (present.size() >= 3 || mFilter != NO_FILTER) {
             List<Integer> chips = new ArrayList<>();
             chips.add(NO_FILTER);
             chips.addAll(present);
@@ -294,6 +320,9 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             return items;
         }
         if (mFilter != NO_FILTER) {
+            if (addPhotoSection(items, mFilter, bySource.get(mFilter))) {
+                return items;
+            }
             items.add(AdapterItem.asSearchSection(mFilter));
             for (UniversalSearchResult result : bySource.get(mFilter)) {
                 items.add(AdapterItem.asSearchResult(result));
@@ -318,6 +347,9 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                 continue;
             }
             int source = section.getKey();
+            if (addPhotoSection(items, source, results)) {
+                continue;
+            }
             boolean expanded = mExpanded.contains(source);
             items.add(AdapterItem.asSearchSection(source));
             for (int i = 0; i < results.size() && (expanded || i < cap); i++) {
@@ -335,6 +367,29 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         return items;
     }
 
+    private static boolean addPhotoSection(List<AdapterItem> items, int source,
+            List<UniversalSearchResult> results) {
+        if (source != UniversalSearchResult.SOURCE_PHOTO) {
+            return false;
+        }
+        items.add(AdapterItem.asSearchSection(source));
+        List<UniversalSearchResult> thumbs = new ArrayList<>();
+        for (UniversalSearchResult result : results) {
+            if (result.thumbnail) {
+                thumbs.add(result);
+            }
+        }
+        if (!thumbs.isEmpty()) {
+            items.add(AdapterItem.asSearchThumbnails(thumbs));
+        }
+        for (UniversalSearchResult result : results) {
+            if (!result.thumbnail) {
+                items.add(AdapterItem.asSearchResult(result));
+            }
+        }
+        return true;
+    }
+
     private static UniversalSearchResult bestMatch(String query,
             Map<Integer, List<UniversalSearchResult>> bySource) {
         if (query.trim().length() < 2) {
@@ -343,8 +398,10 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         UniversalSearchResult best = null;
         for (Map.Entry<Integer, List<UniversalSearchResult>> section : bySource.entrySet()) {
             int source = section.getKey();
+            // Photos are a strip of untitled thumbnails; one alone makes an empty-looking card.
             if (source == UniversalSearchResult.SOURCE_WEB
-                    || source == UniversalSearchResult.SOURCE_WEB_SUGGESTION) {
+                    || source == UniversalSearchResult.SOURCE_WEB_SUGGESTION
+                    || source == UniversalSearchResult.SOURCE_PHOTO) {
                 continue;
             }
             UniversalSearchResult top = section.getValue().get(0);

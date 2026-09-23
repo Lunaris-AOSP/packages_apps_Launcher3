@@ -215,6 +215,8 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             super.onCreate(savedInstanceState);
         }
 
+        private static final int REQUEST_READ_MEDIA_PHOTOS = 43;
+
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             final Bundle args = getArguments();
@@ -231,6 +233,8 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             wireContactsToggle(screen);
             wireCalendarToggle(screen);
             wireFilesToggle(screen);
+            wireMediaToggle(screen, LauncherPrefs.SEARCH_PHOTOS.getSharedPrefKey(),
+                    REQUEST_READ_MEDIA_PHOTOS);
 
             mSearchPlacementPref = screen.findPreference(KEY_SEARCH_PLACEMENT);
             mDrawerStylePref = screen.findPreference(KEY_APP_DRAWER_STYLE);
@@ -269,6 +273,22 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
 
             getPreferenceManager().getSharedPreferences()
                     .registerOnSharedPreferenceChangeListener(this);
+        }
+
+        private void wireMediaToggle(PreferenceScreen screen, String key, int requestCode) {
+            if (!(screen.findPreference(key) instanceof TwoStatePreference toggle)) {
+                return;
+            }
+            if (toggle.isChecked() && !MediaProvider.hasPermission(requireContext())) {
+                toggle.setChecked(false);
+            }
+            toggle.setOnPreferenceChangeListener((preference, value) -> {
+                if (!((Boolean) value) || MediaProvider.hasPermission(requireContext())) {
+                    return true;
+                }
+                requestPermissions(MediaProvider.PERMISSIONS, requestCode);
+                return false;
+            });
         }
 
         private void wireFilesToggle(PreferenceScreen screen) {
@@ -343,6 +363,8 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
                 key = LauncherPrefs.SEARCH_EVENTS.getSharedPrefKey();
             } else if (requestCode == REQUEST_READ_MEDIA) {
                 key = LauncherPrefs.SEARCH_FILES.getSharedPrefKey();
+            } else if (requestCode == REQUEST_READ_MEDIA_PHOTOS) {
+                key = LauncherPrefs.SEARCH_PHOTOS.getSharedPrefKey();
             } else {
                 return;
             }

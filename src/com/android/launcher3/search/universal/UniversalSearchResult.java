@@ -21,6 +21,8 @@ public class UniversalSearchResult {
     public static final int SOURCE_APP_CONTENT = 11;
     public static final int SOURCE_WEB_SUGGESTION = 12;
     public static final int SOURCE_HISTORY = 13;
+    public static final int SOURCE_PHOTO = 14;
+    public static final int SOURCE_SCREENSHOT = 15;
 
     public final int source;
     public final String id;
@@ -40,6 +42,9 @@ public class UniversalSearchResult {
     public String query;
     public String copyText;
     public Runnable onTap;
+    public Runnable onRemove;
+    public Intent whatsapp;
+    public String confirmation;
     public Toggle toggle;
     public boolean checked;
 

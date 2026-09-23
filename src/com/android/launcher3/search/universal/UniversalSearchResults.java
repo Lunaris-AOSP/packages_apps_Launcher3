@@ -43,6 +43,7 @@ public class UniversalSearchResults {
             UniversalSearchResult.SOURCE_CONVERSATION,
             UniversalSearchResult.SOURCE_SHORTCUT,
             UniversalSearchResult.SOURCE_CONTACT,
+            UniversalSearchResult.SOURCE_PHOTO,
             UniversalSearchResult.SOURCE_QS_TILE,
             UniversalSearchResult.SOURCE_SETTING,
             UniversalSearchResult.SOURCE_APP_CONTENT,
@@ -116,6 +117,10 @@ public class UniversalSearchResults {
                 return context.getString(R.string.search_section_web_suggestions);
             case UniversalSearchResult.SOURCE_HISTORY:
                 return context.getString(R.string.search_section_history);
+            case UniversalSearchResult.SOURCE_PHOTO:
+                return context.getString(R.string.search_section_photos);
+            case UniversalSearchResult.SOURCE_SCREENSHOT:
+                return context.getString(R.string.search_section_screenshots);
             default:
                 return "";
         }
@@ -147,6 +152,54 @@ public class UniversalSearchResults {
         }
     }
 
+    private static boolean highlights(UniversalSearchResult result) {
+        if (result.isPlaceholder()) {
+            return false;
+        }
+        switch (result.source) {
+            case UniversalSearchResult.SOURCE_WEB:
+            case UniversalSearchResult.SOURCE_QUICK_ACTION:
+            case UniversalSearchResult.SOURCE_CALCULATOR:
+            case UniversalSearchResult.SOURCE_HISTORY:
+            case UniversalSearchResult.SOURCE_PHOTO:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    public static void bindThumbnails(ActivityContext activityContext, View view,
+            List<UniversalSearchResult> results) {
+        ViewGroup group = view.findViewById(R.id.search_thumbnails_group);
+        group.removeAllViews();
+        if (results == null) {
+            return;
+        }
+        int size = view.getResources().getDimensionPixelSize(R.dimen.search_thumbnail_size);
+        int gap = view.getResources().getDimensionPixelSize(R.dimen.search_thumbnail_gap);
+        float radius = view.getResources().getDimension(R.dimen.search_thumbnail_strip_radius);
+        for (UniversalSearchResult result : results) {
+            ImageView thumb = new ImageView(view.getContext());
+            ViewGroup.MarginLayoutParams lp = new ViewGroup.MarginLayoutParams(size, size);
+            lp.setMarginEnd(gap);
+            thumb.setLayoutParams(lp);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setImageDrawable(result.icon);
+            thumb.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View v, Outline outline) {
+                    outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
+                }
+            });
+            thumb.setClipToOutline(true);
+            thumb.setForeground(view.getContext().getDrawable(
+                    android.R.drawable.list_selector_background));
+            thumb.setContentDescription(view.getContext().getString(R.string.search_photo));
+            thumb.setOnClickListener(v -> launch(activityContext, v, result));
+            group.addView(thumb);
+        }
+    }
+
     public static void bindFilters(View view, Filters filters) {
         ViewGroup group = view.findViewById(R.id.search_filters_group);
         group.removeAllViews();
@@ -174,8 +227,8 @@ public class UniversalSearchResults {
         TextView title = view.findViewById(R.id.search_result_title);
         TextView subtitle = view.findViewById(R.id.search_result_subtitle);
 
-        title.setText(result.isPlaceholder() ? result.title
-                : FuzzyMatcher.highlight(result.query, result.title));
+        title.setText(highlights(result)
+                ? FuzzyMatcher.highlight(result.query, result.title) : result.title);
         if (TextUtils.isEmpty(result.subtitle)) {
             subtitle.setVisibility(View.GONE);
         } else {
@@ -195,6 +248,31 @@ public class UniversalSearchResults {
                 activityContext.startActivitySafely(v, dial, null);
             });
         }
+        ImageView message = view.findViewById(R.id.search_result_message);
+        message.setVisibility(result.phoneNumber == null ? View.GONE : View.VISIBLE);
+        message.setOnClickListener(v -> {
+            SearchHistory.recordLaunch(v.getContext(), SearchHistory.resultKey(result));
+            activityContext.startActivitySafely(v, new Intent(Intent.ACTION_SENDTO,
+                    Uri.fromParts("smsto", result.phoneNumber, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), null);
+        });
+        ImageView whatsapp = view.findViewById(R.id.search_result_whatsapp);
+        whatsapp.setVisibility(result.whatsapp == null ? View.GONE : View.VISIBLE);
+        if (result.whatsapp != null) {
+            try {
+                whatsapp.setImageDrawable(view.getContext().getPackageManager()
+                        .getApplicationIcon(result.whatsapp.getPackage()));
+            } catch (PackageManager.NameNotFoundException e) {
+                whatsapp.setVisibility(View.GONE);
+            }
+            whatsapp.setOnClickListener(v -> {
+                SearchHistory.recordLaunch(v.getContext(), SearchHistory.resultKey(result));
+                activityContext.startActivitySafely(v, result.whatsapp, null);
+            });
+        }
+        ImageView remove = view.findViewById(R.id.search_result_remove);
+        remove.setVisibility(result.onRemove == null ? View.GONE : View.VISIBLE);
+        remove.setOnClickListener(result.onRemove == null ? null : v -> result.onRemove.run());
         applyIcon(icon, result);
         CompoundButton toggle = view.findViewById(R.id.search_result_switch);
         if (result.toggle == null) {
@@ -418,6 +496,15 @@ public class UniversalSearchResults {
         }
         if (!result.isPlaceholder()) {
             SearchHistory.recordLaunch(context, SearchHistory.resultKey(result));
+        }
+        if (result.confirmation != null && result.intent != null) {
+            try {
+                context.startActivity(result.intent);
+                Toast.makeText(context, result.confirmation, Toast.LENGTH_SHORT).show();
+                return true;
+            } catch (android.content.ActivityNotFoundException | SecurityException e) {
+                // No clock app takes it silently; fall through and open whatever handles it.
+            }
         }
         if (result.intent != null) {
             return activityContext.startActivitySafely(view, result.intent, null) != null;

@@ -145,6 +145,13 @@
             android:persistent="true" />
 
         <SwitchPreferenceCompat
+            android:key="pref_search_photos"
+            android:title="@string/search_photos_title"
+            android:summary="@string/search_photos_summary"
+            android:defaultValue="true"
+            android:persistent="true" />
+
+        <SwitchPreferenceCompat
             android:key="pref_search_events"
             android:title="@string/search_events_title"
             android:summary="@string/search_events_summary"

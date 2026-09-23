@@ -97,12 +97,16 @@ public class QuickActionProvider implements SearchProvider {
         if (seconds <= 0 || seconds > 24 * 3600) {
             return;
         }
+        // The status bar island shows the running timer, so there is no need to open Clock.
         Intent intent = new Intent(AlarmClock.ACTION_SET_TIMER)
                 .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
-                .putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        out.add(action(context, "timer", context.getString(R.string.search_action_timer, label),
-                null, intent, R.drawable.ic_search_timer));
+        UniversalSearchResult result = action(context, "timer",
+                context.getString(R.string.search_action_timer, label), null, intent,
+                R.drawable.ic_search_timer);
+        result.confirmation = context.getString(R.string.search_timer_set, label);
+        out.add(result);
     }
 
     private static void addAlarm(Context context, String query, List<UniversalSearchResult> out) {
@@ -129,10 +133,13 @@ public class QuickActionProvider implements SearchProvider {
         Intent intent = new Intent(AlarmClock.ACTION_SET_ALARM)
                 .putExtra(AlarmClock.EXTRA_HOUR, hour)
                 .putExtra(AlarmClock.EXTRA_MINUTES, minute)
-                .putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        out.add(action(context, "alarm", context.getString(R.string.search_action_alarm, label),
-                null, intent, R.drawable.ic_search_alarm));
+        UniversalSearchResult result = action(context, "alarm",
+                context.getString(R.string.search_action_alarm, label), null, intent,
+                R.drawable.ic_search_alarm);
+        result.confirmation = context.getString(R.string.search_alarm_set, label);
+        out.add(result);
     }
 
     private static void addContactAction(Context context, String query, String lower,
