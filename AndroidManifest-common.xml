@@ -114,6 +114,12 @@
         <meta-data android:name="android.nfc.disable_beam_default"
                        android:value="true" />
 
+        <activity android:name="com.android.launcher3.folder.FolderThumbnailPickerActivity"
+            android:theme="@style/ProxyActivityStarterTheme"
+            android:excludeFromRecents="true"
+            android:autoRemoveFromRecents="true"
+            android:exported="false" />
+
         <activity android:name="com.android.launcher3.dragndrop.AddItemActivity"
             android:theme="@style/AddItemActivityTheme"
             android:excludeFromRecents="true"

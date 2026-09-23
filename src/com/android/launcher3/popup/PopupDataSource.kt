@@ -24,6 +24,7 @@ import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.AbstractFloatingViewHelper
 import com.android.launcher3.DropTargetHandler
 import com.android.launcher3.Flags
+import com.android.launcher3.Launcher
 import com.android.launcher3.LauncherConstants
 import com.android.launcher3.R
 import com.android.launcher3.SecondaryDropTarget
@@ -32,6 +33,8 @@ import com.android.launcher3.accessibility.LauncherAccessibilityDelegate
 import com.android.launcher3.allapps.PrivateProfileManager
 import com.android.launcher3.dagger.LauncherAppSingleton
 import com.android.launcher3.logging.StatsLogManager.LauncherEvent
+import com.android.launcher3.folder.FolderThumbnailManager
+import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.popup.SystemShortcut.BubbleActivityStarter
@@ -63,6 +66,38 @@ class PopupDataSource @Inject constructor() {
             iconResId = R.drawable.ic_remove_no_shadow,
             labelResId = R.string.remove_drop_target_label,
             popupAction = handleRemove,
+            category = PopupCategory.SYSTEM_SHORTCUT_FIXED,
+        )
+
+    private val handleSetFolderThumbnail =
+        { activityContext: ActivityContext, itemInfo: ItemInfo, _: View ->
+            if (itemInfo is FolderInfo && activityContext is Launcher) {
+                AbstractFloatingView.closeAllOpenViews(activityContext)
+                FolderThumbnailManager.startPicker(activityContext, itemInfo)
+            }
+        }
+
+    val setFolderThumbnailPopupData =
+        PopupData(
+            iconResId = R.drawable.ic_folder_thumbnail,
+            labelResId = R.string.folder_thumbnail_set,
+            popupAction = handleSetFolderThumbnail,
+            category = PopupCategory.SYSTEM_SHORTCUT_FIXED,
+        )
+
+    private val handleResetFolderThumbnail =
+        { activityContext: ActivityContext, itemInfo: ItemInfo, _: View ->
+            if (itemInfo is FolderInfo && activityContext is Launcher) {
+                AbstractFloatingView.closeAllOpenViews(activityContext)
+                FolderThumbnailManager.reset(activityContext, itemInfo)
+            }
+        }
+
+    val resetFolderThumbnailPopupData =
+        PopupData(
+            iconResId = R.drawable.ic_custom_seekbar_reset,
+            labelResId = R.string.folder_thumbnail_reset,
+            popupAction = handleResetFolderThumbnail,
             category = PopupCategory.SYSTEM_SHORTCUT_FIXED,
         )
 

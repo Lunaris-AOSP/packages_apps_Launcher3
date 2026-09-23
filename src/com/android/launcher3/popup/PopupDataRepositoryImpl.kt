@@ -22,6 +22,7 @@ import com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APP_PAIR
 import com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_FOLDER
 import com.android.launcher3.dagger.ApplicationContext
 import com.android.launcher3.dagger.LauncherAppSingleton
+import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.LauncherAppWidgetInfo
 import com.android.launcher3.model.repository.HomeScreenRepository
@@ -40,7 +41,14 @@ constructor(
     lifeCycle: DaggerSingletonTracker,
 ) : PopupDataRepository {
     private val widgetManagerHelper = WidgetManagerHelper(context)
-    private val folderSystemShortcuts = listOf(popupDataSource.removePopupData)
+    private val folderSystemShortcuts =
+        listOf(popupDataSource.setFolderThumbnailPopupData, popupDataSource.removePopupData)
+    private val folderWithThumbnailSystemShortcuts =
+        listOf(
+            popupDataSource.setFolderThumbnailPopupData,
+            popupDataSource.resetFolderThumbnailPopupData,
+            popupDataSource.removePopupData,
+        )
     private val appPairSystemShortcuts = listOf(popupDataSource.removePopupData)
     private val widgetSystemShortcuts = listOf(popupDataSource.removePopupData)
     private val widgetWithSettingsSystemShortcuts =
@@ -60,6 +68,7 @@ constructor(
     }
 
     override fun getPopupDataByItemInfo(itemInfo: ItemInfo): List<PopupData>? {
+        if (itemInfo.itemType == ITEM_TYPE_FOLDER) return getPopupDataForItemInfo(itemInfo)
         if (!popupData.containsKey(itemInfo.id)) {
             addItem(itemInfo)
         }
@@ -103,7 +112,12 @@ constructor(
      */
     private fun getPopupDataForItemInfo(itemInfo: ItemInfo): List<PopupData>? {
         return when (itemInfo.itemType) {
-            ITEM_TYPE_FOLDER -> folderSystemShortcuts
+            ITEM_TYPE_FOLDER ->
+                if (itemInfo is FolderInfo && itemInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
+                    folderWithThumbnailSystemShortcuts
+                } else {
+                    folderSystemShortcuts
+                }
             ITEM_TYPE_APP_PAIR -> appPairSystemShortcuts
             ITEM_TYPE_APPWIDGET -> {
                 if (itemInfo is LauncherAppWidgetInfo) {

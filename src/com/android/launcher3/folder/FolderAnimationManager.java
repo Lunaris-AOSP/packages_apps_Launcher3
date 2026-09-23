@@ -39,6 +39,7 @@ import android.view.animation.AnimationUtils;
 import android.view.animation.Interpolator;
 
 import androidx.annotation.NonNull;
+import androidx.core.graphics.ColorUtils;
 
 import com.android.launcher3.BubbleTextView;
 import com.android.launcher3.CellLayout;
@@ -209,8 +210,11 @@ public class FolderAnimationManager implements FolderAnimationCreator {
         final float xDistance = initialX - lp.x;
         final float yDistance = initialY - lp.y;
 
-        // Set up the Folder background.
-        final int initialColor = Themes.getAttrColor(mContext, R.attr.folderPreviewColor);
+        final boolean hasThumbnail = mFolderIcon.hasCustomThumbnail();
+        final int previewColor = Themes.getAttrColor(mContext, R.attr.folderPreviewColor);
+        final int initialColor = hasThumbnail
+                ? ColorUtils.setAlphaComponent(previewColor, 0)
+                : previewColor;
         final int finalColor = Themes.getAttrColor(mContext, R.attr.folderBackgroundColor);
 
         mFolderBackground.mutate();
@@ -249,6 +253,13 @@ public class FolderAnimationManager implements FolderAnimationCreator {
         play(a, getAnimator(mFolder, View.TRANSLATION_Y, yDistance, 0f));
         play(a, getAnimator(mFolder.mContent, SCALE_PROPERTY, initialScale, finalScale));
         play(a, getAnimator(mFolder.mFooter, SCALE_PROPERTY, initialScale, finalScale));
+
+        if (hasThumbnail) {
+            int half = mDuration / 2;
+            Animator contentAlpha = getAnimator(mFolder.mContent, ALPHA, 0f, 1f);
+            contentAlpha.addListener(new PropertyResetListener<>(ALPHA, 1f));
+            play(a, contentAlpha, mIsOpening ? 0 : half, half);
+        }
 
         final int footerAlphaDuration;
         final int footerStartDelay;
@@ -334,6 +345,10 @@ public class FolderAnimationManager implements FolderAnimationCreator {
                 mCellLayoutClipChildren = mCellLayout.getClipChildren();
                 mCellLayoutClipPadding = mCellLayout.getClipToPadding();
 
+                if (hasThumbnail) {
+                    mFolderIcon.setThumbnailShownDuringAnimation(true);
+                }
+
                 mFolder.setClipChildren(false);
                 mFolder.setClipToPadding(false);
                 mContent.setClipChildren(false);
@@ -354,6 +369,10 @@ public class FolderAnimationManager implements FolderAnimationCreator {
                 mFolder.mFooter.setScaleY(1f);
                 mFolder.mFooter.setTranslationX(0f);
                 mFolder.getFolderName().setAlpha(1f);
+
+                if (hasThumbnail && isOpening) {
+                    mFolderIcon.setThumbnailShownDuringAnimation(false);
+                }
 
                 mFolder.setClipChildren(mFolderClipChildren);
                 mFolder.setClipToPadding(mFolderClipToPadding);

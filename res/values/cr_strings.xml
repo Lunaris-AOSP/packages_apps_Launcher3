@@ -617,6 +617,9 @@
 
     <!-- Rename app shortcut -->
     <string name="rename_app_label">Rename</string>
+    <string name="folder_thumbnail_set">Folder thumbnail</string>
+    <string name="folder_thumbnail_reset">Reset thumbnail</string>
+    <string name="folder_thumbnail_failed">Couldn\'t use that image</string>
     <string name="rename_app_title">Enter app name</string>
     <string name="rename_app_hide_name">Hide app name</string>
     <string name="rename_app_updated">App name updated</string>

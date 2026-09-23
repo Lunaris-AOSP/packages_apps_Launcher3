@@ -30,6 +30,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -134,6 +135,19 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     private final List<ItemInfo> mCurrentPreviewItems = new ArrayList<>();
 
     boolean mAnimating = false;
+
+    private static final Paint sThumbnailPaint =
+            new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Path mThumbnailClipPath = new Path();
+    private final RectF mThumbnailBounds = new RectF();
+    @Nullable private Bitmap mCustomThumbnail;
+    private boolean mShowThumbnailWhileHidden = false;
+
+    private static final int THUMBNAIL_FADE_DURATION_MS = 300;
+    private boolean mThumbnailFading = false;
+    @Nullable private Bitmap mFadeFromThumbnail;
+    private float mThumbnailFadeProgress = 1f;
+    @Nullable private ValueAnimator mThumbnailFadeAnimator;
 
     private final Alarm mOpenAlarm = new Alarm(Looper.getMainLooper());
 
@@ -345,6 +359,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         icon.mPreviewVerifier = createFolderGridOrganizer(activity.getDeviceProfile());
         icon.mPreviewVerifier.setFolderInfo(folderInfo);
         icon.updatePreviewItems(false);
+        icon.onCustomThumbnailChanged();
 
         return icon;
     }
@@ -989,6 +1004,9 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     @Override
     public void setIconVisible(boolean visible) {
         mBackgroundIsVisible = visible;
+        if (visible) {
+            mShowThumbnailWhileHidden = false;
+        }
         invalidate();
     }
 
@@ -1032,7 +1050,9 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
 
-        if (!mBackgroundIsVisible) return;
+        boolean thumbnailOnly = !mBackgroundIsVisible && mShowThumbnailWhileHidden
+                && mCustomThumbnail != null;
+        if (!mBackgroundIsVisible && !thumbnailOnly) return;
 
         mPreviewItemManager.recomputePreviewDrawingParams();
 
@@ -1040,15 +1060,117 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
             mBackground.drawBackground(canvas);
         }
 
-        if (mCurrentPreviewItems.isEmpty() && !mAnimating) return;
-
-        mPreviewItemManager.draw(canvas);
+        if (mThumbnailFading && !thumbnailOnly) {
+            drawIconContent(canvas, mFadeFromThumbnail, 255);
+            drawIconContent(canvas, mCustomThumbnail,
+                    Math.round(mThumbnailFadeProgress * 255));
+        } else if (mCustomThumbnail != null && (thumbnailOnly || !mAnimating)) {
+            drawCustomThumbnail(canvas, mCustomThumbnail);
+        } else {
+            if (mCurrentPreviewItems.isEmpty() && !mAnimating) return;
+            mPreviewItemManager.draw(canvas);
+        }
 
         if (!mBackground.drawingDelegated()) {
             mBackground.drawBackgroundStroke(canvas);
         }
 
         drawDot(canvas);
+    }
+
+    public void onCustomThumbnailChanged() {
+        onCustomThumbnailChanged(false);
+    }
+
+    public void onCustomThumbnailChanged(boolean animate) {
+        if (mInfo == null || !mInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
+            applyCustomThumbnail(null, animate);
+            return;
+        }
+        FolderThumbnailManager.loadAsync(getContext(), mInfo.id,
+                bitmap -> applyCustomThumbnail(bitmap, animate));
+    }
+
+    private void applyCustomThumbnail(@Nullable Bitmap next, boolean animate) {
+        Bitmap previous = mCustomThumbnail;
+        if (previous == next) {
+            return;
+        }
+        mCustomThumbnail = next;
+        if (animate && isShown() && mBackgroundIsVisible) {
+            startThumbnailFade(previous);
+        } else {
+            endThumbnailFade();
+            invalidate();
+        }
+    }
+
+    private void startThumbnailFade(@Nullable Bitmap from) {
+        if (mThumbnailFadeAnimator != null) {
+            mThumbnailFadeAnimator.removeAllListeners();
+            mThumbnailFadeAnimator.cancel();
+        }
+        mFadeFromThumbnail = from;
+        mThumbnailFading = true;
+        mThumbnailFadeProgress = 0f;
+        ValueAnimator fade = ValueAnimator.ofFloat(0f, 1f);
+        fade.setDuration(THUMBNAIL_FADE_DURATION_MS);
+        fade.setInterpolator(Interpolators.STANDARD);
+        fade.addUpdateListener(a -> {
+            mThumbnailFadeProgress = (float) a.getAnimatedValue();
+            invalidate();
+        });
+        fade.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                endThumbnailFade();
+                invalidate();
+            }
+        });
+        mThumbnailFadeAnimator = fade;
+        fade.start();
+    }
+
+    private void endThumbnailFade() {
+        if (mThumbnailFadeAnimator != null) {
+            mThumbnailFadeAnimator.removeAllListeners();
+            mThumbnailFadeAnimator.cancel();
+            mThumbnailFadeAnimator = null;
+        }
+        mThumbnailFading = false;
+        mFadeFromThumbnail = null;
+        mThumbnailFadeProgress = 1f;
+    }
+
+    private void drawIconContent(Canvas canvas, @Nullable Bitmap thumbnail, int alpha) {
+        int saveCount = alpha < 255
+                ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), alpha)
+                : canvas.save();
+        if (thumbnail != null) {
+            drawCustomThumbnail(canvas, thumbnail);
+        } else if (!mCurrentPreviewItems.isEmpty() || mAnimating) {
+            mPreviewItemManager.draw(canvas);
+        }
+        canvas.restoreToCount(saveCount);
+    }
+
+
+    public boolean hasCustomThumbnail() {
+        return mCustomThumbnail != null;
+    }
+
+    public void setThumbnailShownDuringAnimation(boolean shown) {
+        mShowThumbnailWhileHidden = shown;
+        invalidate();
+    }
+
+    private void drawCustomThumbnail(Canvas canvas, Bitmap bitmap) {
+        mBackground.getDrawnShapePath(mThumbnailClipPath);
+        mThumbnailClipPath.computeBounds(mThumbnailBounds, true);
+        int saveCount = canvas.save();
+        canvas.clipPath(mThumbnailClipPath);
+        canvas.drawBitmap(bitmap, null, mThumbnailBounds, sThumbnailPaint);
+        canvas.restoreToCount(saveCount);
     }
 
     public void drawDot(Canvas canvas) {
@@ -1318,6 +1440,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         if (mPressScaleAnimator != null) {
             mPressScaleAnimator.cancel();
         }
+        endThumbnailFade();
         super.onDetachedFromWindow();
     }
 

@@ -36,7 +36,9 @@ import com.android.launcher3.celllayout.CellPosMapper.CellPos;
 import com.android.launcher3.config.FeatureFlags;
 import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.model.BgDataModel.Callbacks;
+import com.android.launcher3.folder.FolderThumbnailManager;
 import com.android.launcher3.model.data.CollectionInfo;
+import com.android.launcher3.model.data.FolderInfo;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.LauncherAppWidgetInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
@@ -331,6 +333,10 @@ public class ModelWriter {
         enqueueDeleteRunnable(newModelTask(() -> {
             for (ItemInfo item : items) {
                 mModel.getModelDbController().delete(itemIdMatch(item.id), null);
+                if (item instanceof FolderInfo fi
+                        && fi.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
+                    FolderThumbnailManager.delete(mContext, fi.id);
+                }
             }
             mBgDataModel.removeItem(mContext, items, mOwner);
             verifier.verifyModel();
