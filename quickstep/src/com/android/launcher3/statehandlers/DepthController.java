@@ -36,6 +36,7 @@ import com.android.launcher3.BaseActivity;
 import com.android.launcher3.LauncherState;
 import com.android.launcher3.anim.PendingAnimation;
 import com.android.launcher3.statemanager.StateManager.StateHandler;
+import com.android.launcher3.statemanager.StateManager.StateListener;
 import com.android.launcher3.states.StateAnimationConfig;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.quickstep.util.BaseDepthController;
@@ -56,6 +57,18 @@ public class DepthController extends BaseDepthController implements StateHandler
 
     private View.OnAttachStateChangeListener mOnAttachListener;
 
+    private final StateListener<LauncherState> mStateListener = new StateListener<>() {
+        @Override
+        public void onStateTransitionStart(LauncherState toState) {
+            blurWorkspaceDepthTargets();
+        }
+
+        @Override
+        public void onStateTransitionComplete(LauncherState finalState) {
+            blurWorkspaceDepthTargets();
+        }
+    };
+
     // Ensure {@link mOnDrawListener} is added only once to avoid spamming DragLayer's mRunQueue
     // via {@link View#post(Runnable)}
     private boolean mIsOnDrawListenerAdded = false;
@@ -63,6 +76,7 @@ public class DepthController extends BaseDepthController implements StateHandler
 
     public DepthController(QuickstepLauncher launcher) {
         super(launcher);
+        launcher.getStateManager().addStateListener(mStateListener);
     }
 
     private void onLauncherDraw() {
@@ -112,6 +126,7 @@ public class DepthController extends BaseDepthController implements StateHandler
      * Cleans up after this controller so it can be garbage collected without leaving traces.
      */
     public void dispose() {
+        mLauncher.getStateManager().removeStateListener(mStateListener);
         removeSecondaryListeners();
 
         if (mLauncher.getRootView() != null && mOnAttachListener != null) {

@@ -126,6 +126,8 @@ public class BaseDepthController {
 
     protected boolean mWaitingOnSurfaceValidity;
 
+    private boolean mWorkspaceBlurActive = false;
+
     private SurfaceControl mBlurSurface = null;
     /**
      * Info for early wakeup requests to SurfaceFlinger.
@@ -257,6 +259,10 @@ public class BaseDepthController {
                 Log.d(TAG, "Skipping small blur delta. newBlur: " + newBlur + " previousBlur: "
                         + previousBlur + " delta: " + delta + " surface: " + blurSurface);
             }
+            if (Flags.allAppsBlur()
+                    && (shouldBlurWorkspaceNow() && mCurrentBlur > 0) != mWorkspaceBlurActive) {
+                blurWorkspaceDepthTargets();
+            }
             return;
         }
         mCurrentBlur = newBlur;
@@ -331,6 +337,13 @@ public class BaseDepthController {
         mInEarlyWakeUp = start;
     }
 
+    private boolean shouldBlurWorkspaceNow() {
+        StateManager<LauncherState, Launcher> stateManager = mLauncher.getStateManager();
+        LauncherState targetState = stateManager.getTargetState() != null
+                ? stateManager.getTargetState() : stateManager.getState();
+        return stateManager.getCurrentStableState().shouldBlurWorkspace(targetState);
+    }
+
     /** @return {@code true} if the workspace should be blurred. */
     @VisibleForTesting
     public boolean blurWorkspaceDepthTargets() {
@@ -340,9 +353,7 @@ public class BaseDepthController {
         StateManager<LauncherState, Launcher> stateManager = mLauncher.getStateManager();
         LauncherState targetState = stateManager.getTargetState() != null
                 ? stateManager.getTargetState() : stateManager.getState();
-        // Only blur workspace if the current state wants to blur based on the target state.
-        boolean shouldBlurWorkspace =
-                stateManager.getCurrentStableState().shouldBlurWorkspace(targetState);
+        boolean shouldBlurWorkspace = shouldBlurWorkspaceNow();
 
         RenderEffect blurEffect = shouldBlurWorkspace && mCurrentBlur > 0
                 ? RenderEffect.createBlurEffect(mCurrentBlur, mCurrentBlur, Shader.TileMode.DECAL)
@@ -355,6 +366,7 @@ public class BaseDepthController {
                     + " mCurrentBlur: " + mCurrentBlur
                     + " mLauncher.getDepthBlurTargets(): " + mLauncher.getDepthBlurTargets());
         }
+        mWorkspaceBlurActive = blurEffect != null;
         mLauncher.getDepthBlurTargets().forEach(target -> target.setRenderEffect(blurEffect));
         return shouldBlurWorkspace;
     }
