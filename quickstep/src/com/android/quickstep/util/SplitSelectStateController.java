@@ -86,7 +86,6 @@ import com.android.launcher3.icons.IconProvider;
 import com.android.launcher3.logging.StatsLogManager;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.ResolvedTargetInfo;
-import com.android.launcher3.statehandlers.DepthController;
 import com.android.launcher3.statemanager.StateManager;
 import com.android.launcher3.taskbar.TaskbarInteractor;
 import com.android.launcher3.testing.TestLogging;
@@ -143,7 +142,7 @@ public class SplitSelectStateController {
     @Nullable
     private SplitFromDesktopController mSplitFromDesktopController;
     @Nullable
-    private DepthController mDepthController;
+    private BaseDepthController mDepthController;
     private boolean mRecentsAnimationRunning;
     /** If {@code true}, animates the existing task view split placeholder view */
     private boolean mAnimateCurrentTaskDismissal;
@@ -201,7 +200,7 @@ public class SplitSelectStateController {
     };
 
     public SplitSelectStateController(RecentsViewContainer container,
-            StateManager stateManager, DepthController depthController,
+            StateManager stateManager, BaseDepthController depthController,
             StatsLogManager statsLogManager, SystemUiProxy systemUiProxy, RecentsModel recentsModel,
             Runnable activityBackCallback) {
         mContainer = container;

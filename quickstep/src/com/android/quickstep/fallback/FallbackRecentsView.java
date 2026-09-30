@@ -41,7 +41,9 @@ import com.android.launcher3.statemanager.StatefulContainer;
 import com.android.launcher3.util.SplitConfigurationOptions;
 import com.android.launcher3.util.SplitConfigurationOptions.SplitSelectSource;
 import com.android.quickstep.GestureState;
+import com.android.quickstep.RecentsActivity;
 import com.android.quickstep.RemoteTargetGluer.RemoteTargetHandle;
+import com.android.quickstep.util.BaseDepthController;
 import com.android.quickstep.util.GroupTask;
 import com.android.quickstep.util.SingleTask;
 import com.android.quickstep.util.SplitSelectStateController;
@@ -64,6 +66,12 @@ public class FallbackRecentsView<CONTAINER_TYPE extends Context & RecentsViewCon
         implements StateListener<RecentsState> {
 
     private static final int TASK_DISMISS_DURATION = 150;
+
+    @Override
+    protected BaseDepthController getDepthController() {
+        return mContainer instanceof RecentsActivity activity
+                ? activity.getDepthController() : super.getDepthController();
+    }
 
     @Nullable
     private Task mHomeTask;

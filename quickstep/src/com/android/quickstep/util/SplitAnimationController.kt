@@ -58,7 +58,6 @@ import com.android.launcher3.anim.PendingAnimation
 import com.android.launcher3.apppairs.AppPairIcon
 import com.android.launcher3.logging.StatsLogManager.EventEnum
 import com.android.launcher3.model.data.WorkspaceItemInfo
-import com.android.launcher3.statehandlers.DepthController
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.taskbar.TaskbarActivityContext
 import com.android.launcher3.util.MultiPropertyFactory.MULTI_PROPERTY_VALUE
@@ -531,7 +530,7 @@ class SplitAnimationController(val splitSelectStateController: SplitSelectStateC
         wallpapers: Array<RemoteAnimationTarget>?,
         nonApps: Array<RemoteAnimationTarget>?,
         stateManager: StateManager<*, *>,
-        depthController: DepthController?,
+        depthController: BaseDepthController?,
         info: TransitionInfo?,
         t: Transaction?,
         finishCallback: Runnable,
@@ -624,7 +623,7 @@ class SplitAnimationController(val splitSelectStateController: SplitSelectStateC
     fun composeRecentsSplitLaunchAnimator(
         launchingTaskView: GroupedTaskView,
         stateManager: StateManager<*, *>,
-        depthController: DepthController?,
+        depthController: BaseDepthController?,
         info: TransitionInfo,
         t: Transaction,
         finishCallback: Runnable,
@@ -652,7 +651,7 @@ class SplitAnimationController(val splitSelectStateController: SplitSelectStateC
         wallpapers: Array<RemoteAnimationTarget>,
         nonApps: Array<RemoteAnimationTarget>,
         stateManager: StateManager<*, *>,
-        depthController: DepthController?,
+        depthController: BaseDepthController?,
         finishCallback: Runnable,
     ) {
         TaskViewUtils.composeRecentsSplitLaunchAnimatorLegacy(

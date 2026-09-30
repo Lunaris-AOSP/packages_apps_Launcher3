@@ -25,11 +25,11 @@ import android.window.IRemoteTransitionFinishedCallback
 import android.window.RemoteTransition
 import android.window.RemoteTransitionStub
 import android.window.TransitionInfo
-import com.android.launcher3.statehandlers.DepthController
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.util.Executors.MAIN_EXECUTOR
 import com.android.quickstep.SystemUiProxy
 import com.android.quickstep.TaskViewUtils
+import com.android.quickstep.util.BaseDepthController
 import com.android.quickstep.util.DesksUtils.Companion.areMultiDesksFlagsEnabled
 import com.android.quickstep.views.DesktopTaskView
 import com.android.quickstep.views.TaskContainer
@@ -44,7 +44,7 @@ class DesktopRecentsTransitionController(
     private val stateManager: StateManager<*, *>,
     private val systemUiProxy: SystemUiProxy,
     private val appThread: IApplicationThread,
-    private val depthController: DepthController?,
+    private val depthController: BaseDepthController?,
     private val desktopState: DesktopState,
 ) {
 
@@ -109,7 +109,7 @@ class DesktopRecentsTransitionController(
         private val animated: Boolean,
         private val stateManager: StateManager<*, *>,
         private val shouldShowHomeBehindDesktop: Boolean,
-        private val depthController: DepthController?,
+        private val depthController: BaseDepthController?,
         private val successCallback: Consumer<Boolean>?,
     ) : RemoteTransitionStub() {
 

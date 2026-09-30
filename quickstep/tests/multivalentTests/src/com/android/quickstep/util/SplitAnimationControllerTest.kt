@@ -28,7 +28,6 @@ import android.window.TransitionInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.launcher3.apppairs.AppPairIcon
 import com.android.launcher3.model.data.ItemInfo
-import com.android.launcher3.statehandlers.DepthController
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.taskbar.TaskbarActivityContext
 import com.android.launcher3.util.SplitConfigurationOptions
@@ -80,7 +79,7 @@ class SplitAnimationControllerTest {
     private val mockItemInfo: ItemInfo = mock()
 
     private val stateManager: StateManager<*, *> = mock()
-    private val depthController: DepthController = mock()
+    private val depthController: BaseDepthController = mock()
     private val transitionInfo: TransitionInfo = mock()
     private val transaction: Transaction = mock()
 

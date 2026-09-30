@@ -48,9 +48,11 @@ import com.android.launcher3.LauncherState;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.statemanager.StateManager;
+import com.android.launcher3.statemanager.StatefulActivity;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.MultiPropertyFactory;
 import com.android.launcher3.util.MultiPropertyFactory.MultiProperty;
+import com.android.quickstep.views.RecentsViewContainer;
 import com.android.systemui.shared.system.BlurUtils;
 
 /**
@@ -83,7 +85,9 @@ public class BaseDepthController {
     private static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
     private static final long WALLPAPER_ZOOM_HANDOFF_DURATION_MS = 700;
 
-    protected final QuickstepLauncher mLauncher;
+    @Nullable protected final QuickstepLauncher mLauncher;
+    private final StatefulActivity<?> mActivity;
+    private final RecentsViewContainer mContainer;
     /** Property to set the depth for state transition. */
     public final MultiProperty stateDepth;
     /** Property to set the depth for widget picker. */
@@ -146,13 +150,15 @@ public class BaseDepthController {
      */
     private EarlyWakeupInfo mEarlyWakeupInfo = new EarlyWakeupInfo();
 
-    public BaseDepthController(QuickstepLauncher activity) {
-        mLauncher = activity;
+    public <T extends StatefulActivity<?> & RecentsViewContainer> BaseDepthController(T activity) {
+        mActivity = activity;
+        mContainer = activity;
+        mLauncher = activity instanceof QuickstepLauncher launcher ? launcher : null;
         if (Flags.allAppsBlur() || enableOverviewBackgroundWallpaperBlur()) {
             mCrossWindowBlursEnabled =
                     CrossWindowBlurListeners.getInstance().isCrossWindowBlurEnabled();
         }
-        mMaxBlurRadius = LauncherPrefs.BLUR_DEPTH.get(mLauncher);
+        mMaxBlurRadius = LauncherPrefs.BLUR_DEPTH.get(mActivity);
         mWallpaperManager = activity.getSystemService(WallpaperManager.class);
 
         MultiPropertyFactory<BaseDepthController> depthProperty =
@@ -161,7 +167,7 @@ public class BaseDepthController {
         widgetDepth = depthProperty.get(DEPTH_INDEX_WIDGET);
         mEarlyWakeupInfo.token = new Binder();
         mEarlyWakeupInfo.trace = BaseDepthController.class.getName();
-        LauncherPrefs.get(mLauncher).addListener(
+        LauncherPrefs.get(mActivity).addListener(
                 mPreferenceChangeListener,
                 LauncherPrefs.ALLOW_WALLPAPER_ZOOMING,
                 LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING);
@@ -189,7 +195,9 @@ public class BaseDepthController {
             return;
         }
         mCrossWindowBlursEnabled = isEnabled;
-        mLauncher.updateBlurStyle();
+        if (mLauncher != null) {
+            mLauncher.updateBlurStyle();
+        }
         applyDepthAndBlur();
     }
 
@@ -210,7 +218,7 @@ public class BaseDepthController {
     private void onPreferenceChanged(String key) {
         if (LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.getSharedPrefKey().equals(key)
                 || LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING.getSharedPrefKey().equals(key)) {
-            mLauncher.getMainExecutor().execute(() -> applyWallpaperZoom(/* force */ true));
+            mActivity.getMainExecutor().execute(() -> applyWallpaperZoom(/* force */ true));
         }
     }
 
@@ -265,15 +273,15 @@ public class BaseDepthController {
                 ? 0f
                 : mapDepthToWallpaperZoom(
                         mDepth,
-                        LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.get(mLauncher),
-                        LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING.get(mLauncher));
+                        LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.get(mActivity),
+                        LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING.get(mActivity));
     }
 
     private void submitWallpaperZoom(float zoom, boolean force) {
         if (mDisposed) {
             return;
         }
-        View rootView = mLauncher.getRootView();
+        View rootView = mActivity.getRootView();
         if (rootView == null) {
             return;
         }
@@ -341,6 +349,9 @@ public class BaseDepthController {
             return;
         }
         if (mBaseSurface == null) {
+            if (surfaceTransaction != null) {
+                surfaceTransaction.getTransaction().apply();
+            }
             if (DEBUG) {
                 Log.d(TAG, "mSurface is null and mCurrentBlur is: " + mCurrentBlur);
             }
@@ -353,7 +364,7 @@ public class BaseDepthController {
             return;
         }
         mWaitingOnSurfaceValidity = false;
-        boolean hasOpaqueBg = mLauncher.getScrimView().isFullyOpaque();
+        boolean hasOpaqueBg = mContainer.getScrimView().isFullyOpaque();
         boolean isSurfaceOpaque = !mHasContentBehindLauncher && hasOpaqueBg && !mPauseBlurs;
 
         float blurAmount = mapDepthToBlur(depth);
@@ -440,8 +451,8 @@ public class BaseDepthController {
         if (DEBUG) Log.d(TAG, "setEarlyWakeup: " + start);
         if (start) {
             Trace.instantForTrack(TRACE_TAG_APP, TAG, "notifyRendererForGpuLoadUp");
-            mLauncher.getRootView().getViewRootImpl().notifyRendererForGpuLoadUp("applyBlur");
-            mLauncher.getRootView().getViewRootImpl().notifyRendererOfExpensiveFrame("applyBlur");
+            mActivity.getRootView().getViewRootImpl().notifyRendererForGpuLoadUp("applyBlur");
+            mActivity.getRootView().getViewRootImpl().notifyRendererOfExpensiveFrame("applyBlur");
             transaction.setEarlyWakeupStart(mEarlyWakeupInfo);
         } else {
             transaction.setEarlyWakeupEnd(mEarlyWakeupInfo);
@@ -450,6 +461,9 @@ public class BaseDepthController {
     }
 
     private boolean shouldBlurWorkspaceNow() {
+        if (mLauncher == null) {
+            return false;
+        }
         StateManager<LauncherState, Launcher> stateManager = mLauncher.getStateManager();
         LauncherState targetState = stateManager.getTargetState() != null
                 ? stateManager.getTargetState() : stateManager.getState();
@@ -459,7 +473,7 @@ public class BaseDepthController {
     /** @return {@code true} if the workspace should be blurred. */
     @VisibleForTesting
     public boolean blurWorkspaceDepthTargets() {
-        if (!Flags.allAppsBlur()) {
+        if (mLauncher == null || !Flags.allAppsBlur()) {
             return false;
         }
         StateManager<LauncherState, Launcher> stateManager = mLauncher.getStateManager();
@@ -486,7 +500,7 @@ public class BaseDepthController {
     private void setDepth(float depth) {
         depth = Utilities.boundToRange(depth, 0, 1);
         // Depth of the Launcher state we are in or transitioning to.
-        float targetStateDepth = mLauncher.getStateManager().getState().getDepth(mLauncher);
+        float targetStateDepth = getTargetStateDepth();
 
         float depthF;
         if (depth == targetStateDepth) {
@@ -525,10 +539,20 @@ public class BaseDepthController {
         }
     }
 
+    protected float getTargetStateDepth() {
+        return mLauncher == null ? 0f
+                : mLauncher.getStateManager().getState().getDepth(mLauncher);
+    }
+
+    public float getBackgroundAppDepth() {
+        return mLauncher == null ? DEPTH_70_PERCENT
+                : LauncherState.BACKGROUND_APP.getDepth(mLauncher);
+    }
+
     public void dispose() {
         mDisposed = true;
         onWallpaperWindowDetached();
-        LauncherPrefs.get(mLauncher).removeListener(
+        LauncherPrefs.get(mActivity).removeListener(
                 mPreferenceChangeListener,
                 LauncherPrefs.ALLOW_WALLPAPER_ZOOMING,
                 LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING);

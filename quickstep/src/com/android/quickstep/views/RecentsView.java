@@ -170,7 +170,6 @@ import com.android.launcher3.deviceprofile.OverviewProfile;
 import com.android.launcher3.logger.LauncherAtom;
 import com.android.launcher3.logging.StatsLogManager;
 import com.android.launcher3.model.data.ItemInfo;
-import com.android.launcher3.statehandlers.DepthController;
 import com.android.launcher3.statehandlers.DesktopVisibilityController;
 import com.android.launcher3.statemanager.BaseState;
 import com.android.launcher3.statemanager.StateManager;
@@ -229,6 +228,7 @@ import com.android.quickstep.recents.viewmodel.RecentsViewModel;
 import com.android.quickstep.util.ActiveGestureLog;
 import com.android.quickstep.util.ActiveGestureProtoLogProxy;
 import com.android.quickstep.util.AnimUtils;
+import com.android.quickstep.util.BaseDepthController;
 import com.android.quickstep.util.DesktopTask;
 import com.android.quickstep.util.FontUtils;
 import com.android.quickstep.util.GroupTask;
@@ -6030,10 +6030,10 @@ public abstract class RecentsView<
                 anim.play(ObjectAnimator.ofFloat(this, DESK_EXPLODE_PROGRESS, 1f, 0f));
             }
         }
-        DepthController depthController = getDepthController();
+        BaseDepthController depthController = getDepthController();
         if (depthController != null) {
-            float targetDepth = taskView instanceof DesktopTaskView ? 0 : BACKGROUND_APP.getDepth(
-                    mContainer);
+            float targetDepth = taskView instanceof DesktopTaskView ? 0
+                    : depthController.getBackgroundAppDepth();
             anim.play(ObjectAnimator.ofFloat(depthController.stateDepth, MULTI_PROPERTY_VALUE,
                     targetDepth));
         }
@@ -6895,7 +6895,7 @@ public abstract class RecentsView<
     }
 
     @Nullable
-    protected DepthController getDepthController() {
+    protected BaseDepthController getDepthController() {
         return null;
     }
 

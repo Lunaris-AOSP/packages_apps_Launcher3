@@ -24,13 +24,13 @@ import androidx.annotation.Nullable;
 
 import com.android.launcher3.anim.AnimatorPlaybackController;
 import com.android.launcher3.anim.PendingAnimation;
-import com.android.launcher3.statehandlers.DepthController;
 import com.android.launcher3.statemanager.BaseState;
 import com.android.launcher3.statemanager.StatefulActivity;
 import com.android.launcher3.taskbar.TaskbarInteractor;
 import com.android.launcher3.util.DisplayController;
 import com.android.launcher3.util.NavigationMode;
 import com.android.quickstep.util.AnimatorControllerWithResistance;
+import com.android.quickstep.util.BaseDepthController;
 import com.android.quickstep.views.RecentsView;
 import com.android.quickstep.views.RecentsViewContainer;
 import com.android.systemui.shared.recents.model.ThumbnailData;
@@ -59,7 +59,7 @@ public abstract class BaseActivityInterface<STATE_TYPE extends BaseState<STATE_T
     public abstract ACTIVITY_TYPE getCreatedContainer();
 
     @Nullable
-    public DepthController getDepthController() {
+    public BaseDepthController getDepthController() {
         return null;
     }
 

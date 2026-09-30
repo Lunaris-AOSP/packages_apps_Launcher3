@@ -77,13 +77,16 @@ import com.android.launcher3.taskbar.TaskbarManager;
 import com.android.launcher3.util.ActivityOptionsWrapper;
 import com.android.launcher3.util.ContextTracker;
 import com.android.launcher3.util.DisplayController;
+import com.android.launcher3.util.ListenableRef;
 import com.android.launcher3.util.RunnableList;
 import com.android.launcher3.util.SystemUiController;
 import com.android.launcher3.util.Themes;
+import com.android.launcher3.util.WindowBlurState;
 import com.android.launcher3.views.BaseDragLayer;
 import com.android.launcher3.views.ScrimView;
 import com.android.quickstep.fallback.FallbackRecentsStateController;
 import com.android.quickstep.fallback.FallbackRecentsView;
+import com.android.quickstep.fallback.RecentsDepthController;
 import com.android.quickstep.fallback.RecentsDragLayer;
 import com.android.quickstep.fallback.RecentsState;
 import com.android.quickstep.util.RecentsAtomicAnimationFactory;
@@ -126,6 +129,7 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
     private MemInfoView mMemInfoView;
 
     private StateManager<RecentsState, RecentsActivity> mStateManager;
+    private RecentsDepthController mDepthController;
 
     // Strong refs to runners which are cleared when the activity is destroyed
     private RemoteAnimationFactory mActivityLaunchAnimationRunner;
@@ -139,12 +143,13 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
      * Init drag layer and overview panel views.
      */
     protected void setupViews() {
+        setupBlurState();
         getTheme().applyStyle(getOverviewBlurStyleResId(), true);
         SystemUiProxy systemUiProxy = SystemUiProxy.INSTANCE.get(this);
         // SplitSelectStateController needs to be created before setContentView()
         mSplitSelectStateController =
                 new SplitSelectStateController(this, getStateManager(),
-                        null /* depthController */, getStatsLogManager(),
+                        mDepthController, getStatsLogManager(),
                         systemUiProxy, RecentsModel.INSTANCE.get(this),
                         null /*activityBackCallback*/);
         // Setup root and child views
@@ -166,7 +171,7 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
         if (DesktopModeStatus.canEnterDesktopMode(this)) {
             mDesktopRecentsTransitionController = new DesktopRecentsTransitionController(
                     getStateManager(), systemUiProxy, getIApplicationThread(),
-                    null /* depthController */, DesktopState.getInstance(this)
+                    mDepthController, DesktopState.getInstance(this)
             );
         }
         mFallbackRecentsView.init(mActionsView, mSplitSelectStateController,
@@ -176,10 +181,27 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
         mMemInfoView.updateVerticalMargin(DisplayController.getNavigationMode(this));
 
         setContentView(rootView);
+        mDepthController.initialize();
         rootView.getSysUiScrim().getSysUIProgress().updateValue(0);
         mDragLayer.recreateControllers();
 
         mTISBindHelper = new TISBindHelper(this, this::onTISConnected);
+    }
+
+    private void setupBlurState() {
+        ListenableRef<Boolean> blurState = WindowBlurState.getInstance(this);
+        boolean blurEnabled = blurState.getValue();
+        mDepthController = new RecentsDepthController(this, blurEnabled);
+        closeOnDestroy(blurState.forEach(getMainExecutor(), value -> {
+            if (value != blurEnabled && !isDestroyed()) recreate();
+            return null;
+        }));
+        getTheme().applyStyle(blurEnabled ? R.style.FolderBlurStyle
+                : R.style.FolderBlurFallbackStyle, true);
+    }
+
+    public RecentsDepthController getDepthController() {
+        return mDepthController;
     }
 
     private void onTISConnected(TouchInteractionService.TISBinder binder) {
@@ -358,7 +380,7 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
         boolean activityClosing = taskIsATargetWithMode(appTargets, getTaskId(), MODE_CLOSING);
         PendingAnimation pa = new PendingAnimation(RECENTS_LAUNCH_DURATION);
         createRecentsWindowAnimator(recentsView, taskView, !activityClosing, appTargets,
-                wallpaperTargets, nonAppTargets, /* depthController= */ null,
+                wallpaperTargets, nonAppTargets, mDepthController,
                 /* transitionInfo= */ null, /* appearedTaskId= */ INVALID_TASK_ID, pa);
         target.play(pa.buildAnim());
 
@@ -391,6 +413,14 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
         mFallbackRecentsView.updateLocusId();
         AccessibilityManagerCompat.sendTestProtocolEventToTest(
                 this, LAUNCHER_ACTIVITY_STOPPED_MESSAGE);
+    }
+
+    @Override
+    protected void onActivityFlagsChanged(int changeBits) {
+        if ((changeBits & ACTIVITY_STATE_STARTED) != 0 && mDepthController != null) {
+            mDepthController.setActivityStarted(isStarted());
+        }
+        super.onActivityFlagsChanged(changeBits);
     }
 
     @Override
@@ -487,6 +517,9 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
         if (recentsView != null) {
             recentsView.destroy();
         }
+        if (mDepthController != null) {
+            mDepthController.dispose();
+        }
         super.onDestroy();
         ACTIVITY_TRACKER.onContextDestroyed(this);
         mActivityLaunchAnimationRunner = null;
@@ -545,6 +578,7 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
     @Override
     public void collectStateHandlers(List<StateHandler<RecentsState>> out) {
         out.add(new FallbackRecentsStateController(this));
+        out.add(mDepthController);
     }
 
     @Override
@@ -555,6 +589,9 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
     @Override
     public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args) {
         super.dump(prefix, fd, writer, args);
+        if (mDepthController != null) {
+            mDepthController.dump(prefix, writer);
+        }
         writer.println(prefix + "Misc:");
         dumpMisc(prefix + "\t", writer);
     }
@@ -598,6 +635,7 @@ public final class RecentsActivity extends StatefulActivity<RecentsState> implem
 
     @Override
     public int getOverviewBlurStyleResId() {
-        return R.style.OverviewBlurFallbackStyle;
+        return mDepthController != null && mDepthController.isCrossWindowBlursEnabled()
+                ? R.style.OverviewBlurStyle : R.style.OverviewBlurFallbackStyle;
     }
 }

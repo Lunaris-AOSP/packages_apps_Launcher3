@@ -27,7 +27,6 @@ import static com.android.launcher3.Flags.enableDesktopExplodedView;
 import static com.android.launcher3.LauncherAnimUtils.VIEW_ALPHA;
 import static com.android.launcher3.LauncherAnimUtils.VIEW_TRANSLATE_X;
 import static com.android.launcher3.LauncherAnimUtils.VIEW_TRANSLATE_Y;
-import static com.android.launcher3.LauncherState.BACKGROUND_APP;
 import static com.android.launcher3.LauncherState.NORMAL;
 import static com.android.launcher3.QuickstepTransitionManager.ANIMATION_DELAY_NAV_FADE_IN;
 import static com.android.launcher3.QuickstepTransitionManager.ANIMATION_NAV_FADE_IN_DURATION;
@@ -77,12 +76,12 @@ import com.android.launcher3.anim.AnimationSuccessListener;
 import com.android.launcher3.anim.AnimatorPlaybackController;
 import com.android.launcher3.anim.PendingAnimation;
 import com.android.launcher3.model.data.ItemInfo;
-import com.android.launcher3.statehandlers.DepthController;
 import com.android.launcher3.statemanager.StateManager;
 import com.android.launcher3.statemanager.StatefulContainer;
 import com.android.launcher3.taskbar.TaskbarInteractor;
 import com.android.launcher3.util.DisplayController;
 import com.android.quickstep.RemoteTargetGluer.RemoteTargetHandle;
+import com.android.quickstep.util.BaseDepthController;
 import com.android.quickstep.util.MultiValueUpdateListener;
 import com.android.quickstep.util.RemoteTargetHandleUtilKt;
 import com.android.quickstep.util.SurfaceTransaction;
@@ -184,7 +183,7 @@ public final class TaskViewUtils {
             @NonNull RemoteAnimationTarget[] appTargets,
             @NonNull RemoteAnimationTarget[] wallpaperTargets,
             @NonNull RemoteAnimationTarget[] nonAppTargets,
-            @Nullable DepthController depthController,
+            @Nullable BaseDepthController depthController,
             @Nullable TransitionInfo transitionInfo,
             int appearedTaskId,
             PendingAnimation out) {
@@ -470,7 +469,7 @@ public final class TaskViewUtils {
 
         if (depthController != null) {
             out.setFloat(depthController.stateDepth, MULTI_PROPERTY_VALUE,
-                    BACKGROUND_APP.getDepth(container),
+                    depthController.getBackgroundAppDepth(),
                     TOUCH_RESPONSE);
         }
     }
@@ -483,7 +482,7 @@ public final class TaskViewUtils {
      * it's a single task or multiple tasks results in different entry-points.
      */
     public static void composeRecentsSplitLaunchAnimator(GroupedTaskView launchingTaskView,
-            @NonNull StateManager stateManager, @Nullable DepthController depthController,
+            @NonNull StateManager stateManager, @Nullable BaseDepthController depthController,
             @NonNull TransitionInfo transitionInfo, SurfaceControl.Transaction t,
             @NonNull Runnable finishCallback) {
         AnimatorSet animatorSet = new AnimatorSet();
@@ -530,7 +529,7 @@ public final class TaskViewUtils {
             @NonNull RemoteAnimationTarget[] wallpaperTargets,
             @NonNull RemoteAnimationTarget[] nonAppTargets,
             @NonNull StateManager stateManager,
-            @Nullable DepthController depthController,
+            @Nullable BaseDepthController depthController,
             @NonNull Runnable finishCallback) {
         if (launchingTaskView != null) {
             AnimatorSet animatorSet = new AnimatorSet();
@@ -611,7 +610,7 @@ public final class TaskViewUtils {
      */
     public static AnimatorSet composeRecentsDesktopLaunchAnimator(
             @NonNull TaskView launchingTaskView,
-            @NonNull StateManager stateManager, @Nullable DepthController depthController,
+            @NonNull StateManager stateManager, @Nullable BaseDepthController depthController,
             @NonNull TransitionInfo transitionInfo, SurfaceControl.Transaction t,
             @NonNull Runnable finishCallback
     ) {
@@ -647,7 +646,7 @@ public final class TaskViewUtils {
             @NonNull RemoteAnimationTarget[] wallpaperTargets,
             @NonNull RemoteAnimationTarget[] nonAppTargets, boolean launcherClosing,
             @NonNull StateManager stateManager, @NonNull RecentsView recentsView,
-            @Nullable DepthController depthController, @Nullable TransitionInfo transitionInfo,
+            @Nullable BaseDepthController depthController, @Nullable TransitionInfo transitionInfo,
             int appearedTaskId) {
         boolean skipLauncherChanges = !launcherClosing;
 
