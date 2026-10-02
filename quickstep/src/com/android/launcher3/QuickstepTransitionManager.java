@@ -1121,10 +1121,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                         } else {
                             tmpPos.set(target.position.x, target.position.y);
                         }
-                        closingTargetCrop.set(target.screenSpaceBounds);
-                        closingTargetCrop.offsetTo(0, 0);
+                        if (target.screenSpaceBounds != null) {
+                            closingTargetCrop.set(target.screenSpaceBounds);
+                            closingTargetCrop.offsetTo(0, 0);
+                        } else {
+                            closingTargetCrop.setEmpty();
+                        }
 
-                        if ((rotationChange % 2) == 1) {
+                        if ((rotationChange % 2) != 0) {
                             int tmp = closingTargetCrop.right;
                             closingTargetCrop.right = closingTargetCrop.bottom;
                             closingTargetCrop.bottom = tmp;
@@ -1597,6 +1601,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      * Called when the overview-target changes. Updates the back callback registration state.
      */
     public void onOverviewTargetChange() {
+        if (mBackAnimationController == null) {
+            return;
+        }
         if (isHomeRoleHeld()) {
             mBackAnimationController.registerBackCallbacks(mHandler);
         } else {
@@ -1623,18 +1630,18 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     protected void unregisterRemoteTransitions() {
         SystemUiProxy.INSTANCE.get(mLauncher).unshareTransactionQueue();
-        if (SEPARATE_RECENTS_ACTIVITY.get()) {
-            return;
-        }
-        if (mLauncherOpenTransition == null) return;
-        SystemUiProxy.INSTANCE.get(mLauncher).unregisterRemoteTransition(
-                mLauncherOpenTransition);
-        mLauncherOpenTransition = null;
-        mWallpaperOpenTransitionRunner = null;
-        if (mMoveDisplayTransition != null) {
-            SystemUiProxy.INSTANCE.get(mLauncher)
-                    .unregisterRemoteTransition(mMoveDisplayTransition);
-            mMoveDisplayTransition = null;
+        if (!SEPARATE_RECENTS_ACTIVITY.get()) {
+            if (mLauncherOpenTransition != null) {
+                SystemUiProxy.INSTANCE.get(mLauncher).unregisterRemoteTransition(
+                        mLauncherOpenTransition);
+                mLauncherOpenTransition = null;
+                mWallpaperOpenTransitionRunner = null;
+            }
+            if (mMoveDisplayTransition != null) {
+                SystemUiProxy.INSTANCE.get(mLauncher)
+                        .unregisterRemoteTransition(mMoveDisplayTransition);
+                mMoveDisplayTransition = null;
+            }
         }
         if (mBackAnimationController != null) {
             mBackAnimationController.cleanupForDestroy();
@@ -1678,7 +1685,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 rotationChange = target.rotationChange;
             }
         }
-        return rotationChange;
+        return ((rotationChange % 4) + 4) % 4;
     }
 
     /**
@@ -1947,10 +1954,20 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                         tmpPos.set(target.position.x, target.position.y);
                     }
 
-                    fallbackCrop.set(target.localBounds);
-                    fallbackCrop.offsetTo(0, 0);
+                    if (target.localBounds != null) {
+                        fallbackCrop.set(target.localBounds);
+                        fallbackCrop.offsetTo(0, 0);
+                    } else {
+                        fallbackCrop.setEmpty();
+                    }
                     if (target.mode == MODE_CLOSING) {
-                        tmpRect.set(target.screenSpaceBounds);
+                        if (target.screenSpaceBounds != null) {
+                            tmpRect.set(target.screenSpaceBounds);
+                        } else {
+                            tmpRect.set(tmpPos.x, tmpPos.y,
+                                    tmpPos.x + fallbackCrop.width(),
+                                    tmpPos.y + fallbackCrop.height());
+                        }
                         if ((rotationChange % 2) != 0) {
                             final int right = fallbackCrop.right;
                             fallbackCrop.right = fallbackCrop.bottom;
