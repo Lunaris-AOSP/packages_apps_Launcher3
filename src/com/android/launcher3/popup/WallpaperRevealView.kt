@@ -10,7 +10,6 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -24,8 +23,10 @@ import kotlin.math.hypot
 import kotlin.math.max
 
 /**
- * Pixel-style wallpaper wipe. The old and new frames are already in memory so the circle can start
- * on the first frame; [setBitmap] runs in the background under this overlay.
+ * Pixel-style wallpaper wipe.
+ *
+ * Drawn above the workspace. The circle only swaps the wallpaper; icon pixels come from a still
+ * taken at tap time, so live icons are not redrawn as the edge moves.
  */
 class WallpaperRevealView(context: Context) : View(context) {
 
@@ -39,6 +40,7 @@ class WallpaperRevealView(context: Context) : View(context) {
 
     private var oldWallpaper: Bitmap? = null
     private var newWallpaper: Bitmap? = null
+    private var uiSnapshot: Bitmap? = null
     private var radius = 0f
     private var maxRadius = 0f
     private var wipeAnimator: ValueAnimator? = null
@@ -52,26 +54,38 @@ class WallpaperRevealView(context: Context) : View(context) {
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        // Above the popup and the workspace. Same-Z siblings were compositing the live icons
+        // on top of this view, so the wipe never actually covered them.
+        elevation = 32f * resources.displayMetrics.density
     }
 
     override fun onDraw(canvas: Canvas) {
         if (width <= 0 || height <= 0) return
-        val oldBmp = oldWallpaper
+        val oldBmp = oldWallpaper ?: return
         val newBmp = newWallpaper
 
-        if (oldBmp != null && !oldBmp.isRecycled) {
-            canvas.drawBitmap(oldBmp, oldMatrix, paint)
-        } else {
-            canvas.drawColor(Color.BLACK)
-        }
-
-        if (radius > 0f && newBmp != null && !newBmp.isRecycled) {
-            clipPath.reset()
-            clipPath.addCircle(origin.x.toFloat(), origin.y.toFloat(), radius, Path.Direction.CW)
-            val save = canvas.save()
-            canvas.clipPath(clipPath)
+        if (newBmp != null && !newBmp.isRecycled) {
             canvas.drawBitmap(newBmp, newMatrix, paint)
-            canvas.restoreToCount(save)
+        }
+        val save =
+            if (radius > 0f && newBmp != null) {
+                clipPath.reset()
+                clipPath.addCircle(
+                    origin.x.toFloat(),
+                    origin.y.toFloat(),
+                    radius,
+                    Path.Direction.CW,
+                )
+                canvas.save().also { canvas.clipOutPath(clipPath) }
+            } else {
+                -1
+            }
+        if (!oldBmp.isRecycled) canvas.drawBitmap(oldBmp, oldMatrix, paint)
+        if (save >= 0) canvas.restoreToCount(save)
+
+        // Icon still is not clipped, so the circle never cuts through live icon pixels.
+        uiSnapshot?.let { snapshot ->
+            if (!snapshot.isRecycled) canvas.drawBitmap(snapshot, 0f, 0f, paint)
         }
     }
 
@@ -100,6 +114,7 @@ class WallpaperRevealView(context: Context) : View(context) {
         detachFromParent()
         oldWallpaper = previousWallpaper
         newWallpaper = nextWallpaper
+        uiSnapshot = captureUi(dragLayer)
         this.onSettled = onSettled
         wipeFinished = false
         applyFinished = false
@@ -111,13 +126,8 @@ class WallpaperRevealView(context: Context) : View(context) {
         source.getLocationInWindow(tmpLoc)
         sourceCenterInWindow.set(tmpLoc[0] + source.width / 2, tmpLoc[1] + source.height / 2)
 
-        val lp =
-            BaseDragLayer.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
-        lp.ignoreInsets = true
-        dragLayer.addView(this, 0, lp)
+        dragLayer.addView(this, fullBleedParams())
+        dragLayer.bringChildToFront(this)
 
         viewTreeObserver.addOnPreDrawListener(
             object : android.view.ViewTreeObserver.OnPreDrawListener {
@@ -157,11 +167,6 @@ class WallpaperRevealView(context: Context) : View(context) {
     private fun startWipe() {
         if (started) return
         started = true
-        if (newWallpaper == null) {
-            wipeFinished = true
-            maybeFinish()
-            return
-        }
         updateOriginFromWindow()
         maxRadius = maxRadiusToCorners()
         if (maxRadius <= 0f) {
@@ -201,12 +206,18 @@ class WallpaperRevealView(context: Context) : View(context) {
 
     private fun maybeFinish() {
         if (!wipeFinished || !applyFinished) return
-        if (applySucceeded) {
-            detachFromParent()
-            finish(true)
-        } else {
+        if (!applySucceeded) {
             fadeAndFinish()
+            return
         }
+        animate()
+            .alpha(0f)
+            .setDuration(SETTLE_MS)
+            .withEndAction {
+                detachFromParent()
+                finish(true)
+            }
+            .start()
     }
 
     private fun fadeAndFinish() {
@@ -224,6 +235,26 @@ class WallpaperRevealView(context: Context) : View(context) {
         val callback = onSettled
         onSettled = null
         callback?.invoke(success)
+    }
+
+    private fun captureUi(dragLayer: ViewGroup): Bitmap? {
+        val w = dragLayer.width
+        val h = dragLayer.height
+        if (w <= 0 || h <= 0) return null
+        return runCatching {
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bmp ->
+                    val canvas = Canvas(bmp)
+                    for (i in 0 until dragLayer.childCount) {
+                        val child = dragLayer.getChildAt(i)
+                        if (child.visibility != VISIBLE || child is WallpaperRevealView) continue
+                        val save = canvas.save()
+                        canvas.translate(child.left.toFloat(), child.top.toFloat())
+                        child.draw(canvas)
+                        canvas.restoreToCount(save)
+                    }
+                }
+            }
+            .getOrNull()
     }
 
     private fun fitMatrix(bitmap: Bitmap?, matrix: Matrix, w: Int, h: Int) {
@@ -247,6 +278,14 @@ class WallpaperRevealView(context: Context) : View(context) {
         return max(max(hypot(x, y), hypot(x, y - h)), max(hypot(x - w, y), hypot(x - w, y - h)))
     }
 
+    private fun fullBleedParams(): BaseDragLayer.LayoutParams {
+        return BaseDragLayer.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            .also { it.ignoreInsets = true }
+    }
+
     private fun resolveDragLayer(): BaseDragLayer<*>? {
         val activity: ActivityContext = ActivityContext.lookupContextNoThrow(context) ?: return null
         return activity.dragLayer
@@ -254,10 +293,13 @@ class WallpaperRevealView(context: Context) : View(context) {
 
     private fun detachFromParent() {
         (parent as? ViewGroup)?.removeView(this)
+        uiSnapshot?.recycle()
+        uiSnapshot = null
     }
 
     companion object {
         val WIPE_INTERPOLATOR = PathInterpolator(0f, 0f, 0.7f, 1f)
         const val WIPE_MS = 400L
+        private const val SETTLE_MS = 90L
     }
 }
