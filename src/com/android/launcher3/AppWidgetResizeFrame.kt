@@ -55,6 +55,7 @@ import com.android.launcher3.logging.StatsLogManager.LauncherEvent
 import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.LauncherAppWidgetInfo
+import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.popup.PopupContainer.Companion.getOpen
 import com.android.launcher3.util.PendingRequestArgs
 import com.android.launcher3.views.ArrowTipView
@@ -207,6 +208,62 @@ private class FolderResizeTarget(
         context.getString(R.string.folder_resized, spanX, spanY)
 }
 
+private class AppIconResizeTarget(
+    val icon: BubbleTextView,
+    private val workspace: Workspace<*>,
+    allowedSizes: List<Point>,
+) : ResizeTarget {
+    private val itemInfoInternal = icon.tag as WorkspaceItemInfo
+
+    private val initialCellX: Int
+    private val initialCellY: Int
+    private val initialSpanX: Int
+    private val initialSpanY: Int
+    private val supportedSizes: List<Point>
+
+    init {
+        val lp = icon.layoutParams as CellLayoutLayoutParams
+        initialCellX = lp.cellX
+        initialCellY = lp.cellY
+        initialSpanX = lp.cellHSpan
+        initialSpanY = lp.cellVSpan
+        supportedSizes = (allowedSizes + Point(initialSpanX, initialSpanY)).distinct()
+    }
+
+    override val view: View = icon
+    override val itemInfo: ItemInfo = itemInfoInternal
+    override val minSpanX: Int = supportedSizes.minOf { it.x }
+    override val minSpanY: Int = supportedSizes.minOf { it.y }
+    override val maxSpanX: Int = supportedSizes.maxOf { it.x }
+    override val maxSpanY: Int = supportedSizes.maxOf { it.y }
+    override val visualScale: Float = 1f
+    override val canResizeFromLeft: Boolean = false
+    override val canResizeFromTop: Boolean = false
+
+    override fun canResizeTo(cellX: Int, cellY: Int, spanX: Int, spanY: Int): Boolean {
+        if (cellX != initialCellX || cellY != initialCellY) return false
+        val isInitialGeometry = spanX == initialSpanX && spanY == initialSpanY
+        val lp = icon.layoutParams as CellLayoutLayoutParams
+        val isCurrentGeometry = spanX == lp.cellHSpan && spanY == lp.cellVSpan
+        return isInitialGeometry || isCurrentGeometry ||
+            workspace.canResizeAppIconTo(icon, cellX, cellY, spanX, spanY)
+    }
+
+    override fun onResizeApplied(spanX: Int, spanY: Int, committed: Boolean) {
+        if (committed) {
+            itemInfoInternal.spanX = spanX
+            itemInfoInternal.spanY = spanY
+            itemInfoInternal.minSpanX = spanX
+            itemInfoInternal.minSpanY = spanY
+            workspace.mLauncher.modelWriter.updateItemInDatabase(itemInfoInternal)
+        }
+        icon.onResizeChanged()
+    }
+
+    override fun getResizeAnnouncement(context: Context, spanX: Int, spanY: Int): CharSequence =
+        context.getString(R.string.icon_span_resized, spanX, spanY)
+}
+
 /**
  * A floating frame with resize handles (dots) shown around resizable workspace items
  * after long-pressing.
@@ -352,6 +409,8 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             } else {
                 null
             }
+        val appIconTarget =
+            if (::resizeTarget.isInitialized) resizeTarget as? AppIconResizeTarget else null
 
         if (folderTarget != null) {
             updateFolderResizeGeometry(folderTarget.folderIcon)
@@ -359,6 +418,10 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             systemGestureExclusionRectsHolder[0].set(
                 folderResizeHandleTouchRect
             )
+        } else if (appIconTarget != null) {
+            updateAppIconResizeGeometry(appIconTarget.icon)
+            systemGestureExclusionRectsHolder.forEach { it.setEmpty() }
+            systemGestureExclusionRectsHolder[0].set(folderResizeHandleTouchRect)
         } else {
             dragHandles.all.forEachIndexed { index, view ->
                 systemGestureExclusionRectsHolder[index].set(
@@ -378,10 +441,12 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
         super.dispatchDraw(canvas)
 
         if (!::resizeTarget.isInitialized) return
-        val folderTarget =
-            resizeTarget as? FolderResizeTarget ?: return
+        val folderTarget = resizeTarget as? FolderResizeTarget
+        val appIconTarget = resizeTarget as? AppIconResizeTarget
+        if (folderTarget == null && appIconTarget == null) return
 
-        updateFolderResizeGeometry(folderTarget.folderIcon)
+        if (folderTarget != null) updateFolderResizeGeometry(folderTarget.folderIcon)
+        else updateAppIconResizeGeometry(appIconTarget!!.icon)
         val offset = backgroundPadding.toFloat()
 
         canvas.save()
@@ -398,7 +463,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 
         canvas.restore()
 
-        if (folderTarget.folderIcon.isPreviewBackgroundAnimating) {
+        if (folderTarget != null && folderTarget.folderIcon.isPreviewBackgroundAnimating) {
             postInvalidateOnAnimation()
         }
     }
@@ -414,6 +479,12 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             folderIcon.previewBackgroundCornerRadius
 
         updateFolderResizeHandlePath(cornerRadius)
+    }
+
+    private fun updateAppIconResizeGeometry(icon: BubbleTextView) {
+        icon.getIconBackgroundPath(folderResizeOutlinePath)
+        folderResizeOutlinePath.computeBounds(folderResizeOutlineBounds, true)
+        updateFolderResizeHandlePath(icon.getIconBackgroundCornerRadius())
     }
 
     private fun setCornerRadiusFromWidget(widgetView: LauncherAppWidgetHostView) {
@@ -606,10 +677,29 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             }
     }
 
+    private fun setupForAppIcon(
+        icon: BubbleTextView,
+        cellLayout: CellLayout,
+        dragLayer: DragLayer,
+    ) {
+        val workspace = launcher.workspace
+        val target = AppIconResizeTarget(
+            icon = icon,
+            workspace = workspace,
+            allowedSizes = workspace.getAllowedAppIconSizes(icon),
+        )
+        setupForTarget(target, cellLayout, dragLayer)
+        findViewById<View>(R.id.widget_resize_frame).visibility = View.INVISIBLE
+        dragHandles.all.forEach { it.visibility = View.INVISIBLE }
+        alpha = if (ignoreCurrentTouchSequence) DIMMED_ALPHA else VISIBLE_ALPHA
+    }
+
     private fun updateActiveResizeBorders(x: Int, y: Int) {
         val folderTarget = resizeTarget as? FolderResizeTarget
-        if (folderTarget != null) {
-            updateFolderResizeGeometry(folderTarget.folderIcon)
+        val appIconTarget = resizeTarget as? AppIconResizeTarget
+        if (folderTarget != null || appIconTarget != null) {
+            if (folderTarget != null) updateFolderResizeGeometry(folderTarget.folderIcon)
+            else updateAppIconResizeGeometry(appIconTarget!!.icon)
 
             val handleActive =
                 folderResizeHandleTouchRect.contains(x, y)
@@ -1080,7 +1170,9 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             return false
         }
 
-        if (Flags.homeScreenEditImprovements() || resizeTarget is FolderResizeTarget) {
+        if (Flags.homeScreenEditImprovements()
+            || resizeTarget is FolderResizeTarget
+            || resizeTarget is AppIconResizeTarget) {
             if (shouldIgnoreTouch()) {
                 return false
             }
@@ -1401,6 +1493,35 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
             dragLayer.addView(frame)
             frame.mIsOpen = true
 
+            frame.post {
+                frame.snapToTarget(false)
+                frame.revealFolderResizeFrameWhenTouchEnds()
+            }
+        }
+
+        @JvmStatic
+        fun showForAppIcon(icon: BubbleTextView?, cellLayout: CellLayout) {
+            if (icon == null || icon.parent == null) return
+            val itemInfo = icon.tag as? WorkspaceItemInfo ?: return
+            if (itemInfo.container != LauncherSettings.Favorites.CONTAINER_DESKTOP) return
+
+            icon.loadSuperIconDrawableIfNecessary()
+            val activityContext = cellLayout.mActivity
+            val dragLayer = activityContext.dragLayer as DragLayer
+            closeAllOpenViewsExcept(activityContext, TYPE_ACTION_POPUP)
+            val frame = activityContext.layoutInflater.inflate(
+                R.layout.app_widget_resize_frame, dragLayer, false) as AppWidgetResizeFrame
+            frame.apply {
+                ignoreCurrentTouchSequence = launcher.isTouchInProgress
+                setupForAppIcon(icon, cellLayout, dragLayer)
+                tag = icon.tag
+                accessibilityDelegate = activityContext.accessibilityDelegate
+                contentDescription = activityContext.asContext().getString(
+                    R.string.icon_frame_name, itemInfo.title)
+                (layoutParams as BaseDragLayer.LayoutParams).customPosition = true
+            }
+            dragLayer.addView(frame)
+            frame.mIsOpen = true
             frame.post {
                 frame.snapToTarget(false)
                 frame.revealFolderResizeFrameWhenTouchEnds()

@@ -184,7 +184,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
      * Checks if {@code o} is an {@link ItemInfo} type that can be placed in folders.
      */
     public static boolean willAccept(Object o) {
-        return o instanceof ItemInfo info && willAcceptItemType(info.itemType);
+        return o instanceof ItemInfo info
+                && info.spanX <= 1 && info.spanY <= 1
+                && willAcceptItemType(info.itemType);
     }
 
     private Alarm mReorderAlarm = new Alarm(Looper.getMainLooper());
@@ -873,7 +875,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
     private FolderAnimationCreator getFolderAnimationManager() {
         boolean shouldUseSpringMotion = Flags.enableLauncherIconShapes()
                 && Flags.enableExpressiveFolderExpansion()
-                && !mFolderIcon.usesWorkspacePreviewLayout();
+                && !mFolderIcon.isMultiSpanFolder()
+                // The spring animator does not implement the custom thumbnail cross-fade.
+                && !mInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL);
         if (shouldUseSpringMotion) {
             ShapeDelegate shapeDelegate =
                     ThemeManager.INSTANCE.get(mActivityContext.asContext()).getFolderShape();

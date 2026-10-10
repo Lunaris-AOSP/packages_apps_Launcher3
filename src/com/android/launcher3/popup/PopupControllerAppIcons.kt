@@ -18,10 +18,16 @@ package com.android.launcher3.popup
 
 import android.content.Context
 import android.view.View
+import com.android.launcher3.AppWidgetResizeFrame
+import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.BubbleTextView
 import com.android.launcher3.IconResizeFrame
 import com.android.launcher3.Launcher
+import com.android.launcher3.LauncherPrefs
+import com.android.launcher3.LauncherSettings.Favorites.CONTAINER_DESKTOP
+import com.android.launcher3.R
 import com.android.launcher3.model.data.ItemInfo
+import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.util.PackageUserKey
 import com.android.launcher3.util.ShortcutUtil
 import com.android.launcher3.views.ActivityContext
@@ -55,6 +61,23 @@ class PopupControllerForAppIcon<T> : PopupController<T> where T : Context, T : A
                 .filter { it != null }
                 .collect(Collectors.toList())
 
+        // Keep Lunaris' pixel-size handle for ordinary icons, but provide an entry into
+        // cell-span resizing as well. Otherwise a new 1x1 icon could never become a Super Icon.
+        if (item is WorkspaceItemInfo && item.container == CONTAINER_DESKTOP && !icon.isMultiSpan) {
+            systemShortcuts.add(object : SystemShortcut<Launcher>(
+                R.drawable.ic_folder_style_featured, R.string.super_icon_resize,
+                launcher, item, icon, false,
+            ) {
+                override fun onClick(view: View) {
+                    if (LauncherPrefs.WORKSPACE_LOCK.get(launcher)) return
+                    val cellLayout = launcher.workspace.getParentCellLayoutForView(icon) ?: return
+                    // Close the old pixel-size handle synchronously before opening the span handle.
+                    AbstractFloatingView.closeAllOpenViews(launcher, false)
+                    AppWidgetResizeFrame.showForAppIcon(icon, cellLayout)
+                }
+            })
+        }
+
         val container =
             PopupContainerWithArrow.create<Launcher>(
                 context = launcher,
@@ -66,7 +89,15 @@ class PopupControllerForAppIcon<T> : PopupController<T> where T : Context, T : A
             if (view.showingMinimalPopup) emptyList() else systemShortcuts)
         launcher.refreshAndBindWidgetsForPackageUser(PackageUserKey.fromItemInfo(item))
         container.requestFocus()
-        IconResizeFrame.showForIcon(icon)
+        val cellLayout = launcher.workspace.getParentCellLayoutForView(icon)
+        if (cellLayout != null && icon.isMultiSpan) {
+            // Multi-span icons use the shared workspace resize frame. Keep the existing
+            // icon-size frame for ordinary icons so Lunaris' saved icon-size overrides remain
+            // available.
+            AppWidgetResizeFrame.showForAppIcon(icon, cellLayout)
+        } else {
+            IconResizeFrame.showForIcon(icon)
+        }
         return container
     }
 

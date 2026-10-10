@@ -39,23 +39,34 @@ import static com.android.launcher3.icons.cache.CacheLookupFlag.DEFAULT_LOOKUP_F
 import static com.android.launcher3.model.data.ItemInfoWithIcon.FLAG_INCREMENTAL_DOWNLOAD_ACTIVE;
 import static com.android.launcher3.model.data.ItemInfoWithIcon.FLAG_INSTALL_SESSION_ACTIVE;
 import static com.android.launcher3.model.data.ItemInfoWithIcon.FLAG_SHOW_DOWNLOAD_PROGRESS_MASK;
+import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 import static com.android.launcher3.util.MultiTranslateDelegate.INDEX_TASKBAR_APP_RUNNING_STATE_ANIM;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.view.animation.Interpolator;
+import android.view.animation.PathInterpolator;
 import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Point;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.AdaptiveIconDrawable;
 import android.icu.text.MessageFormat;
 import android.text.Spannable;
+import android.util.Pair;
 import android.text.SpannableString;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -68,6 +79,7 @@ import android.util.Property;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.SoundEffectConstants;
 import android.view.View;
 import android.view.ViewDebug;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -78,6 +90,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 
 import com.android.launcher3.accessibility.BaseAccessibilityDelegate;
@@ -94,6 +107,7 @@ import com.android.launcher3.icons.DotRenderer;
 import com.android.launcher3.icons.DotRenderer.IconShapeInfo;
 import com.android.launcher3.icons.FastBitmapDrawable;
 import com.android.launcher3.icons.IconCache.ItemInfoUpdateReceiver;
+import com.android.launcher3.icons.LauncherIcons;
 import com.android.launcher3.icons.PlaceHolderDrawableDelegate;
 import com.android.launcher3.icons.cache.CacheLookupFlag;
 import com.android.launcher3.model.data.AppInfo;
@@ -105,6 +119,8 @@ import com.android.launcher3.popup.PoppableType;
 import com.android.launcher3.popup.Popup;
 import com.android.launcher3.popup.PopupController;
 import com.android.launcher3.search.StringMatcherUtility;
+import com.android.launcher3.shortcuts.SuperIconShortcutHelper;
+import com.android.launcher3.touch.ItemClickHandler;
 import com.android.launcher3.util.CancellableTask;
 import com.android.launcher3.util.CustomAppNameStore;
 import com.android.launcher3.util.IntArray;
@@ -117,6 +133,7 @@ import com.android.launcher3.views.FloatingIconViewCompanion;
 
 import java.text.NumberFormat;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -269,6 +286,22 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     private boolean mHighResUpdateInProgress = false;
 
+    private AdaptiveIconDrawable mSuperIconAdaptiveDrawable;
+    private Drawable mSuperIconBadge;
+    private boolean mIsLoadingSuperIcon = false;
+    private boolean mSuperIconLoadedWithTheme = false;
+    private Boolean mSuperIconFgHasOpaquePlate = null;
+    private static final java.util.WeakHashMap<Bitmap, Bitmap> sMonetGlyphCache =
+            new java.util.WeakHashMap<>();
+    private List<WorkspaceItemInfo> mSuperIconShortcuts;
+    private boolean mIsLoadingShortcuts = false;
+    private final RectF[] mSlotBounds = new RectF[]{new RectF(), new RectF(), new RectF(), new RectF()};
+    private final float[] mSlotPressScales = new float[]{1.0f, 1.0f, 1.0f, 1.0f};
+    private final ValueAnimator[] mSlotPressAnimators = new ValueAnimator[4];
+    private int mActivePressedSlot = -1;
+    private int mLastClickedSlot = -1;
+    private boolean mIsDrawingDragView = false;
+
     public BubbleTextView(Context context) {
         this(context, null, 0);
     }
@@ -412,6 +445,14 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
             mIconLoadRequest.cancel();
             mIconLoadRequest = null;
         }
+        mSuperIconAdaptiveDrawable = null;
+        mSuperIconBadge = null;
+        mSuperIconFgHasOpaquePlate = null;
+        mIsLoadingSuperIcon = false;
+        mSuperIconShortcuts = null;
+        mIsLoadingShortcuts = false;
+        mActivePressedSlot = -1;
+        mLastClickedSlot = -1;
         // Reset any shifty arrangements in case animation is disrupted.
         setPivotY(0);
         setAlpha(1);
@@ -453,11 +494,15 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     @UiThread
     public void applyFromWorkspaceItem(WorkspaceItemInfo info) {
-        applyIconAndLabel(info);
         setItemInfo(info);
+        applyIconAndLabel(info);
 
         applyDotState(info, false /* animate */);
         setDownloadStateContentDescription(info, info.getProgressLevel());
+        if (isMultiSpan()) {
+            loadSuperIconDrawableIfNecessary();
+            loadSuperIconShortcutsIfNecessary();
+        }
     }
 
     @UiThread
@@ -477,14 +522,17 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
      */
     @UiThread
     public void applyFromItemInfoWithIcon(ItemInfoWithIcon info) {
-        applyIconAndLabel(info);
-        // We don't need to check the info since it's not a WorkspaceItemInfo
         setItemInfo(info);
+        applyIconAndLabel(info);
 
         // Verify high res immediately
         verifyHighRes();
 
         setDownloadStateContentDescription(info, info.getProgressLevel());
+        if (isMultiSpan()) {
+            loadSuperIconDrawableIfNecessary();
+            loadSuperIconShortcutsIfNecessary();
+        }
     }
 
     /**
@@ -577,7 +625,21 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         if (mIsShowingMinimalPopup) {
             iconDrawable.setAnimationEnabled(false);
         }
+        mSuperIconAdaptiveDrawable = null;
+        mSuperIconBadge = null;
+        mSuperIconFgHasOpaquePlate = null;
+        mIsLoadingSuperIcon = false;
+        List<WorkspaceItemInfo> cachedShortcuts = SuperIconShortcutHelper.getCachedShortcuts(info);
+        mSuperIconShortcuts = (cachedShortcuts != null && !cachedShortcuts.isEmpty())
+                ? cachedShortcuts : null;
+        mIsLoadingShortcuts = false;
+        mActivePressedSlot = -1;
+        mLastClickedSlot = -1;
         setIcon(iconDrawable);
+        if (isMultiSpan()) {
+            loadSuperIconDrawableIfNecessary();
+            loadSuperIconShortcutsIfNecessary();
+        }
     }
 
     /**
@@ -752,6 +814,45 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
                 && shouldIgnoreTouchDown(event.getX(), event.getY())) {
             return false;
         }
+
+        if (hasQuickFunctions()) {
+            int action = event.getActionMasked();
+            float x = event.getX();
+            float y = event.getY();
+            switch (action) {
+                case MotionEvent.ACTION_DOWN:
+                    mActivePressedSlot = getSlotAt(x, y);
+                    mLastClickedSlot = mActivePressedSlot;
+                    if (mActivePressedSlot >= 0) {
+                        animateSlotPress(mActivePressedSlot, true);
+                    }
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (mActivePressedSlot >= 0) {
+                        int currentSlot = getSlotAt(x, y);
+                        if (currentSlot != mActivePressedSlot) {
+                            animateSlotPress(mActivePressedSlot, false);
+                            mActivePressedSlot = -1;
+                        }
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                    if (mActivePressedSlot >= 0) {
+                        mLastClickedSlot = mActivePressedSlot;
+                        animateSlotPress(mActivePressedSlot, false);
+                        mActivePressedSlot = -1;
+                    }
+                    break;
+                case MotionEvent.ACTION_CANCEL:
+                    if (mActivePressedSlot >= 0) {
+                        animateSlotPress(mActivePressedSlot, false);
+                        mActivePressedSlot = -1;
+                        mLastClickedSlot = -1;
+                    }
+                    break;
+            }
+        }
+
         if (isLongClickable()) {
             super.onTouchEvent(event);
             mLongPressHelper.onTouchEvent(event);
@@ -762,10 +863,108 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         }
     }
 
+    @Override
+    public boolean performClick() {
+        if (hasQuickFunctions() && mLastClickedSlot > 0) {
+            int slot = mLastClickedSlot;
+            mLastClickedSlot = -1;
+            int shortcutIndex = slot - 1;
+            if (mSuperIconShortcuts != null && shortcutIndex < mSuperIconShortcuts.size()) {
+                WorkspaceItemInfo shortcutItem = mSuperIconShortcuts.get(shortcutIndex);
+                Context context = getContext();
+                if (context != null) {
+                    Launcher launcher = Launcher.getLauncher(context);
+                    if (launcher != null) {
+                        playSoundEffect(SoundEffectConstants.CLICK);
+                        ItemClickHandler.onClickAppShortcut(this, shortcutItem, launcher);
+                        return true;
+                    }
+                }
+            }
+        }
+        mLastClickedSlot = -1;
+        return super.performClick();
+    }
+
+    @Override
+    public boolean performLongClick() {
+        mLastClickedSlot = -1;
+        if (mActivePressedSlot >= 0) {
+            animateSlotPress(mActivePressedSlot, false);
+            mActivePressedSlot = -1;
+        }
+        return super.performLongClick();
+    }
+
+    public boolean hasQuickFunctions() {
+        if (!isMultiSpan() || mSuperIconShortcuts == null || mSuperIconShortcuts.isEmpty()) {
+            return false;
+        }
+        int sx = getSpanX();
+        int sy = getSpanY();
+        return (sx == 2 && sy == 1) || (sx == 1 && sy == 2) || (sx == 2 && sy == 2);
+    }
+
+    private int getSlotAt(float x, float y) {
+        if (!hasQuickFunctions()) return -1;
+        Rect bgBounds = getMultiSpanBackgroundBounds();
+        if (!bgBounds.contains((int) x, (int) y)) return -1;
+        int spanX = getSpanX();
+        int spanY = getSpanY();
+
+        if (spanX == 2 && spanY == 1) {
+            int count = Math.min(3, 1 + mSuperIconShortcuts.size());
+            if (count <= 1) return 0;
+            float slotWidth = bgBounds.width() / (float) count;
+            int slotIndex = (int) ((x - bgBounds.left) / slotWidth);
+            slotIndex = Math.max(0, Math.min(count - 1, slotIndex));
+            if (mIsRtl) slotIndex = count - 1 - slotIndex;
+            return slotIndex;
+        } else if (spanX == 1 && spanY == 2) {
+            int count = Math.min(3, 1 + mSuperIconShortcuts.size());
+            if (count <= 1) return 0;
+            float slotHeight = bgBounds.height() / (float) count;
+            int slotIndex = (int) ((y - bgBounds.top) / slotHeight);
+            return Math.max(0, Math.min(count - 1, slotIndex));
+        } else if (spanX == 2 && spanY == 2) {
+            float midY = bgBounds.top + bgBounds.height() * 0.52f;
+            if (y < midY) return 0;
+            int shortcutCount = Math.min(3, mSuperIconShortcuts.size());
+            if (shortcutCount <= 0) return 0;
+            float btnWidth = bgBounds.width() / (float) shortcutCount;
+            int shortcutIdx = (int) ((x - bgBounds.left) / btnWidth);
+            shortcutIdx = Math.max(0, Math.min(shortcutCount - 1, shortcutIdx));
+            if (mIsRtl) shortcutIdx = shortcutCount - 1 - shortcutIdx;
+            return shortcutIdx + 1;
+        }
+        return 0;
+    }
+
+    private void animateSlotPress(int slotIndex, boolean pressed) {
+        if (slotIndex < 0 || slotIndex >= mSlotPressScales.length) return;
+        float targetScale = pressed ? 0.92f : 1.0f;
+        if (mSlotPressAnimators[slotIndex] != null) {
+            mSlotPressAnimators[slotIndex].cancel();
+        }
+        mSlotPressAnimators[slotIndex] = ValueAnimator.ofFloat(
+                mSlotPressScales[slotIndex], targetScale);
+        mSlotPressAnimators[slotIndex].setDuration(pressed ? 120 : 180);
+        mSlotPressAnimators[slotIndex].setInterpolator(OOS_PRESS_INTERPOLATOR);
+        final int index = slotIndex;
+        mSlotPressAnimators[slotIndex].addUpdateListener(anim -> {
+            mSlotPressScales[index] = (float) anim.getAnimatedValue();
+            invalidate();
+        });
+        mSlotPressAnimators[slotIndex].start();
+    }
+
     /**
      * Returns true if the touch down at the provided position be ignored
      */
     protected boolean shouldIgnoreTouchDown(float x, float y) {
+        if (isMultiSpan()) {
+            return !getMultiSpanBackgroundBounds().contains((int) x, (int) y);
+        }
         if (mDisplay == DISPLAY_TASKBAR) {
             // Allow touching within padding on taskbar, given icon sizes are smaller.
             return false;
@@ -807,9 +1006,20 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     }
 
     @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (isMultiSpan() && mSuperIconAdaptiveDrawable == null && !mIsLoadingSuperIcon) {
+            loadSuperIconDrawableIfNecessary();
+        }
+    }
+
+    @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         checkForEllipsis();
+        if (isMultiSpan() && mSuperIconAdaptiveDrawable == null && !mIsLoadingSuperIcon) {
+            loadSuperIconDrawableIfNecessary();
+        }
     }
 
     @Override
@@ -874,11 +1084,718 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     @SuppressWarnings("wrongcall")
     protected void drawWithoutDot(Canvas canvas) {
+        if (isMultiSpan()) {
+            drawMultiSpanSuperIcon(canvas);
+            drawMultiSpanLabel(canvas);
+            return;
+        }
+        if (mIcon != null && mIconSize > 0) {
+            Rect b = mIcon.getBounds();
+            if (b.left != 0 || b.top != 0 || b.width() != mIconSize || b.height() != mIconSize) {
+                mIcon.setBounds(0, 0, mIconSize, mIconSize);
+            }
+        }
         super.onDraw(canvas);
+    }
+
+    public void onResizeChanged() {
+        if (mSuperIconPressAnimator != null) mSuperIconPressAnimator.cancel();
+        mSuperIconPressScale = 1.0f;
+        for (int i = 0; i < mSlotPressScales.length; i++) {
+            if (mSlotPressAnimators[i] != null) mSlotPressAnimators[i].cancel();
+            mSlotPressScales[i] = 1.0f;
+        }
+        if (mIcon != null && mIconSize > 0) mIcon.setBounds(0, 0, mIconSize, mIconSize);
+        applyCompoundDrawables(getIconOrTransparentColor());
+        if (isMultiSpan()) {
+            loadSuperIconDrawableIfNecessary();
+            loadSuperIconShortcutsIfNecessary();
+        }
+        requestLayout();
+        invalidate();
+    }
+
+    @Nullable
+    public AdaptiveIconDrawable getSuperIconAdaptiveDrawable() {
+        return mSuperIconAdaptiveDrawable;
+    }
+
+    @Nullable
+    public Drawable getSuperIconBadge() {
+        return mSuperIconBadge;
+    }
+
+    public boolean isMultiSpan() {
+        if (mDisplay != DISPLAY_WORKSPACE) return false;
+        return getSpanX() > 1 || getSpanY() > 1;
+    }
+
+    public int getSpanX() {
+        if (getLayoutParams() instanceof CellLayoutLayoutParams lp) return lp.cellHSpan;
+        if (getTag() instanceof ItemInfo itemInfo) return itemInfo.spanX;
+        return 1;
+    }
+
+    public int getSpanY() {
+        if (getLayoutParams() instanceof CellLayoutLayoutParams lp) return lp.cellVSpan;
+        if (getTag() instanceof ItemInfo itemInfo) return itemInfo.spanY;
+        return 1;
+    }
+
+    public Rect getMultiSpanBackgroundBounds() {
+        Rect outBounds = new Rect();
+        int spanX = getSpanX();
+        int spanY = getSpanY();
+        if (spanX <= 1 && spanY <= 1) {
+            getIconBounds(outBounds);
+            return outBounds;
+        }
+        int availableSpaceX = getWidth() > 0 ? getWidth()
+                : (getMeasuredWidth() > 0 ? getMeasuredWidth() : 0);
+        int availableSpaceY = getHeight() > 0 ? getHeight()
+                : (getMeasuredHeight() > 0 ? getMeasuredHeight() : 0);
+        com.android.launcher3.folder.PreviewBackground.calculateBackgroundBounds(
+                mDeviceProfile, availableSpaceX, availableSpaceY, getPaddingTop(), spanX, spanY,
+                outBounds);
+        return outBounds;
+    }
+
+    public float getIconBackgroundCornerRadius() {
+        int spanX = getSpanX();
+        int spanY = getSpanY();
+        Rect bgBounds = getMultiSpanBackgroundBounds();
+        if (spanX == 2 && spanY == 1) return bgBounds.height() / 2f;
+        if (spanX == 1 && spanY == 2) return bgBounds.width() / 2f;
+        if (spanX == 2 && spanY == 2) return mDeviceProfile.folderIconSizePx * 0.44f;
+        return mIconSize / 2f;
+    }
+
+    public void getIconBackgroundPath(Path outPath) {
+        outPath.reset();
+        Rect bgBounds = getMultiSpanBackgroundBounds();
+        float radius = getIconBackgroundCornerRadius();
+        outPath.addRoundRect(new RectF(bgBounds), radius, radius, Path.Direction.CW);
+    }
+
+    private float mSuperIconPressScale = 1.0f;
+    private ValueAnimator mSuperIconPressAnimator;
+    private static final Interpolator OOS_PRESS_INTERPOLATOR =
+            new PathInterpolator(0.4f, 0.0f, 0.2f, 1.0f);
+
+    public float getSuperIconPressScale() {
+        return hasQuickFunctions() ? 1.0f : mSuperIconPressScale;
+    }
+
+    @Override
+    public void setPressed(boolean pressed) {
+        super.setPressed(pressed);
+        if (isMultiSpan()) {
+            if (hasQuickFunctions()) return;
+            float targetScale = pressed ? 0.96f : 1.0f;
+            if (mSuperIconPressAnimator != null) mSuperIconPressAnimator.cancel();
+            mSuperIconPressAnimator = ValueAnimator.ofFloat(mSuperIconPressScale, targetScale);
+            mSuperIconPressAnimator.setDuration(pressed ? 120 : 180);
+            mSuperIconPressAnimator.setInterpolator(OOS_PRESS_INTERPOLATOR);
+            mSuperIconPressAnimator.addUpdateListener(anim -> {
+                mSuperIconPressScale = (float) anim.getAnimatedValue();
+                invalidate();
+            });
+            mSuperIconPressAnimator.start();
+        }
+    }
+
+    private boolean isMonetThemeActive() {
+        return shouldUseTheme() && ThemeManager.INSTANCE.get(getContext()).isIconThemeEnabled();
+    }
+
+    private int[] getMonetColors() {
+        Context context = getContext();
+        boolean isNight = (context.getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        int bgColor = context.getColor(isNight
+                ? android.R.color.system_neutral1_800 : android.R.color.system_accent1_100);
+        int fgColor = context.getColor(isNight
+                ? android.R.color.system_accent1_100 : android.R.color.system_neutral2_700);
+        try {
+            com.android.launcher3.icons.IconThemeController controller =
+                    ThemeManager.INSTANCE.get(context).getThemeController();
+            if (controller != null) {
+                AdaptiveIconDrawable probe = new AdaptiveIconDrawable(
+                        new ColorDrawable(Color.BLACK), null, new ColorDrawable(Color.WHITE));
+                AdaptiveIconDrawable themed = controller.createThemedAdaptiveIcon(context, probe, null);
+                if (themed != null) {
+                    if (themed.getBackground() instanceof ColorDrawable cd) bgColor = cd.getColor();
+                    Drawable fg = themed.getForeground();
+                    if (fg != null) {
+                        Bitmap pixel = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+                        Canvas c = new Canvas(pixel);
+                        fg.setBounds(0, 0, 1, 1);
+                        fg.draw(c);
+                        int sampled = pixel.getPixel(0, 0);
+                        if (Color.alpha(sampled) > 200) fgColor = sampled;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+        return new int[]{bgColor, fgColor};
+    }
+
+    public void loadSuperIconDrawableIfNecessary() {
+        if (!isMultiSpan() || mSuperIconAdaptiveDrawable != null || mIsLoadingSuperIcon) return;
+        final ItemInfo itemInfo = getTag() instanceof ItemInfo ? (ItemInfo) getTag() : null;
+        if (itemInfo == null) return;
+        mIsLoadingSuperIcon = true;
+        final int w = getWidth() > 0 ? getWidth() : mIconSize;
+        final int h = getHeight() > 0 ? getHeight() : mIconSize;
+        final boolean useTheme = isMonetThemeActive();
+        final Context context = getContext();
+        MODEL_EXECUTOR.getHandler().postAtFrontOfQueue(() -> {
+            Pair<AdaptiveIconDrawable, Drawable> fullDrawable = null;
+            try {
+                fullDrawable = Utilities.getFullDrawable(
+                        ActivityContext.lookupContext(context), itemInfo, w, h, useTheme);
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading full drawable for super icon", e);
+            }
+            final Pair<AdaptiveIconDrawable, Drawable> result = fullDrawable;
+            post(() -> {
+                mIsLoadingSuperIcon = false;
+                if (result != null && result.first != null) {
+                    mSuperIconAdaptiveDrawable = result.first;
+                    mSuperIconBadge = result.second;
+                    mSuperIconLoadedWithTheme = useTheme;
+                    mSuperIconFgHasOpaquePlate = null;
+                    invalidate();
+                }
+            });
+        });
+    }
+
+    public void loadSuperIconShortcutsIfNecessary() {
+        if (!isMultiSpan()) return;
+        int sx = getSpanX();
+        int sy = getSpanY();
+        if (!((sx == 2 && sy == 1) || (sx == 1 && sy == 2) || (sx == 2 && sy == 2))) return;
+        if (mSuperIconShortcuts != null || mIsLoadingShortcuts) return;
+        final ItemInfo itemInfo = getTag() instanceof ItemInfo ? (ItemInfo) getTag() : null;
+        if (itemInfo == null) return;
+        List<WorkspaceItemInfo> cached = SuperIconShortcutHelper.getCachedShortcuts(itemInfo);
+        if (cached != null) {
+            if (!cached.isEmpty()) mSuperIconShortcuts = cached;
+            return;
+        }
+        mIsLoadingShortcuts = true;
+        SuperIconShortcutHelper.loadShortcutsForApp(getContext(), itemInfo, shortcuts -> {
+            mIsLoadingShortcuts = false;
+            if (shortcuts != null && !shortcuts.isEmpty()) {
+                mSuperIconShortcuts = shortcuts;
+                invalidate();
+            }
+        });
+    }
+
+    public void drawSuperIconContentForFloatingView(Canvas canvas, Rect bgBounds) {
+        if (mSuperIconShortcuts == null && !mIsLoadingShortcuts) loadSuperIconShortcutsIfNecessary();
+        if (hasQuickFunctions()) drawQuickFunctionsContent(canvas, bgBounds);
+        else drawStandardSuperIconGlyph(canvas, bgBounds, new RectF(bgBounds));
+    }
+
+    protected void drawMultiSpanSuperIcon(Canvas canvas) {
+        if (!mIsIconVisible) return;
+        Rect bgBounds = getMultiSpanBackgroundBounds();
+        RectF bgRectF = new RectF(bgBounds);
+        float radius = getIconBackgroundCornerRadius();
+
+        canvas.save();
+        if (!hasQuickFunctions() && mSuperIconPressScale != 1.0f) {
+            canvas.scale(mSuperIconPressScale, mSuperIconPressScale,
+                    bgRectF.centerX(), bgRectF.centerY());
+        }
+        Path clipPath = new Path();
+        clipPath.addRoundRect(bgRectF, radius, radius, Path.Direction.CW);
+        canvas.clipPath(clipPath);
+
+        boolean useTheme = isMonetThemeActive();
+        if (mSuperIconAdaptiveDrawable != null && mSuperIconLoadedWithTheme != useTheme) {
+            mSuperIconAdaptiveDrawable = null;
+            mSuperIconBadge = null;
+            mSuperIconFgHasOpaquePlate = null;
+            mIsLoadingSuperIcon = false;
+        }
+        if (mSuperIconAdaptiveDrawable == null && !mIsLoadingSuperIcon) {
+            loadSuperIconDrawableIfNecessary();
+        }
+        if (mSuperIconShortcuts == null && !mIsLoadingShortcuts) {
+            loadSuperIconShortcutsIfNecessary();
+        }
+
+        boolean drewAdaptiveBg = false;
+        if (mSuperIconAdaptiveDrawable != null) {
+            Drawable bg = mSuperIconAdaptiveDrawable.getBackground();
+            if (bg != null) {
+                bg.setBounds(bgBounds.left, bgBounds.top, bgBounds.right, bgBounds.bottom);
+                bg.draw(canvas);
+                drewAdaptiveBg = true;
+            }
+        }
+        if (!drewAdaptiveBg) {
+            int fallbackBgColor = 0;
+            if (useTheme) {
+                fallbackBgColor = getMonetColors()[0];
+            } else if (getTag() instanceof ItemInfoWithIcon iiwi) {
+                fallbackBgColor = iiwi.bitmap.color;
+            }
+            if (fallbackBgColor == 0 || fallbackBgColor == Color.TRANSPARENT) {
+                fallbackBgColor = 0xFF2B2B2B;
+            }
+            Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            bgPaint.setColor(fallbackBgColor);
+            canvas.drawRect(bgRectF, bgPaint);
+        }
+
+        if (hasQuickFunctions()) drawQuickFunctionsContent(canvas, bgBounds);
+        else drawStandardSuperIconGlyph(canvas, bgBounds, bgRectF);
+
+        if (mSuperIconBadge != null) {
+            int baseIconSize = mIconSize > 0
+                    ? mIconSize : mDeviceProfile.getWorkspaceIconProfile().getIconSizePx();
+            int badgeSize = LauncherIcons.getBadgeSizeForIconSize(baseIconSize);
+            int badgePadding = Math.round(8f * getResources().getDisplayMetrics().density);
+            int badgeLeft = bgBounds.right - badgeSize - badgePadding;
+            int badgeTop = bgBounds.bottom - badgeSize - badgePadding;
+            mSuperIconBadge.setBounds(badgeLeft, badgeTop,
+                    badgeLeft + badgeSize, badgeTop + badgeSize);
+            mSuperIconBadge.draw(canvas);
+        }
+        canvas.restore();
+    }
+
+    private void drawQuickFunctionsContent(Canvas canvas, Rect bgBounds) {
+        int spanX = getSpanX();
+        int spanY = getSpanY();
+        boolean useTheme = isMonetThemeActive();
+        int buttonFillColor;
+        int strokeColor;
+        int monetFgColor;
+        boolean isDarkBg;
+        if (useTheme) {
+            int[] monetColors = getMonetColors();
+            int monetBg = monetColors[0];
+            monetFgColor = monetColors[1];
+            buttonFillColor = monetBg;
+            strokeColor = ColorUtils.setAlphaComponent(monetFgColor, 72);
+            isDarkBg = ColorUtils.calculateLuminance(monetBg) < 0.5;
+        } else {
+            int capsuleBgColor = 0;
+            if (mSuperIconAdaptiveDrawable != null
+                    && mSuperIconAdaptiveDrawable.getBackground() instanceof ColorDrawable cd) {
+                capsuleBgColor = cd.getColor();
+            }
+            if ((capsuleBgColor == 0 || capsuleBgColor == Color.TRANSPARENT)
+                    && getTag() instanceof ItemInfoWithIcon iiwi) {
+                capsuleBgColor = iiwi.bitmap.color;
+            }
+            if (capsuleBgColor == 0 || capsuleBgColor == Color.TRANSPARENT) {
+                capsuleBgColor = 0xFF2B2B2B;
+            }
+            isDarkBg = ColorUtils.calculateLuminance(capsuleBgColor) < 0.5;
+            buttonFillColor = Color.WHITE;
+            strokeColor = 0x26000000;
+            monetFgColor = 0;
+        }
+        Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        if (spanX == 2 && spanY == 1) {
+            draw2x1QuickFunctions(canvas, bgBounds, buttonFillColor, strokeColor,
+                    monetFgColor, bitmapPaint);
+        } else if (spanX == 1 && spanY == 2) {
+            draw1x2QuickFunctions(canvas, bgBounds, buttonFillColor, strokeColor,
+                    monetFgColor, bitmapPaint);
+        } else if (spanX == 2 && spanY == 2) {
+            draw2x2QuickFunctions(canvas, bgBounds, isDarkBg, buttonFillColor, strokeColor,
+                    monetFgColor, bitmapPaint);
+        }
+    }
+
+    private void draw2x1QuickFunctions(Canvas canvas, Rect bgBounds,
+            int buttonFillColor, int strokeColor, int monetFgColor, Paint bitmapPaint) {
+        int shortcutCount = Math.min(2, mSuperIconShortcuts.size());
+        int totalSlots = Math.min(3, 1 + shortcutCount);
+        float slotWidth = bgBounds.width() / (float) totalSlots;
+        float slotDiameter = Math.min(bgBounds.height() * 0.72f, slotWidth * 0.85f);
+        for (int i = 0; i < totalSlots; i++) {
+            float cx = mIsRtl ? bgBounds.right - slotWidth * (i + 0.5f)
+                    : bgBounds.left + slotWidth * (i + 0.5f);
+            float cy = bgBounds.centerY();
+            mSlotBounds[i].set(cx - slotDiameter / 2f, cy - slotDiameter / 2f,
+                    cx + slotDiameter / 2f, cy + slotDiameter / 2f);
+            canvas.save();
+            if (mSlotPressScales[i] != 1.0f) canvas.scale(mSlotPressScales[i], mSlotPressScales[i], cx, cy);
+            if (i == 0) {
+                drawAppIconGlyph(canvas, cx, cy, Math.round(slotDiameter * 0.82f));
+            } else {
+                drawShortcutCircleButton(canvas, cx, cy, slotDiameter,
+                        mSuperIconShortcuts.get(i - 1), buttonFillColor, strokeColor,
+                        monetFgColor, bitmapPaint);
+            }
+            canvas.restore();
+        }
+    }
+
+    private void draw1x2QuickFunctions(Canvas canvas, Rect bgBounds,
+            int buttonFillColor, int strokeColor, int monetFgColor, Paint bitmapPaint) {
+        int shortcutCount = Math.min(2, mSuperIconShortcuts.size());
+        int totalSlots = Math.min(3, 1 + shortcutCount);
+        float slotHeight = bgBounds.height() / (float) totalSlots;
+        float slotDiameter = Math.min(bgBounds.width() * 0.72f, slotHeight * 0.85f);
+        for (int i = 0; i < totalSlots; i++) {
+            float cx = bgBounds.centerX();
+            float cy = bgBounds.top + slotHeight * (i + 0.5f);
+            mSlotBounds[i].set(cx - slotDiameter / 2f, cy - slotDiameter / 2f,
+                    cx + slotDiameter / 2f, cy + slotDiameter / 2f);
+            canvas.save();
+            if (mSlotPressScales[i] != 1.0f) canvas.scale(mSlotPressScales[i], mSlotPressScales[i], cx, cy);
+            if (i == 0) {
+                drawAppIconGlyph(canvas, cx, cy, Math.round(slotDiameter * 0.82f));
+            } else {
+                drawShortcutCircleButton(canvas, cx, cy, slotDiameter,
+                        mSuperIconShortcuts.get(i - 1), buttonFillColor, strokeColor,
+                        monetFgColor, bitmapPaint);
+            }
+            canvas.restore();
+        }
+    }
+
+    private void draw2x2QuickFunctions(Canvas canvas, Rect bgBounds, boolean isDarkBg,
+            int buttonFillColor, int strokeColor, int monetFgColor, Paint bitmapPaint) {
+        float cardW = bgBounds.width();
+        float cardH = bgBounds.height();
+        mSlotBounds[0].set(bgBounds.left, bgBounds.top, bgBounds.right,
+                bgBounds.top + cardH * 0.52f);
+        canvas.save();
+        if (mSlotPressScales[0] != 1.0f) {
+            canvas.scale(mSlotPressScales[0], mSlotPressScales[0],
+                    mSlotBounds[0].centerX(), mSlotBounds[0].centerY());
+        }
+        float iconDiameter = cardH * 0.32f;
+        float iconCx = mIsRtl ? bgBounds.right - cardW * 0.20f
+                : bgBounds.left + cardW * 0.20f;
+        float iconCy = bgBounds.top + cardH * 0.26f;
+        drawAppIconGlyph(canvas, iconCx, iconCy, Math.round(iconDiameter * 0.88f));
+        CharSequence title = getText();
+        if (TextUtils.isEmpty(title) && getTag() instanceof ItemInfo ii) title = ii.title;
+        if (!TextUtils.isEmpty(title)) {
+            TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint.setColor(monetFgColor != 0 ? monetFgColor
+                    : (isDarkBg ? Color.WHITE : 0xFF1F1F1F));
+            textPaint.setTextSize(getResources().getDisplayMetrics().density * 15f);
+            textPaint.setTypeface(android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.NORMAL));
+            float textStartX = mIsRtl ? bgBounds.left + cardW * 0.08f
+                    : bgBounds.left + cardW * 0.38f;
+            CharSequence ellipTitle = TextUtils.ellipsize(title, textPaint, cardW * 0.54f,
+                    TextUtils.TruncateAt.END);
+            Paint.FontMetrics fm = textPaint.getFontMetrics();
+            float textBaseline = iconCy - (fm.ascent + fm.descent) / 2f;
+            canvas.drawText(ellipTitle, 0, ellipTitle.length(), textStartX, textBaseline, textPaint);
+        }
+        canvas.restore();
+
+        int shortcutCount = Math.min(3, mSuperIconShortcuts.size());
+        if (shortcutCount <= 0) return;
+        float btnWidth = cardW / shortcutCount;
+        float btnDiameter = Math.min(cardH * 0.34f, btnWidth * 0.72f);
+        float btnCy = bgBounds.top + cardH * 0.74f;
+        for (int j = 0; j < shortcutCount; j++) {
+            int slotIdx = j + 1;
+            float btnCx = mIsRtl ? bgBounds.right - btnWidth * (j + 0.5f)
+                    : bgBounds.left + btnWidth * (j + 0.5f);
+            mSlotBounds[slotIdx].set(btnCx - btnDiameter / 2f, btnCy - btnDiameter / 2f,
+                    btnCx + btnDiameter / 2f, btnCy + btnDiameter / 2f);
+            canvas.save();
+            if (mSlotPressScales[slotIdx] != 1.0f) {
+                canvas.scale(mSlotPressScales[slotIdx], mSlotPressScales[slotIdx], btnCx, btnCy);
+            }
+            drawShortcutCircleButton(canvas, btnCx, btnCy, btnDiameter,
+                    mSuperIconShortcuts.get(j), buttonFillColor, strokeColor,
+                    monetFgColor, bitmapPaint);
+            canvas.restore();
+        }
+    }
+
+    private void drawShortcutCircleButton(Canvas canvas, float cx, float cy, float diameter,
+            WorkspaceItemInfo shortcutItem, int buttonFillColor, int strokeColor,
+            int monetFgColor, Paint bitmapPaint) {
+        float radius = diameter / 2f;
+        Path circlePath = new Path();
+        circlePath.addCircle(cx, cy, radius, Path.Direction.CW);
+        Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fillPaint.setStyle(Paint.Style.FILL);
+        fillPaint.setColor(buttonFillColor);
+        canvas.drawPath(circlePath, fillPaint);
+        if (shortcutItem != null && shortcutItem.bitmap != null
+                && shortcutItem.bitmap.icon != null) {
+            canvas.save();
+            canvas.clipPath(circlePath);
+            float drawRadius = radius * 1.04f;
+            RectF dest = new RectF(cx - drawRadius, cy - drawRadius,
+                    cx + drawRadius, cy + drawRadius);
+            if (monetFgColor != 0) {
+                Bitmap glyphMask = getOrCreateMonetGlyphBitmap(shortcutItem.bitmap.icon);
+                if (glyphMask != null) {
+                    bitmapPaint.setColorFilter(new PorterDuffColorFilter(
+                            monetFgColor, PorterDuff.Mode.SRC_IN));
+                    canvas.drawBitmap(glyphMask, null, dest, bitmapPaint);
+                    bitmapPaint.setColorFilter(null);
+                }
+            } else {
+                bitmapPaint.setColorFilter(null);
+                canvas.drawBitmap(shortcutItem.bitmap.icon, null, dest, bitmapPaint);
+            }
+            canvas.restore();
+        }
+        float strokeWidth = Math.max(1f, getResources().getDisplayMetrics().density * 0.95f);
+        Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        strokePaint.setStyle(Paint.Style.STROKE);
+        strokePaint.setStrokeWidth(strokeWidth);
+        strokePaint.setColor(strokeColor);
+        canvas.drawCircle(cx, cy, radius - strokeWidth / 2f, strokePaint);
+    }
+
+    private static Bitmap getOrCreateMonetGlyphBitmap(Bitmap src) {
+        if (src == null || src.getWidth() < 8 || src.getHeight() < 8) return src;
+        synchronized (sMonetGlyphCache) {
+            Bitmap cached = sMonetGlyphCache.get(src);
+            if (cached != null && !cached.isRecycled()) return cached;
+        }
+        try {
+            Bitmap sw = src.getConfig() == Bitmap.Config.HARDWARE
+                    ? src.copy(Bitmap.Config.ARGB_8888, false) : src;
+            if (sw == null) return src;
+            int w = sw.getWidth();
+            int h = sw.getHeight();
+            int[] pixels = new int[w * h];
+            sw.getPixels(pixels, 0, w, 0, 0, w, h);
+            float cx = w / 2f;
+            float cy = h / 2f;
+            float minDim = Math.min(w, h);
+            float sampleRadius = minDim * 0.33f;
+            int[] sampleR = new int[12];
+            int[] sampleG = new int[12];
+            int[] sampleB = new int[12];
+            int validSamples = 0;
+            for (int i = 0; i < 12; i++) {
+                double angle = Math.PI * 2.0 * i / 12.0;
+                int sx = Math.min(w - 1, Math.max(0,
+                        Math.round(cx + (float) Math.cos(angle) * sampleRadius)));
+                int sy = Math.min(h - 1, Math.max(0,
+                        Math.round(cy + (float) Math.sin(angle) * sampleRadius)));
+                int c = pixels[sy * w + sx];
+                if (((c >>> 24) & 0xFF) > 160) {
+                    sampleR[validSamples] = (c >> 16) & 0xFF;
+                    sampleG[validSamples] = (c >> 8) & 0xFF;
+                    sampleB[validSamples] = c & 0xFF;
+                    validSamples++;
+                }
+            }
+            int plateR = 255;
+            int plateG = 255;
+            int plateB = 255;
+            if (validSamples > 0) {
+                java.util.Arrays.sort(sampleR, 0, validSamples);
+                java.util.Arrays.sort(sampleG, 0, validSamples);
+                java.util.Arrays.sort(sampleB, 0, validSamples);
+                int mid = validSamples / 2;
+                plateR = sampleR[mid];
+                plateG = sampleG[mid];
+                plateB = sampleB[mid];
+            }
+            float innerClipRadius = minDim * 0.31f;
+            float outerClipRadius = minDim * 0.35f;
+            int[] outPixels = new int[w * h];
+            for (int y = 0; y < h; y++) {
+                float dy = y - cy;
+                int rowOffset = y * w;
+                for (int x = 0; x < w; x++) {
+                    float dx = x - cx;
+                    float dist = (float) Math.hypot(dx, dy);
+                    if (dist >= outerClipRadius) continue;
+                    int c = pixels[rowOffset + x];
+                    int a = (c >>> 24) & 0xFF;
+                    if (a < 40) continue;
+                    int r = (c >> 16) & 0xFF;
+                    int g = (c >> 8) & 0xFF;
+                    int b = c & 0xFF;
+                    int maxDiff = Math.max(Math.abs(r - plateR),
+                            Math.max(Math.abs(g - plateG), Math.abs(b - plateB)));
+                    if (maxDiff <= 24) continue;
+                    float glyphAlpha = Math.min(1f, (maxDiff - 24f) / 60f);
+                    if (dist > innerClipRadius) {
+                        glyphAlpha *= (outerClipRadius - dist)
+                                / (outerClipRadius - innerClipRadius);
+                    }
+                    int finalAlpha = Math.round(glyphAlpha * a);
+                    if (finalAlpha > 0) outPixels[rowOffset + x] = (finalAlpha << 24) | 0x00FFFFFF;
+                }
+            }
+            Bitmap mask = Bitmap.createBitmap(outPixels, w, h, Bitmap.Config.ARGB_8888);
+            synchronized (sMonetGlyphCache) {
+                sMonetGlyphCache.put(src, mask);
+            }
+            return mask;
+        } catch (Exception ignored) {
+            return src;
+        }
+    }
+
+    private boolean hasOpaquePlateRing(Drawable fg) {
+        if (fg == null) return false;
+        if (mSuperIconFgHasOpaquePlate != null) return mSuperIconFgHasOpaquePlate;
+        try {
+            int size = 96;
+            Bitmap probe = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(probe);
+            Rect prev = new Rect(fg.getBounds());
+            fg.setBounds(0, 0, size, size);
+            fg.draw(c);
+            fg.setBounds(prev);
+            float center = size / 2f;
+            float ringRadius = size * 0.27f;
+            int opaqueCount = 0;
+            for (int i = 0; i < 8; i++) {
+                double angle = Math.PI * 2.0 * i / 8.0;
+                int px = Math.round(center + (float) Math.cos(angle) * ringRadius);
+                int py = Math.round(center + (float) Math.sin(angle) * ringRadius);
+                if (((probe.getPixel(px, py) >>> 24) & 0xFF) > 180) opaqueCount++;
+            }
+            mSuperIconFgHasOpaquePlate = opaqueCount >= 6;
+            return mSuperIconFgHasOpaquePlate;
+        } catch (Exception ignored) {
+            mSuperIconFgHasOpaquePlate = false;
+            return false;
+        }
+    }
+
+    private boolean drawMonetExtractedAppGlyph(Canvas canvas, float cx, float cy,
+            int glyphTargetSize) {
+        if (!(getTag() instanceof ItemInfoWithIcon iiwi)
+                || iiwi.bitmap == null || iiwi.bitmap.icon == null) return false;
+        Bitmap glyphMask = getOrCreateMonetGlyphBitmap(iiwi.bitmap.icon);
+        if (glyphMask == null) return false;
+        float drawSize = glyphTargetSize * 1.15f;
+        RectF dest = new RectF(cx - drawSize / 2f, cy - drawSize / 2f,
+                cx + drawSize / 2f, cy + drawSize / 2f);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        paint.setColorFilter(new PorterDuffColorFilter(getMonetColors()[1], PorterDuff.Mode.SRC_IN));
+        canvas.drawBitmap(glyphMask, null, dest, paint);
+        return true;
+    }
+
+    private void drawAppIconGlyph(Canvas canvas, float cx, float cy, int glyphTargetSize) {
+        boolean useTheme = isMonetThemeActive();
+        boolean drewAdaptiveFg = false;
+        if (mSuperIconAdaptiveDrawable != null) {
+            Drawable fg = mSuperIconAdaptiveDrawable.getForeground();
+            if (fg != null) {
+                if (useTheme && hasOpaquePlateRing(fg)) {
+                    drewAdaptiveFg = drawMonetExtractedAppGlyph(canvas, cx, cy, glyphTargetSize);
+                }
+                if (!drewAdaptiveFg) {
+                    boolean isLegacyWrapped = fg.getClass().getName().contains("FixedScaleDrawable");
+                    int fullFgSize = Math.round(glyphTargetSize
+                            * (isLegacyWrapped ? 2.15f : 1.5f));
+                    int fgLeft = Math.round(cx - fullFgSize / 2f);
+                    int fgTop = Math.round(cy - fullFgSize / 2f);
+                    canvas.save();
+                    if (isLegacyWrapped) {
+                        Path clipCircle = new Path();
+                        clipCircle.addCircle(cx, cy, glyphTargetSize / 2f, Path.Direction.CW);
+                        canvas.clipPath(clipCircle);
+                    }
+                    fg.setBounds(fgLeft, fgTop, fgLeft + fullFgSize, fgTop + fullFgSize);
+                    fg.draw(canvas);
+                    canvas.restore();
+                    drewAdaptiveFg = true;
+                }
+            }
+        }
+        if (!drewAdaptiveFg && useTheme) {
+            drewAdaptiveFg = drawMonetExtractedAppGlyph(canvas, cx, cy, glyphTargetSize);
+        }
+        if (!drewAdaptiveFg && mIcon != null) {
+            Rect prevBounds = new Rect(mIcon.getBounds());
+            int iconLeft = Math.round(cx - glyphTargetSize / 2f);
+            int iconTop = Math.round(cy - glyphTargetSize / 2f);
+            mIcon.setBounds(iconLeft, iconTop, iconLeft + glyphTargetSize, iconTop + glyphTargetSize);
+            mIcon.draw(canvas);
+            if (mIconSize > 0) mIcon.setBounds(0, 0, mIconSize, mIconSize);
+            else mIcon.setBounds(prevBounds);
+        }
+    }
+
+    private void drawStandardSuperIconGlyph(Canvas canvas, Rect bgBounds, RectF bgRectF) {
+        int spanX = getSpanX();
+        int spanY = getSpanY();
+        int glyphTargetSize;
+        if (spanX == 2 && spanY == 1) glyphTargetSize = Math.round(bgRectF.height() * 0.62f);
+        else if (spanX == 1 && spanY == 2) glyphTargetSize = Math.round(bgRectF.width() * 0.62f);
+        else if (spanX == 2 && spanY == 2) {
+            glyphTargetSize = Math.round(Math.min(bgRectF.width(), bgRectF.height()) * 0.52f);
+        } else glyphTargetSize = Math.round(Math.min(bgRectF.width(), bgRectF.height()) * 0.62f);
+        drawAppIconGlyph(canvas, bgRectF.centerX(), bgRectF.centerY(), glyphTargetSize);
+    }
+
+    protected void drawMultiSpanLabel(Canvas canvas) {
+        if (mIsDrawingDragView) return;
+        if (hasQuickFunctions() && getSpanX() == 2 && getSpanY() == 2) return;
+        if (!shouldTextBeVisible() || TextUtils.isEmpty(getText()) || getLayout() == null) return;
+        Rect bgBounds = getMultiSpanBackgroundBounds();
+        int spanY = getSpanY();
+        int targetRow = spanY - 1;
+        DeviceProfile dp = mDeviceProfile;
+        Point borderSpace = dp.getWorkspaceIconProfile().getCellLayoutBorderSpacePx();
+        Point cellSize = dp.getWorkspaceIconProfile().getCellSize();
+        int availableHeight = getHeight() > 0 ? getHeight() : getMeasuredHeight();
+        int cellHeight = availableHeight > 0
+                ? (spanY > 1 ? (availableHeight - (spanY - 1) * borderSpace.y) / spanY
+                        : availableHeight)
+                : (cellSize.y > 0 ? cellSize.y : dp.getWorkspaceIconProfile().getCellHeightPx());
+        int iconSize = dp.getWorkspaceIconProfile().getIconSizePx();
+        int iconPadding = getCompoundDrawablePadding();
+        int cellPaddingY = getPaddingTop();
+        if (cellPaddingY <= 0) cellPaddingY = dp.getWorkspaceIconProfile().getCellYPaddingPx();
+        if (cellPaddingY < 0) {
+            int cHeight = dp.getWorkspaceIconProfile().getCellHeightPx();
+            cellPaddingY = Math.max(0, (cellHeight - cHeight) / 2);
+        }
+        int standardIconLabelTop = targetRow * (cellHeight + borderSpace.y)
+                + cellPaddingY + iconSize + iconPadding;
+        int textTop = Math.max(standardIconLabelTop,
+                bgBounds.bottom + Math.max(1, iconPadding / 2));
+        int textWidth = getLayout().getWidth();
+        int textLeft = bgBounds.left + (bgBounds.width() - textWidth) / 2;
+        canvas.save();
+        canvas.translate(getScrollX() + textLeft, getScrollY() + textTop);
+        getPaint().setColor(getCurrentTextColor());
+        getPaint().drawableState = getDrawableState();
+        getLayout().draw(canvas);
+        canvas.restore();
     }
 
     @Override
     public void onDraw(Canvas canvas) {
+        if (isMultiSpan()) {
+            drawMultiSpanSuperIcon(canvas);
+            drawMultiSpanLabel(canvas);
+            drawDotIfNecessary(canvas);
+            return;
+        }
+        if (mIcon != null && mIconSize > 0) {
+            Rect b = mIcon.getBounds();
+            if (b.left != 0 || b.top != 0 || b.width() != mIconSize || b.height() != mIconSize) {
+                mIcon.setBounds(0, 0, mIconSize, mIconSize);
+            }
+        }
         super.onDraw(canvas);
         drawDotIfNecessary(canvas);
         drawRunningAppIndicatorIfNecessary(canvas);
@@ -891,7 +1808,13 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
      */
     protected void drawDotIfNecessary(Canvas canvas) {
         if (!mForceHideDot && (hasDot() || mDotParams.scale > 0)) {
-            getIconBounds(mDotParams.iconBounds);
+            if (isMultiSpan()) {
+                Rect bgBounds = getMultiSpanBackgroundBounds();
+                mDotParams.iconBounds.set(bgBounds.right - mIconSize, bgBounds.top,
+                        bgBounds.right, bgBounds.top + mIconSize);
+            } else {
+                getIconBounds(mDotParams.iconBounds);
+            }
             Utilities.scaleRectAboutCenter(mDotParams.iconBounds, ICON_VISIBLE_AREA_FACTOR);
             final int scrollX = getScrollX();
             final int scrollY = getScrollY();
@@ -999,6 +1922,10 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
      * Get the icon bounds on the view depending on the layout type.
      */
     public void getIconBounds(Rect outBounds) {
+        if (isMultiSpan()) {
+            outBounds.set(getMultiSpanBackgroundBounds());
+            return;
+        }
         getIconBounds(mIconSize, outBounds);
     }
 
@@ -1039,7 +1966,9 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     }
 
     private boolean hasCustomWorkspaceIconSize(ItemInfoWithIcon info) {
-        return mDisplay == DISPLAY_WORKSPACE && !mLayoutHorizontal
+        // Preserve the saved pixel size, but do not let it expand a multi-cell card outside
+        // its reserved workspace cells. It becomes active again when resized back to 1x1.
+        return mDisplay == DISPLAY_WORKSPACE && !mLayoutHorizontal && !isMultiSpan()
                 && info instanceof WorkspaceItemInfo workspaceItem
                 && workspaceItem.container == LauncherSettings.Favorites.CONTAINER_DESKTOP
                 && workspaceItem.iconSizeDp > 0;
@@ -1119,13 +2048,28 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
             // Keep custom icons independent of the global icon padding as well as its size.
             setPadding(0, getPaddingTop(), 0, 0);
         }
+        int availableHeight = height;
+        if (isMultiSpan() && getSpanY() > 1) {
+            int rowGap = mDeviceProfile.getWorkspaceIconProfile().getCellLayoutBorderSpacePx().y;
+            availableHeight = (height - (getSpanY() - 1) * rowGap) / getSpanY();
+        }
         if ((customSize || mCenterVertically || !shouldShowLabel()) && !mLayoutHorizontal) {
             Paint.FontMetrics fm = getPaint().getFontMetrics();
             int textHeight = shouldShowLabel()
                     ? (int) Math.ceil(fm.bottom - fm.top) * getCellSpecMaxTextLineCount() : 0;
             int cellHeightPx = mIconSize + getCompoundDrawablePadding() + textHeight;
-            setPadding(getPaddingLeft(), (height - cellHeightPx) / 2, getPaddingRight(),
-                    getPaddingBottom());
+            int cellYPadding;
+            if (mDisplay == DISPLAY_WORKSPACE && !customSize) {
+                cellYPadding = mDeviceProfile.getWorkspaceIconProfile().getCellYPaddingPx();
+                if (cellYPadding < 0 || !shouldShowLabel()) {
+                    int cHeight = shouldShowLabel()
+                            ? mDeviceProfile.getWorkspaceIconProfile().getCellHeightPx() : mIconSize;
+                    cellYPadding = Math.max(0, (availableHeight - cHeight) / 2);
+                }
+            } else {
+                cellYPadding = Math.max(0, (availableHeight - cellHeightPx) / 2);
+            }
+            setPadding(getPaddingLeft(), cellYPadding, getPaddingRight(), getPaddingBottom());
         }
         if (shouldDrawAppContrastTile()) {
             int mAppTitleHorizontalPadding = getResources().getDimensionPixelSize(
@@ -1139,7 +2083,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         }
 
         if (shouldUseTwoLine() && (mLastOriginalText != null)) {
-            int allowedVerticalSpace = height - getPaddingTop() - getPaddingBottom()
+            int allowedVerticalSpace = availableHeight - getPaddingTop() - getPaddingBottom()
                     - (mIcon != null ? mIconSize + getCompoundDrawablePadding() : 0);
             CharSequence modifiedString = modifyTitleToSupportMultiLine(
                     MeasureSpec.getSize(widthMeasureSpec) - getCompoundPaddingLeft()
@@ -1472,6 +2416,9 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         }
         Drawable icon = getIconOrTransparentColor();
         applyCompoundDrawables(icon);
+        if (isMultiSpan()) {
+            invalidate();
+        }
     }
 
     private Drawable getIconOrTransparentColor() {
@@ -1605,10 +2552,18 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
 
     @Override
     public void getWorkspaceVisualDragBounds(Rect bounds) {
+        if (isMultiSpan()) {
+            bounds.set(getMultiSpanBackgroundBounds());
+            return;
+        }
         getIconBounds(mIconSize, bounds);
     }
 
     public void getSourceVisualDragBounds(Rect bounds) {
+        if (isMultiSpan()) {
+            bounds.set(getMultiSpanBackgroundBounds());
+            return;
+        }
         getIconBounds(mIconSize, bounds);
     }
 
@@ -1616,13 +2571,25 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     public SafeCloseable prepareDrawDragView() {
         resetIconScale();
         setForceHideDot(true);
+        mIsDrawingDragView = true;
         return () -> {
+            mIsDrawingDragView = false;
         };
     }
 
     private void resetIconScale() {
         if (mIcon != null) {
             mIcon.resetScale();
+        }
+        if (mSuperIconPressAnimator != null) {
+            mSuperIconPressAnimator.cancel();
+        }
+        mSuperIconPressScale = 1.0f;
+        for (int i = 0; i < mSlotPressScales.length; i++) {
+            if (mSlotPressAnimators[i] != null) {
+                mSlotPressAnimators[i].cancel();
+            }
+            mSlotPressScales[i] = 1.0f;
         }
     }
 

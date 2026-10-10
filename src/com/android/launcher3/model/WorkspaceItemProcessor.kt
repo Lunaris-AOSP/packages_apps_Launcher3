@@ -390,8 +390,10 @@ class WorkspaceItemProcessor(
             info.intent = intent
             info.rank = c.rank
             info.iconSizeDp = c.iconSizeDp
-            info.spanX = 1
-            info.spanY = 1
+            info.spanX = c.spanX.coerceAtLeast(1)
+            info.spanY = c.spanY.coerceAtLeast(1)
+            info.minSpanX = info.spanX
+            info.minSpanY = info.spanY
             info.runtimeStatusFlags = info.runtimeStatusFlags or disabledState
             if (isSafeMode && !appInfoWrapper.isSystem()) {
                 info.runtimeStatusFlags =

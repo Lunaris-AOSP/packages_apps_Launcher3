@@ -43,6 +43,7 @@ import android.view.ViewOutlineProvider;
 import androidx.annotation.Nullable;
 import androidx.core.util.Consumer;
 
+import com.android.launcher3.BubbleTextView;
 import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.Flags;
 import com.android.launcher3.R;
@@ -71,6 +72,14 @@ public class ClipIconView extends View implements ClipPathView {
 
     private boolean mIsAdaptiveIcon = false;
     private boolean mIsFolderIcon = false;
+    private boolean mIsMultiSpanSuperIcon = false;
+    private int mOriginalWidth = 0;
+    private int mOriginalHeight = 0;
+    private int mSuperIconSpanX = 1;
+    private int mSuperIconSpanY = 1;
+    private float mSuperIconCornerRadius = 0f;
+    private int mForegroundAlpha = 255;
+    @Nullable private BubbleTextView mSuperIconSourceView;
 
     private ValueAnimator mRevealAnimator;
 
@@ -97,6 +106,15 @@ public class ClipIconView extends View implements ClipPathView {
         mBlurSizeOutline = getResources().getDimensionPixelSize(
                 R.dimen.blur_size_medium_outline);
         mIsRtl = Utilities.isRtl(getResources());
+    }
+
+    public void setMultiSpanSuperIconParams(boolean isMultiSpan, int spanX, int spanY,
+            float cornerRadius, @Nullable BubbleTextView sourceView) {
+        mIsMultiSpanSuperIcon = isMultiSpan;
+        mSuperIconSpanX = spanX;
+        mSuperIconSpanY = spanY;
+        mSuperIconCornerRadius = cornerRadius;
+        mSuperIconSourceView = sourceView;
     }
 
     /**
@@ -132,9 +150,16 @@ public class ClipIconView extends View implements ClipPathView {
         container.setTranslationY(dY);
 
         float minSize = Math.min(lp.width, lp.height);
-        float scaleX = rect.width() / minSize;
-        float scaleY = rect.height() / minSize;
-        float scale = Math.max(1f, Math.min(scaleX, scaleY));
+        final float scale;
+        if (mIsMultiSpanSuperIcon && mOriginalWidth > 0 && mOriginalHeight > 0) {
+            float scaleX = rect.width() / (float) mOriginalWidth;
+            float scaleY = rect.height() / (float) mOriginalHeight;
+            scale = Math.max(1f, Math.min(scaleX, scaleY));
+        } else {
+            float scaleX = rect.width() / minSize;
+            float scaleY = rect.height() / minSize;
+            scale = Math.max(1f, Math.min(scaleX, scaleY));
+        }
         if (mTaskViewArtist != null) {
             mTaskViewArtist.taskViewDrawWidth = lp.width;
             mTaskViewArtist.taskViewDrawHeight = lp.height;
@@ -166,6 +191,18 @@ public class ClipIconView extends View implements ClipPathView {
 
         float shapeRevealProgress = boundToRange(mapToRange(max(shapeProgressStart, progress),
                 shapeProgressStart, 1f, 0, toMax, LINEAR), 0, 1);
+
+        if (mIsMultiSpanSuperIcon) {
+            mOutline.set(0, 0, Math.round(rect.width() / scale), Math.round(rect.height() / scale));
+            float windowRadius = cornerRadius / scale;
+            float iconRadius = mSuperIconCornerRadius;
+            float iconMorphFraction = isOpening ? (1f - shapeRevealProgress) : shapeRevealProgress;
+            mTaskCornerRadius = windowRadius + iconMorphFraction * (iconRadius - windowRadius);
+            if (mIsAdaptiveIcon) updateMultiSpanSuperIconBounds();
+            invalidate();
+            invalidateOutline();
+            return;
+        }
 
         if (dp.getDeviceProperties().isLandscape()) {
             mOutline.right = (int) (rect.width() / scale);
@@ -227,6 +264,35 @@ public class ClipIconView extends View implements ClipPathView {
         mBackground.setBounds(sTmpRect);
     }
 
+    private void updateMultiSpanSuperIconBounds() {
+        if (mBackground != null) mBackground.setBounds(mOutline);
+        if (mForeground != null) {
+            int baseW = mOriginalWidth > 0 ? mOriginalWidth : mOutline.width();
+            int baseH = mOriginalHeight > 0 ? mOriginalHeight : mOutline.height();
+            int glyphTargetSize;
+            if (mSuperIconSpanX == 2 && mSuperIconSpanY == 1) {
+                glyphTargetSize = Math.round(baseH * 0.62f);
+            } else if (mSuperIconSpanX == 1 && mSuperIconSpanY == 2) {
+                glyphTargetSize = Math.round(baseW * 0.62f);
+            } else if (mSuperIconSpanX == 2 && mSuperIconSpanY == 2) {
+                glyphTargetSize = Math.round(Math.min(baseW, baseH) * 0.52f);
+            } else {
+                glyphTargetSize = Math.round(Math.min(baseW, baseH) * 0.62f);
+            }
+            int fullFgSize = Math.round(glyphTargetSize * 1.5f);
+            int fgLeft = Math.round(mOutline.centerX() - fullFgSize / 2f);
+            int fgTop = Math.round(mOutline.centerY() - fullFgSize / 2f);
+            mForeground.setBounds(fgLeft, fgTop, fgLeft + fullFgSize, fgTop + fullFgSize);
+        }
+    }
+
+    void setForegroundAlpha(float alpha) {
+        int drawableAlpha = Math.round(255f * Utilities.boundToRange(alpha, 0f, 1f));
+        mForegroundAlpha = drawableAlpha;
+        if (mForeground != null) mForeground.setAlpha(drawableAlpha);
+        else if (getBackground() != null) getBackground().setAlpha(drawableAlpha);
+    }
+
     protected void endReveal() {
         if (mRevealAnimator != null) {
             mRevealAnimator.end();
@@ -264,11 +330,13 @@ public class ClipIconView extends View implements ClipPathView {
 
             final int originalHeight = lp.height;
             final int originalWidth = lp.width;
+            mOriginalWidth = originalWidth;
+            mOriginalHeight = originalHeight;
 
             int blurMargin = mBlurSizeOutline / 2;
             mFinalDrawableBounds.set(0, 0, originalWidth, originalHeight);
 
-            if (!mIsFolderIcon) {
+            if (!mIsFolderIcon && !mIsMultiSpanSuperIcon) {
                 mFinalDrawableBounds.inset(iconOffset - blurMargin, iconOffset - blurMargin);
             }
             mForeground.setBounds(mFinalDrawableBounds);
@@ -276,14 +344,21 @@ public class ClipIconView extends View implements ClipPathView {
 
             mStartRevealRect.set(0, 0, originalWidth, originalHeight);
 
-            if (!mIsFolderIcon) {
+            if (!mIsFolderIcon && !mIsMultiSpanSuperIcon) {
                 Utilities.scaleRectAboutCenter(mStartRevealRect, ICON_VISIBLE_AREA_FACTOR);
             }
 
+            float aspectRatio = dp.getDeviceProperties().getAspectRatio();
             if (dp.getDeviceProperties().isLandscape()) {
-                lp.width = (int) Math.max(lp.width, lp.height * dp.getDeviceProperties().getAspectRatio());
+                lp.width = (int) Math.max(lp.width, lp.height * aspectRatio);
+                if (mIsMultiSpanSuperIcon && aspectRatio > 0) {
+                    lp.height = (int) Math.max(lp.height, Math.ceil(originalWidth / aspectRatio));
+                }
             } else {
-                lp.height = (int) Math.max(lp.height, lp.width * dp.getDeviceProperties().getAspectRatio());
+                lp.height = (int) Math.max(lp.height, lp.width * aspectRatio);
+                if (mIsMultiSpanSuperIcon && aspectRatio > 0) {
+                    lp.width = (int) Math.max(lp.width, Math.ceil(originalHeight / aspectRatio));
+                }
             }
 
             int left = mIsRtl
@@ -291,17 +366,28 @@ public class ClipIconView extends View implements ClipPathView {
                     : lp.leftMargin;
             layout(left, lp.topMargin, left + lp.width, lp.topMargin + lp.height);
 
-            float scale = Math.max((float) lp.height / originalHeight,
-                    (float) lp.width / originalWidth);
-            float bgDrawableStartScale;
-            if (isOpening) {
-                bgDrawableStartScale = 1f;
-                mOutline.set(0, 0, originalWidth, originalHeight);
+            if (mIsMultiSpanSuperIcon) {
+                if (isOpening) {
+                    mOutline.set(0, 0, originalWidth, originalHeight);
+                    mTaskCornerRadius = mSuperIconCornerRadius;
+                } else {
+                    mOutline.set(0, 0, lp.width, lp.height);
+                }
+                updateMultiSpanSuperIconBounds();
             } else {
-                bgDrawableStartScale = scale;
-                mOutline.set(0, 0, lp.width, lp.height);
+                float scale = Math.max((float) lp.height / originalHeight,
+                        (float) lp.width / originalWidth);
+                float bgDrawableStartScale;
+                if (isOpening) {
+                    bgDrawableStartScale = 1f;
+                    mOutline.set(0, 0, originalWidth, originalHeight);
+                } else {
+                    bgDrawableStartScale = scale;
+                    mOutline.set(0, 0, lp.width, lp.height);
+                }
+                setBackgroundDrawableBounds(bgDrawableStartScale,
+                        dp.getDeviceProperties().isLandscape());
             }
-            setBackgroundDrawableBounds(bgDrawableStartScale, dp.getDeviceProperties().isLandscape());
             mEndRevealRect.set(0, 0, lp.width, lp.height);
             setOutlineProvider(new ViewOutlineProvider() {
                 @Override
@@ -335,7 +421,25 @@ public class ClipIconView extends View implements ClipPathView {
         if (mBackground != null) {
             mBackground.draw(canvas);
         }
-        if (mForeground != null) {
+        if (mIsMultiSpanSuperIcon && mSuperIconSourceView != null) {
+            if (mForegroundAlpha > 0) {
+                int baseW = mOriginalWidth > 0 ? mOriginalWidth : mOutline.width();
+                int baseH = mOriginalHeight > 0 ? mOriginalHeight : mOutline.height();
+                Rect contentBounds = new Rect(
+                        Math.round(mOutline.centerX() - baseW / 2f),
+                        Math.round(mOutline.centerY() - baseH / 2f),
+                        Math.round(mOutline.centerX() + baseW / 2f),
+                        Math.round(mOutline.centerY() + baseH / 2f));
+                if (mForegroundAlpha < 255) {
+                    int alphaCount = canvas.saveLayerAlpha(contentBounds.left, contentBounds.top,
+                            contentBounds.right, contentBounds.bottom, mForegroundAlpha);
+                    mSuperIconSourceView.drawSuperIconContentForFloatingView(canvas, contentBounds);
+                    canvas.restoreToCount(alphaCount);
+                } else {
+                    mSuperIconSourceView.drawSuperIconContentForFloatingView(canvas, contentBounds);
+                }
+            }
+        } else if (mForeground != null) {
             mForeground.draw(canvas);
         }
         canvas.restoreToCount(count2);
@@ -359,6 +463,15 @@ public class ClipIconView extends View implements ClipPathView {
     void recycle() {
         setBackground(null);
         mIsAdaptiveIcon = false;
+        mIsFolderIcon = false;
+        mIsMultiSpanSuperIcon = false;
+        mOriginalWidth = 0;
+        mOriginalHeight = 0;
+        mSuperIconSpanX = 1;
+        mSuperIconSpanY = 1;
+        mSuperIconCornerRadius = 0f;
+        mForegroundAlpha = 255;
+        mSuperIconSourceView = null;
         mForeground = null;
         mBackground = null;
         mClipPath = null;

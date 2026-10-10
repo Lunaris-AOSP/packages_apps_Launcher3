@@ -317,6 +317,36 @@ class WorkspaceItemProcessorTest {
     }
 
     @Test
+    fun `Saved Super Icon spans and pixel size survive loading`() {
+        whenever(mockCursor.spanX).thenReturn(2)
+        whenever(mockCursor.spanY).thenReturn(2)
+        whenever(mockCursor.iconSizeDp).thenReturn(64)
+        itemProcessorUnderTest = createWorkspaceItemProcessorUnderTest()
+        itemProcessorUnderTest.processItem()
+
+        verify(mockCursor).checkAndAddItem(eq(mockWorkspaceInfo), any(), anyOrNull())
+        assertThat(mockWorkspaceInfo.spanX).isEqualTo(2)
+        assertThat(mockWorkspaceInfo.spanY).isEqualTo(2)
+        assertThat(mockWorkspaceInfo.minSpanX).isEqualTo(2)
+        assertThat(mockWorkspaceInfo.minSpanY).isEqualTo(2)
+        assertThat(mockWorkspaceInfo.iconSizeDp).isEqualTo(64)
+    }
+
+    @Test
+    fun `Invalid saved app spans are clamped to one cell`() {
+        whenever(mockCursor.spanX).thenReturn(0)
+        whenever(mockCursor.spanY).thenReturn(-1)
+        itemProcessorUnderTest = createWorkspaceItemProcessorUnderTest()
+        itemProcessorUnderTest.processItem()
+
+        verify(mockCursor).checkAndAddItem(eq(mockWorkspaceInfo), any(), anyOrNull())
+        assertThat(mockWorkspaceInfo.spanX).isEqualTo(1)
+        assertThat(mockWorkspaceInfo.spanY).isEqualTo(1)
+        assertThat(mockWorkspaceInfo.minSpanX).isEqualTo(1)
+        assertThat(mockWorkspaceInfo.minSpanY).isEqualTo(1)
+    }
+
+    @Test
     fun `When app with disabled activity and no fallback found then mark deleted`() {
 
         // Given

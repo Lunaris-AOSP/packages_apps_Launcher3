@@ -167,6 +167,21 @@ class FolderTest {
     }
 
     @Test
+    fun `Multi-span icons cannot be dropped into a folder`() {
+        for ((x, y) in listOf(2 to 1, 1 to 2, 2 to 2)) {
+            val item = ItemInfo().apply {
+                itemType = ITEM_TYPE_APPLICATION
+                spanX = x
+                spanY = y
+            }
+            assertFalse(Folder.willAccept(item))
+            item.spanX = 1
+            item.spanY = 1
+            assertTrue(Folder.willAccept(item))
+        }
+    }
+
+    @Test
     fun `Test that we do not accept invalid item type ITEM_TYPE_FOLDER`() {
         val itemInfo = Mockito.mock(ItemInfo::class.java)
         itemInfo.itemType = ITEM_TYPE_FOLDER

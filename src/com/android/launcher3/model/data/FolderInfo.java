@@ -60,6 +60,13 @@ public class FolderInfo extends CollectionInfo {
 
     public static final int FLAG_CUSTOM_THUMBNAIL = 0x00000010;
 
+    /** Bits in {@link #options} used for the preview style of a multi-span folder. */
+    public static final int FLAG_FOLDER_STYLE_SHIFT = 5;
+    public static final int FLAG_FOLDER_STYLE_MASK = 0x00000060;
+    public static final int FOLDER_STYLE_2X2 = 0;
+    public static final int FOLDER_STYLE_3X3 = 1;
+    public static final int FOLDER_STYLE_FEATURED = 2;
+
     /**
      * Different states of folder label.
      */
@@ -220,6 +227,28 @@ public class FolderInfo extends CollectionInfo {
                                 : LabelState.SUGGESTED;
     }
 
+    /** Returns the persisted preview style for a multi-span folder. */
+    public int getBigFolderStyle() {
+        int style = (options & FLAG_FOLDER_STYLE_MASK) >> FLAG_FOLDER_STYLE_SHIFT;
+        if (style == FOLDER_STYLE_3X3 || style == FOLDER_STYLE_FEATURED) {
+            return style;
+        }
+        return FOLDER_STYLE_2X2;
+    }
+
+    /** Updates and persists the preview style for a multi-span folder. */
+    public void setBigFolderStyle(int style, @Nullable ModelWriter writer) {
+        int clamped = (style == FOLDER_STYLE_3X3 || style == FOLDER_STYLE_FEATURED)
+                ? style
+                : FOLDER_STYLE_2X2;
+        int oldOptions = options;
+        options = (options & ~FLAG_FOLDER_STYLE_MASK)
+                | ((clamped << FLAG_FOLDER_STYLE_SHIFT) & FLAG_FOLDER_STYLE_MASK);
+        if (writer != null && oldOptions != options) {
+            writer.updateItemInDatabase(this);
+        }
+    }
+
     @NonNull
     @Override
     public ItemInfo makeShallowCopy() {
@@ -232,6 +261,7 @@ public class FolderInfo extends CollectionInfo {
     public void copyFrom(@NonNull ItemInfo info) {
         super.copyFrom(info);
         if (info instanceof FolderInfo fi) {
+            options = fi.options;
             contents.addAll(fi.getContents());
         }
     }

@@ -1762,10 +1762,14 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             ItemInfo dragObject, DragPreviewProvider previewProvider, DragOptions dragOptions) {
 
         float iconScale = 1f;
-        if (child instanceof BubbleTextView) {
-            Drawable icon = ((BubbleTextView) child).getIcon();
-            if (icon instanceof FastBitmapDrawable) {
-                iconScale = ((FastBitmapDrawable) icon).getAnimatedScale();
+        if (child instanceof BubbleTextView btv) {
+            if (btv.isMultiSpan()) {
+                iconScale = btv.getSuperIconPressScale();
+            } else {
+                Drawable icon = btv.getIcon();
+                if (icon instanceof FastBitmapDrawable) {
+                    iconScale = ((FastBitmapDrawable) icon).getAnimatedScale();
+                }
             }
         }
 
@@ -2000,7 +2004,8 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
         boolean aboveShortcut = Folder.willAccept(dropOverView.getTag())
                 && ((ItemInfo) dropOverView.getTag()).container != CONTAINER_HOTSEAT_PREDICTION;
-        boolean willBecomeShortcut = FolderInfo.willAcceptItemType(info.itemType);
+        boolean willBecomeShortcut = info.spanX <= 1 && info.spanY <= 1
+                && FolderInfo.willAcceptItemType(info.itemType);
 
         return (aboveShortcut && willBecomeShortcut);
     }
@@ -2220,7 +2225,9 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
                 ItemInfo item = d.dragInfo;
                 int minSpanX = spanX;
                 int minSpanY = spanY;
-                if (!collapseFolder && item.minSpanX > 0 && item.minSpanY > 0) {
+                if (!collapseFolder
+                        && (item instanceof LauncherAppWidgetInfo || item instanceof PendingAddWidgetInfo)
+                        && item.minSpanX > 0 && item.minSpanY > 0) {
                     minSpanX = item.minSpanX;
                     minSpanY = item.minSpanY;
                 }
@@ -2657,7 +2664,9 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             int spanY = collapseFolder ? 1 : item.spanY;
             int minSpanX = spanX;
             int minSpanY = spanY;
-            if (!collapseFolder && item.minSpanX > 0 && item.minSpanY > 0) {
+            if (!collapseFolder
+                    && (item instanceof LauncherAppWidgetInfo || item instanceof PendingAddWidgetInfo)
+                    && item.minSpanX > 0 && item.minSpanY > 0) {
                 minSpanX = item.minSpanX;
                 minSpanY = item.minSpanY;
             }
@@ -3537,6 +3546,66 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         return bestSize;
     }
 
+    public static boolean isSupportedFolderSpan(int spanX, int spanY) {
+        return (spanX == 1 && spanY == 1)
+                || (spanX == 2 && spanY == 2)
+                || (spanX == 2 && spanY == 1)
+                || (spanX == 1 && spanY == 2);
+    }
+
+    public static boolean isSupportedAppIconSpan(int spanX, int spanY) {
+        return (spanX == 1 && spanY == 1)
+                || (spanX == 2 && spanY == 2)
+                || (spanX == 2 && spanY == 1)
+                || (spanX == 1 && spanY == 2);
+    }
+
+    public List<Point> getAllowedAppIconSizes(BubbleTextView icon) {
+        if (icon == null) return List.of();
+        if (!(icon.getLayoutParams() instanceof CellLayoutLayoutParams lp)) return List.of();
+        if (!(icon.getTag() instanceof WorkspaceItemInfo itemInfo)) return List.of();
+        if (itemInfo.container != CONTAINER_DESKTOP) return List.of();
+
+        CellLayout cellLayout = getParentCellLayoutForView(icon);
+        if (cellLayout == null) return List.of();
+
+        Rect resizeBounds = getFolderResizeBounds(cellLayout, lp);
+        List<Point> allowedSizes = new ArrayList<>();
+
+        int[][] candidates = {{1, 1}, {2, 1}, {1, 2}, {2, 2}};
+        for (int[] cand : candidates) {
+            int spanX = cand[0];
+            int spanY = cand[1];
+            if (lp.getCellX() + spanX <= resizeBounds.right
+                    && lp.getCellY() + spanY <= resizeBounds.bottom) {
+                allowedSizes.add(new Point(spanX, spanY));
+            }
+        }
+        return allowedSizes;
+    }
+
+    public boolean canResizeAppIconTo(
+            BubbleTextView icon,
+            int cellX,
+            int cellY,
+            int spanX,
+            int spanY) {
+        if (icon == null || spanX <= 0 || spanY <= 0) return false;
+        if (!isSupportedAppIconSpan(spanX, spanY)) return false;
+        if (!(icon.getLayoutParams() instanceof CellLayoutLayoutParams lp)) return false;
+        if (!(icon.getTag() instanceof WorkspaceItemInfo itemInfo)) return false;
+        if (itemInfo.container != CONTAINER_DESKTOP) return false;
+
+        CellLayout cellLayout = getParentCellLayoutForView(icon);
+        if (cellLayout == null) return false;
+
+        CellAndSpan target = new CellAndSpan(cellX, cellY, spanX, spanY);
+        Rect resizeBounds = getFolderResizeBounds(cellLayout, lp);
+        // The resize frame uses CellLayout.createAreaForResize to find a collision-free
+        // solution, including moving neighboring items when space is available.
+        return isFolderResizeTargetWithinBounds(target, resizeBounds);
+    }
+
     public List<Point> getAllowedFolderSizes(FolderIcon folderIcon) {
         if (folderIcon == null) return List.of();
         if (!(folderIcon.getLayoutParams() instanceof CellLayoutLayoutParams lp)) return List.of();
@@ -3552,6 +3621,8 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
         for (int spanY = 1; spanY <= resizeBounds.height(); spanY++) {
             for (int spanX = 1; spanX <= resizeBounds.width(); spanX++) {
+                if (!isSupportedFolderSpan(spanX, spanY)) continue;
+
                 cellLayout.cellToRect(
                         resizeBounds.left,
                         resizeBounds.top,
@@ -3579,6 +3650,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             int spanX,
             int spanY) {
         if (folderIcon == null || spanX <= 0 || spanY <= 0) return false;
+        if (!isSupportedFolderSpan(spanX, spanY)) return false;
         if (!(folderIcon.getLayoutParams() instanceof CellLayoutLayoutParams lp)) return false;
         if (!(folderIcon.getTag() instanceof FolderInfo folderInfo)) return false;
         if (folderInfo.container != CONTAINER_DESKTOP) return false;
