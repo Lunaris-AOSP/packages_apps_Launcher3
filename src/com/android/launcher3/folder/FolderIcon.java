@@ -210,6 +210,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     };
 
     private boolean mRequestedTextVisible = true;
+    private boolean mFolderOpen;
 
     public boolean shouldShowFolderName() {
         return shouldReserveFolderLabelSpace()
@@ -219,6 +220,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
     private boolean shouldReserveFolderLabelSpace() {
         return mRequestedTextVisible && mFolderName != null
+                && !mFolderOpen
                 && mFolderName.shouldShowLabel();
     }
 
@@ -1316,6 +1318,22 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     /** Sets the visibility of the icon's title text */
     public void setTextVisible(boolean visible) {
         mRequestedTextVisible = visible;
+        updateTextVisibility();
+    }
+
+    /**
+     * Updates the collapsed workspace-label state while the matching folder window is open.
+     * Keeping this separate from {@link #setTextVisible(boolean)} preserves hotseat visibility
+     * preferences and avoids changing the folder icon's workspace layout during the transition.
+     */
+    public void setFolderOpen(boolean open) {
+        if (mFolderOpen == open) return;
+        mFolderOpen = open;
+        if (mFolderName != null) {
+            // Hide the label's paint as well as its view so an open/close transition cannot flash
+            // stale text for one frame when the child visibility is updated.
+            mFolderName.setTextVisibility(!open);
+        }
         updateTextVisibility();
     }
 

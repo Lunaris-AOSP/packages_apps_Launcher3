@@ -791,6 +791,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         animatorSet.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
+                // The expanded folder renders its own title in the footer. Hide only the
+                // collapsed workspace label; the folder contents and footer remain unchanged.
+                mFolderIcon.setFolderOpen(true);
                 mFolderIcon.setIconVisible(false);
                 mFolderIcon.drawLeaveBehindIfExists();
             }
@@ -1006,9 +1009,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         mActivityContext.getDragController().removeDropTarget(this);
         clearFocus();
         if (mFolderIcon != null) {
+            mFolderIcon.setFolderOpen(false);
             mFolderIcon.setVisibility(View.VISIBLE);
             mFolderIcon.setIconVisible(true);
-            mFolderIcon.mFolderName.setTextVisibility(true);
             if (wasAnimated) {
                 mFolderIcon.animateBgShadowAndStroke();
                 mFolderIcon.onFolderClose(mContent.getCurrentPage());
