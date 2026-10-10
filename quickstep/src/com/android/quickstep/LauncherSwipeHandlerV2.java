@@ -50,6 +50,7 @@ import com.android.launcher3.views.FloatingIconView;
 import com.android.launcher3.views.FloatingView;
 import com.android.launcher3.widget.LauncherAppWidgetHostView;
 import com.android.quickstep.util.ActiveGestureLog;
+import com.android.quickstep.util.OosAppCloseAnimation;
 import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.ScalingWorkspaceRevealAnim;
 import com.android.quickstep.util.TaskViewSimulator;
@@ -131,11 +132,11 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
             return createWidgetHomeAnimationFactory((LauncherAppWidgetHostView) workspaceView,
                     isTargetTranslucent, runningTaskTarget);
         }
-        return createIconHomeAnimationFactory(workspaceView, targetTaskView);
+        return createIconHomeAnimationFactory(workspaceView, targetTaskView, isTargetTranslucent);
     }
 
     private HomeAnimationFactory createIconHomeAnimationFactory(
-            View workspaceView, @Nullable TaskView targetTaskView) {
+            View workspaceView, @Nullable TaskView targetTaskView, boolean isTargetTranslucent) {
         RectF iconLocation = new RectF();
         FloatingIconView floatingIconView = getFloatingIconView(mContainer, workspaceView, null,
                 mContainer.getTaskbarInteractor() == null
@@ -193,6 +194,25 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
             }
 
             @Override
+            public boolean shouldUseIconCloseAnimation() {
+                return isAnimatingIntoIcon()
+                        && !isTargetTranslucent
+                        && !mDp.getDeviceProperties().isTablet()
+                        && !mDp.isTaskbarPresent
+                        && targetTaskView == null
+                        && !mIsSwipeForSplit
+                        && !mIsSwipingPipToHome
+                        && mRemoteTargetHandles.length == 1;
+            }
+
+            @Override
+            protected float getWindowAlpha(float progress) {
+                return shouldUseIconCloseAnimation()
+                        ? OosAppCloseAnimation.getWindowAlpha(progress)
+                        : super.getWindowAlpha(progress);
+            }
+
+            @Override
             public void update(
                     RectF currentRect,
                     float progress,
@@ -201,8 +221,13 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                 // We want the icon alpha to be 1 once this threshold is met, so that it can be
                 // seen morphing into the icon shape. But before the threshold, we want to limit
                 // the alpha to reduce the blur effect behind the window.
-                float iconAlpha = Interpolators.clampToProgress(progress, 0f, windowAlphaThreshold);
-                floatingIconView.update(iconAlpha, currentRect, progress, windowAlphaThreshold,
+                boolean useIconCloseAnimation = shouldUseIconCloseAnimation();
+                float iconAlpha = useIconCloseAnimation
+                        ? OosAppCloseAnimation.getIconAlpha(progress)
+                        : Interpolators.clampToProgress(progress, 0f, windowAlphaThreshold);
+                float shapeProgressStart = useIconCloseAnimation
+                        ? OosAppCloseAnimation.SHAPE_PROGRESS_START : windowAlphaThreshold;
+                floatingIconView.update(iconAlpha, currentRect, progress, shapeProgressStart,
                         radius, false, overlayAlpha);
             }
 

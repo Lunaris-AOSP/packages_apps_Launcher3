@@ -51,6 +51,7 @@ import com.android.launcher3.states.StateAnimationConfig.SKIP_OVERVIEW
 import com.android.launcher3.states.StateAnimationConfig.SKIP_SCRIM
 import com.android.launcher3.uioverrides.QuickstepLauncher
 import com.android.quickstep.views.RecentsView
+import com.android.systemui.shared.system.BlurUtils
 
 const val TAG = "ScalingWorkspaceRevealAnim"
 
@@ -91,7 +92,10 @@ class ScalingWorkspaceRevealAnim(
         val BLUR_INTERPOLATOR = Interpolators.clampToProgress(EMPHASIZED, 0f, 0.6f)
     }
 
-    private val animation = PendingAnimation(SCALE_DURATION_MS)
+    private val isIconClose = siblingAnimation?.isIconCloseAnimation == true
+    private val duration =
+        if (isIconClose) OosAppCloseAnimation.WORKSPACE_REVEAL_DURATION_MS else SCALE_DURATION_MS
+    private val animation = PendingAnimation(duration)
     private var blurLayer: SurfaceControl? = null
     private var surfaceTransactionApplier: SurfaceTransactionApplier =
         SurfaceTransactionApplier(launcher.dragLayer)
@@ -150,20 +154,20 @@ class ScalingWorkspaceRevealAnim(
         if (playAlphaReveal) {
             // Fade in quickly at the beginning of the animation, so the content doesn't look like
             // it's popping into existence out of nowhere.
-            val fadeClamp = FADE_DURATION_MS.toFloat() / SCALE_DURATION_MS
-            workspace.alpha = MIN_ALPHA
+            val fadeClamp = FADE_DURATION_MS.toFloat() / duration
+            workspace.alpha = if (isIconClose) 0.85f else MIN_ALPHA
             animation.setFloat(
                 workspace,
                 VIEW_ALPHA,
                 MAX_ALPHA,
                 Interpolators.clampToProgress(LINEAR, 0f, fadeClamp),
             )
-            hotseat.alpha = MIN_ALPHA
+            hotseat.alpha = if (isIconClose) 0.85f else MIN_ALPHA
             // This needs to use setViewAlpha instead of setFloat (like workspace).
             // This is because hotseat visibility can also be changed based off of alpha in
             // WorkspaceRevealAnim which also calls setViewAlpha.
             // b/428257480 Ideally we should be settings MultiValueAlpha with 2 channels instead.
-            val hotseatDelay = HOTSEAT_FADE_DELAY_MS.toFloat() / SCALE_DURATION_MS
+            val hotseatDelay = HOTSEAT_FADE_DELAY_MS.toFloat() / duration
             animation.setViewAlpha(
                 hotseat,
                 MAX_ALPHA,
@@ -172,14 +176,14 @@ class ScalingWorkspaceRevealAnim(
         }
 
         val transitionConfig = StateAnimationConfig()
-        transitionConfig.duration = SCALE_DURATION_MS
+        transitionConfig.duration = duration
 
         var depthController: DepthController? = null
         if (playBlur) {
             // Match the Wallpaper depth to the rest of the content.
             depthController = (launcher as? QuickstepLauncher)?.depthController
             transitionConfig.setInterpolator(StateAnimationConfig.ANIM_DEPTH, SCALE_INTERPOLATOR)
-            depthController?.pauseBlursOnWindows(true) // Blurring is handled by the scrim layer.
+            if (blurLayer != null) depthController?.pauseBlursOnWindows(true)
             depthController?.stateDepth?.value = LauncherState.BACKGROUND_APP.getDepth(launcher)
             depthController?.setStateWithAnimation(
                 LauncherState.NORMAL,
@@ -188,14 +192,12 @@ class ScalingWorkspaceRevealAnim(
             )
 
             // Add a blur animation to the scrim layer.
-            var maxBlurRadius =
-                launcher.resources.getDimensionPixelSize(
-                    if (Flags.allAppsBlur() || Flags.enableOverviewBackgroundWallpaperBlur()) {
-                        R.dimen.max_depth_blur_radius_enhanced
-                    } else {
-                        R.integer.max_depth_blur_radius
-                    }
-                )
+            val maxBlurRadius =
+                if (Flags.allAppsBlur() || Flags.enableOverviewBackgroundWallpaperBlur()) {
+                    launcher.resources.getDimensionPixelSize(R.dimen.max_depth_blur_radius_enhanced)
+                } else {
+                    launcher.resources.getInteger(R.integer.max_depth_blur_radius)
+                }
             val blurAnimator = ValueAnimator.ofFloat(1f, 0f)
             blurAnimator.setInterpolator(BLUR_INTERPOLATOR)
             var lastBlurRadius = -1
@@ -225,30 +227,29 @@ class ScalingWorkspaceRevealAnim(
         // targeting the current position. Since we can't easily access this, instead we calculate
         // it using the animation of the whole of home.
         // We start by caching the final target position, as this is the base for the transforms.
-        val originalTarget = RectF(windowTargetRect)
+        val originalTarget = windowTargetRect?.let { RectF(it) }
+        val transformed = RectF()
+        val targetMatrix = Matrix()
         animation.addOnFrameListener {
-            val transformed = RectF(originalTarget)
+            if (originalTarget == null) return@addOnFrameListener
+            transformed.set(originalTarget)
 
             // First we scale down using the same pivot as the workspace scale, so we find the
             // correct position AND size.
-            transformed.transform(
-                Matrix().apply {
-                    setScale(workspace.scaleX, workspace.scaleY, workspace.pivotX, workspace.pivotY)
-                }
+            targetMatrix.setScale(
+                workspace.scaleX, workspace.scaleY, workspace.pivotX, workspace.pivotY
             )
+            transformed.transform(targetMatrix)
             // Then we scale back up around the center of the current position. This is because the
             // icon animation behaves poorly if it is given a target that is smaller than the size
             // of the icon.
-            transformed.transform(
-                Matrix().apply {
-                    setScale(
-                        1 / workspace.scaleX,
-                        1 / workspace.scaleY,
-                        transformed.centerX(),
-                        transformed.centerY(),
-                    )
-                }
+            targetMatrix.setScale(
+                1 / workspace.scaleX,
+                1 / workspace.scaleY,
+                transformed.centerX(),
+                transformed.centerY(),
             )
+            transformed.transform(targetMatrix)
 
             if (transformed != windowTargetRect) {
                 windowTargetRect?.set(transformed)
@@ -264,6 +265,7 @@ class ScalingWorkspaceRevealAnim(
                 override fun onAnimationCancel(animation: Animator) {
                     super.onAnimationCancel(animation)
                     Log.d(TAG, "onAnimationCancel")
+                    if (isIconClose) siblingAnimation?.cancel()
                     applyBlur(0f, 0f)
                 }
 
@@ -309,7 +311,16 @@ class ScalingWorkspaceRevealAnim(
     }
 
     fun getAnimators(): AnimatorSet {
-        return animation.buildAnim()
+        val animators = animation.buildAnim()
+        animators.addListener(
+            object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    Animations.setOngoingAnimation(launcher.workspace, animators)
+                    Animations.setOngoingAnimation(launcher.hotseat, animators)
+                }
+            }
+        )
+        return animators
     }
 
     fun start() {
@@ -319,8 +330,6 @@ class ScalingWorkspaceRevealAnim(
         //  centrally so each instances doesn't need to care about this coordination.
         launcher.stateManager.setCurrentAnimation(animators, LauncherState.NORMAL)
         animators.start()
-        Animations.setOngoingAnimation(launcher.workspace, animators)
-        Animations.setOngoingAnimation(launcher.hotseat, animators)
     }
 
     private fun isAppLaunchBlurEnabled(): Boolean {
@@ -328,7 +337,7 @@ class ScalingWorkspaceRevealAnim(
     }
 
     private fun addBlurLayer() {
-        if (!isAppLaunchBlurEnabled()) {
+        if (!isAppLaunchBlurEnabled() || !BlurUtils.supportsBlursOnWindows()) {
             return
         }
         val parent = launcher.dragLayer.viewRootImpl?.surfaceControl ?: return
@@ -341,6 +350,7 @@ class ScalingWorkspaceRevealAnim(
                 .setName("Home to launcher blur layer")
                 .setCallsite("ScalingWorkspaceRevealAnim")
                 .setParent(parent)
+                .setEffectLayer()
                 .setOpaque(false)
                 .setHidden(false)
                 .build()

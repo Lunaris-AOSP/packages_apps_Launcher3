@@ -45,6 +45,7 @@ import com.android.quickstep.orientation.RecentsPagedOrientationHandler;
 import com.android.quickstep.util.AnimatorControllerWithResistance;
 import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.RectFSpringAnim.DefaultSpringConfig;
+import com.android.quickstep.util.RectFSpringAnim.IconSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.TaskbarHotseatSpringConfig;
 import com.android.quickstep.util.SurfaceTransaction.SurfaceProperties;
 import com.android.quickstep.util.TaskViewSimulator;
@@ -254,6 +255,10 @@ public abstract class SwipeUpAnimationLogic implements
             return false;
         }
 
+        public boolean shouldUseIconCloseAnimation() {
+            return false;
+        }
+
         @Nullable
         public TaskView getTargetTaskView() {
             return null;
@@ -372,9 +377,11 @@ public abstract class SwipeUpAnimationLogic implements
 
         boolean useTaskbarHotseatParams = mDp.isTaskbarPresent
                 && homeAnimationFactory.isInHotseat();
-        RectFSpringAnim anim = new RectFSpringAnim(useTaskbarHotseatParams
-                ? new TaskbarHotseatSpringConfig(mContext, startRect, targetRect)
-                : new DefaultSpringConfig(mContext, mDp, startRect, targetRect));
+        RectFSpringAnim anim = homeAnimationFactory.shouldUseIconCloseAnimation()
+                ? new RectFSpringAnim(new IconSpringConfig(mContext, mDp, startRect, targetRect))
+                : new RectFSpringAnim(useTaskbarHotseatParams
+                        ? new TaskbarHotseatSpringConfig(mContext, startRect, targetRect)
+                        : new DefaultSpringConfig(mContext, mDp, startRect, targetRect));
         homeAnimationFactory.setAnimation(anim);
 
         SpringAnimationRunner runner = new SpringAnimationRunner(

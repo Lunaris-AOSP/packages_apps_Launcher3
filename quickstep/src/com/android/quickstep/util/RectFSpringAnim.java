@@ -143,6 +143,8 @@ public class RectFSpringAnim extends ReleaseCheck {
     protected final float mDampingX;
     protected final float mDampingY;
     protected final float mRectStiffness;
+    private final float mRectDamping;
+    private final boolean mUseIconSpringConfig;
 
     public RectFSpringAnim(SpringConfig config) {
         mStartRect = config.startRect;
@@ -157,12 +159,18 @@ public class RectFSpringAnim extends ReleaseCheck {
         mDampingX = config.dampingX;
         mDampingY = config.dampingY;
         mRectStiffness = config.rectStiffness;
+        mRectDamping = config.rectDamping;
+        mUseIconSpringConfig = config instanceof IconSpringConfig;
 
         mCurrentY = getTrackedYFromRect(mStartRect);
     }
 
     public RectF getTargetRect() {
         return mTargetRect;
+    }
+
+    public boolean isIconCloseAnimation() {
+        return mUseIconSpringConfig;
     }
 
     private float getTrackedYFromRect(RectF rect) {
@@ -268,8 +276,10 @@ public class RectFSpringAnim extends ReleaseCheck {
                 new SpringAnimation(this, RECT_CENTER_X)
                         .setSpring(
                                 new SpringForce(endX)
-                                        .setStiffness(sCachedStiffnessX)
-                                        .setDampingRatio(sCachedDampingX)
+                                        .setStiffness(mUseIconSpringConfig
+                                                ? mStiffnessX : sCachedStiffnessX)
+                                        .setDampingRatio(mUseIconSpringConfig
+                                                ? mDampingX : sCachedDampingX)
                         ).setStartValue(startX)
                         .setStartVelocity(xVelocityPxPerS)
                         .addEndListener(onXEndListener);
@@ -278,8 +288,10 @@ public class RectFSpringAnim extends ReleaseCheck {
                 new SpringAnimation(this, RECT_Y)
                         .setSpring(
                                 new SpringForce(endY)
-                                        .setStiffness(sCachedStiffnessY)
-                                        .setDampingRatio(sCachedDampingY)
+                                        .setStiffness(mUseIconSpringConfig
+                                                ? mStiffnessY : sCachedStiffnessY)
+                                        .setDampingRatio(mUseIconSpringConfig
+                                                ? mDampingY : sCachedDampingY)
                         )
                         .setStartValue(startY)
                         .setStartVelocity(yVelocityPxPerS)
@@ -289,8 +301,10 @@ public class RectFSpringAnim extends ReleaseCheck {
                 new SpringAnimation(this, RECT_SCALE_PROGRESS)
                         .setSpring(
                                 new SpringForce(1f)
-                                        .setStiffness(sCachedStiffnessZ)
-                                        .setDampingRatio(sCachedDampingZ))
+                                        .setStiffness(mUseIconSpringConfig
+                                                ? mRectStiffness : sCachedStiffnessZ)
+                                        .setDampingRatio(mUseIconSpringConfig
+                                                ? mRectDamping : sCachedDampingZ))
                         .setStartVelocity(velocityPxPerMs.y * minVisibleChange)
                         .setMaxValue(1f)
                         .setMinimumVisibleChange(minVisibleChange)
@@ -323,6 +337,10 @@ public class RectFSpringAnim extends ReleaseCheck {
                 mRectScaleAnim.skipToEnd();
             }
             mCurrentScaleProgress = mRectScaleAnim.getSpring().getFinalPosition();
+            if (mUseIconSpringConfig) {
+                mCurrentCenterX = mTargetRect.centerX();
+                mCurrentY = getTrackedYFromRect(mTargetRect);
+            }
 
             // Ensures that we end the animation with the final values.
             mRectXAnimEnded = false;
@@ -445,6 +463,7 @@ public class RectFSpringAnim extends ReleaseCheck {
         protected float dampingX;
         protected float dampingY;
         protected float rectStiffness;
+        protected float rectDamping;
         protected float minVisChange;
         protected int maxVelocityPxPerS;
 
@@ -508,6 +527,21 @@ public class RectFSpringAnim extends ReleaseCheck {
                 }
             }
             return tracking;
+        }
+    }
+
+    public static final class IconSpringConfig extends DefaultSpringConfig {
+
+        public IconSpringConfig(Context context, DeviceProfile deviceProfile,
+                RectF startRect, RectF targetRect) {
+            super(context, deviceProfile, startRect, targetRect);
+            tracking = TRACKING_CENTER;
+            stiffnessX = 700f;
+            stiffnessY = 900f;
+            rectStiffness = 900f;
+            dampingX = 0.85f;
+            dampingY = 0.85f;
+            rectDamping = 0.85f;
         }
     }
 
