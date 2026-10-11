@@ -114,6 +114,7 @@ import com.android.wm.shell.splitscreen.ISplitSelectListener
 import com.android.wm.shell.startingsurface.IStartingWindow
 import com.android.wm.shell.startingsurface.IStartingWindowListener
 import java.io.PrintWriter
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 import javax.inject.Inject
 
@@ -211,7 +212,11 @@ class SystemUiProxy @Inject constructor(
         Handler(lightweightBackgroundExecutor.looper) { handleMessageAsync(it) }
 
     // TODO(141886704): Find a way to remove this
-    @SystemUiStateFlags var lastSystemUiStateFlags: Long = 0
+    @SystemUiStateFlags
+    var lastSystemUiStateFlags: Long = 0
+        private set
+
+    private val systemUiStateChangeCallbacks = CopyOnWriteArrayList<Runnable>()
 
     private val pendingIntentCache = mutableMapOf<Int, PendingIntent>()
 
@@ -387,6 +392,26 @@ class SystemUiProxy @Inject constructor(
 
     /** Removes a previously added state change callback */
     fun removeOnStateChangeListener(callback: Runnable) = stateChangeCallbacks.remove(callback)
+
+    fun addOnSystemUiStateChangeListener(callback: Runnable): Boolean {
+        val added = systemUiStateChangeCallbacks.add(callback)
+        if (added) {
+            callback.run()
+        }
+        return added
+    }
+
+    fun removeOnSystemUiStateChangeListener(callback: Runnable) {
+        systemUiStateChangeCallbacks.remove(callback)
+    }
+
+    fun updateLastSystemUiStateFlags(@SystemUiStateFlags flags: Long) {
+        if (lastSystemUiStateFlags == flags) {
+            return
+        }
+        lastSystemUiStateFlags = flags
+        systemUiStateChangeCallbacks.forEach { it.run() }
+    }
 
     fun isActive() = systemUiProxy != null
 

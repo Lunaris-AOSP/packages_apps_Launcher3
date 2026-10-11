@@ -19,6 +19,9 @@ import static android.os.Trace.TRACE_TAG_APP;
 
 import static com.android.launcher3.Flags.enableOverviewBackgroundWallpaperBlur;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.WallpaperManager;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
@@ -39,6 +42,7 @@ import androidx.annotation.VisibleForTesting;
 import com.android.app.animation.Interpolators;
 import com.android.launcher3.Flags;
 import com.android.launcher3.Launcher;
+import com.android.launcher3.LauncherPrefChangeListener;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherState;
 import com.android.launcher3.R;
@@ -78,6 +82,7 @@ public class BaseDepthController {
     // b/291401432
     private static final String TAG = "BaseDepthController";
     private static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
+    private static final long WALLPAPER_ZOOM_HANDOFF_DURATION_MS = 700;
 
     protected final QuickstepLauncher mLauncher;
     /** Property to set the depth for state transition. */
@@ -93,6 +98,13 @@ public class BaseDepthController {
     protected boolean mCrossWindowBlursEnabled;
 
     private float mLastWallpaperZoom = -1f;
+    private boolean mWallpaperZoomSuppressed;
+    private volatile long mWallpaperZoomRequestId;
+    @Nullable private ValueAnimator mWallpaperZoomHandoffAnimator;
+    private float mWallpaperZoomHandoffTarget;
+
+    private final LauncherPrefChangeListener mPreferenceChangeListener =
+            this::onPreferenceChanged;
 
     /**
      * Ratio from 0 to 1, where 0 is fully zoomed out, and 1 is zoomed in.
@@ -149,6 +161,10 @@ public class BaseDepthController {
         widgetDepth = depthProperty.get(DEPTH_INDEX_WIDGET);
         mEarlyWakeupInfo.token = new Binder();
         mEarlyWakeupInfo.trace = BaseDepthController.class.getName();
+        LauncherPrefs.get(mLauncher).addListener(
+                mPreferenceChangeListener,
+                LauncherPrefs.ALLOW_WALLPAPER_ZOOMING,
+                LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING);
     }
 
     /**
@@ -191,6 +207,26 @@ public class BaseDepthController {
 
     protected void onInvalidSurface() { }
 
+    private void onPreferenceChanged(String key) {
+        if (LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.getSharedPrefKey().equals(key)
+                || LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING.getSharedPrefKey().equals(key)) {
+            mLauncher.getMainExecutor().execute(() -> applyWallpaperZoom(/* force */ true));
+        }
+    }
+
+    public void setWallpaperZoomSuppressed(boolean suppressed) {
+        if (mWallpaperZoomSuppressed == suppressed) {
+            return;
+        }
+        mWallpaperZoomSuppressed = suppressed;
+        if (suppressed) {
+            cancelWallpaperZoomHandoff();
+            applyWallpaperZoom(/* force */ true);
+        } else {
+            animateWallpaperZoomHandoff();
+        }
+    }
+
     protected void applyDepthAndBlur() {
         applyDepthAndBlur(null, /* applyImmediately */ false, /* skipSimilarBlur */ true);
     }
@@ -205,25 +241,93 @@ public class BaseDepthController {
     private void applyDepthAndBlur(@Nullable SurfaceTransaction surfaceTransaction,
             boolean applyImmediately, boolean skipSimilarBlur) {
         float depth = mDepth;
-        IBinder windowToken = mLauncher.getRootView().getWindowToken();
-        if (windowToken != null) {
-                float zoom = LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.get(mLauncher)
-            ? depth
-            : 0f;
+        applyWallpaperZoom(/* force */ false);
+        applyDepthBlur(surfaceTransaction, applyImmediately, skipSimilarBlur, depth);
+    }
 
-            if (Math.abs(mLastWallpaperZoom - zoom) >= 0.015f
-                    || (zoom == 0f && mLastWallpaperZoom != 0f)
-                    || (zoom == 1f && mLastWallpaperZoom != 1f)) {
-
-                final float finalZoom = zoom;
-
-                Executors.UI_HELPER_EXECUTOR.execute(() -> {
-                    mWallpaperManager.setWallpaperZoomOut(windowToken, finalZoom);
-                });
-
-                mLastWallpaperZoom = zoom;
-            }
+    private void applyWallpaperZoom(boolean force) {
+        float zoom = getWallpaperZoom();
+        if (!force && mWallpaperZoomHandoffAnimator != null
+                && Float.compare(zoom, mWallpaperZoomHandoffTarget) == 0) {
+            return;
         }
+        cancelWallpaperZoomHandoff();
+        submitWallpaperZoom(zoom, force);
+    }
+
+    private float getWallpaperZoom() {
+        return mWallpaperZoomSuppressed
+                ? 0f
+                : mapDepthToWallpaperZoom(
+                        mDepth,
+                        LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.get(mLauncher),
+                        LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING.get(mLauncher));
+    }
+
+    private void submitWallpaperZoom(float zoom, boolean force) {
+        View rootView = mLauncher.getRootView();
+        if (rootView == null) {
+            return;
+        }
+        IBinder windowToken = rootView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+
+        if (force
+                || Math.abs(mLastWallpaperZoom - zoom) >= 0.015f
+                || (zoom == 0f && mLastWallpaperZoom != 0f)
+                || (zoom == 1f && mLastWallpaperZoom != 1f)) {
+            final float finalZoom = zoom;
+            final long requestId = ++mWallpaperZoomRequestId;
+
+            Executors.UI_HELPER_EXECUTOR.execute(() -> {
+                if (requestId == mWallpaperZoomRequestId) {
+                    mWallpaperManager.setWallpaperZoomOut(windowToken, finalZoom);
+                }
+            });
+
+            mLastWallpaperZoom = zoom;
+        }
+    }
+
+    private void animateWallpaperZoomHandoff() {
+        cancelWallpaperZoomHandoff();
+
+        float targetZoom = getWallpaperZoom();
+        float startZoom = mLastWallpaperZoom < 0f ? targetZoom : mLastWallpaperZoom;
+        if (Float.compare(startZoom, targetZoom) == 0) {
+            submitWallpaperZoom(targetZoom, /* force */ true);
+            return;
+        }
+
+        ValueAnimator animator = ValueAnimator.ofFloat(startZoom, targetZoom);
+        mWallpaperZoomHandoffTarget = targetZoom;
+        mWallpaperZoomHandoffAnimator = animator;
+        animator.setDuration(WALLPAPER_ZOOM_HANDOFF_DURATION_MS);
+        animator.setInterpolator(Interpolators.EMPHASIZED_DECELERATE);
+        animator.addUpdateListener(animation -> submitWallpaperZoom(
+                (Float) animation.getAnimatedValue(), /* force */ false));
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (mWallpaperZoomHandoffAnimator == animation) {
+                    mWallpaperZoomHandoffAnimator = null;
+                }
+            }
+        });
+        animator.start();
+    }
+
+    private void cancelWallpaperZoomHandoff() {
+        if (mWallpaperZoomHandoffAnimator != null) {
+            mWallpaperZoomHandoffAnimator.cancel();
+            mWallpaperZoomHandoffAnimator = null;
+        }
+    }
+
+    private void applyDepthBlur(@Nullable SurfaceTransaction surfaceTransaction,
+            boolean applyImmediately, boolean skipSimilarBlur, float depth) {
 
         if (!BlurUtils.supportsBlursOnWindows()) {
             return;
@@ -413,6 +517,14 @@ public class BaseDepthController {
         }
     }
 
+    public void dispose() {
+        cancelWallpaperZoomHandoff();
+        LauncherPrefs.get(mLauncher).removeListener(
+                mPreferenceChangeListener,
+                LauncherPrefs.ALLOW_WALLPAPER_ZOOMING,
+                LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING);
+    }
+
     private @Nullable SurfaceTransaction setupBlurSurface() {
         SurfaceTransaction surfaceTransaction = null;
 
@@ -469,5 +581,14 @@ public class BaseDepthController {
     private static float mapDepthToBlur(float depth) {
         return Interpolators.STANDARD.getInterpolation(
                 Interpolators.clampToProgress(depth, 0, 0.4f));
+    }
+
+    @VisibleForTesting
+    static float mapDepthToWallpaperZoom(float depth, boolean wallpaperZoomingEnabled,
+            boolean alternativeWallpaperZooming) {
+        if (!wallpaperZoomingEnabled) {
+            return 0f;
+        }
+        return alternativeWallpaperZooming ? 1f - depth : depth;
     }
 }

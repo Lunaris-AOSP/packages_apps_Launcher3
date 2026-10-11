@@ -987,7 +987,8 @@ public class TouchInteractionService extends Service {
                     // The following don't care about non-default displays, at least for now. If
                     // they
                     // ever will, they should be taken care of.
-                    SystemUiProxy.INSTANCE.get(this).setLastSystemUiStateFlags(systemUiStateFlags);
+                    SystemUiProxy.INSTANCE.get(this)
+                            .updateLastSystemUiStateFlags(systemUiStateFlags);
                     mOverviewComponentObserver.setHomeDisabled(deviceState.isHomeDisabled());
                 }
                 taskAnimationManager.onSystemUiFlagsChanged(lastSysUIFlags, systemUiStateFlags);

@@ -82,6 +82,7 @@ import static com.android.launcher3.util.Executors.UI_HELPER_EXECUTOR;
 import static com.android.quickstep.util.AnimUtils.completeRunnableListCallback;
 import static com.android.quickstep.util.SplitAnimationTimings.TABLET_HOME_TO_SPLIT;
 import static com.android.systemui.shared.system.ActivityManagerWrapper.CLOSE_SYSTEM_WINDOWS_REASON_HOME_KEY;
+import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_DEVICE_DOZING;
 import static com.android.wm.shell.shared.split.SplitScreenConstants.SNAP_TO_2_50_50;
 
 import android.animation.Animator;
@@ -231,6 +232,7 @@ import com.android.quickstep.util.SplitSelectStateController;
 import com.android.quickstep.util.SplitTask;
 import com.android.quickstep.util.SplitToWorkspaceController;
 import com.android.quickstep.util.SplitWithKeyboardShortcutController;
+import com.android.quickstep.util.SystemUiFlagUtils;
 import com.android.quickstep.util.TISBindHelper;
 import com.android.quickstep.util.unfold.LauncherUnfoldTransitionController;
 import com.android.quickstep.util.unfold.ProxyUnfoldTransitionProvider;
@@ -290,6 +292,7 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
     private PredictedContainerInfo mAllAppsPredictions;
     private HotseatPredictionController mHotseatPredictionController;
     private DepthController mDepthController;
+    private final Runnable mSystemUiStateChangeListener = this::updateWallpaperZoomForSystemUi;
     private QuickstepTransitionManager mAppTransitionManager;
 
     private OverviewActionsView<?> mActionsView;
@@ -391,6 +394,8 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         getAppWidgetHolder().setOnViewCreationCallback(new QuickstepInteractionHandler(this));
         setupBlurState();
         mDepthController = new DepthController(this);
+        SystemUiProxy systemUiProxy = SystemUiProxy.INSTANCE.get(this);
+        systemUiProxy.addOnSystemUiStateChangeListener(mSystemUiStateChangeListener);
         mOverviewBlurEnabled = isOverviewBackgroundBlurEnabled();
         getTheme().applyStyle(getOverviewBlurStyleResId(), true);
         super.setupViews();
@@ -407,7 +412,6 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         mActionsView = findViewById(R.id.overview_actions_view);
         mMemInfoView = findViewById(R.id.meminfo);
         RecentsView<?, LauncherState> overviewPanel = getOverviewPanel();
-        SystemUiProxy systemUiProxy = SystemUiProxy.INSTANCE.get(this);
         mSplitSelectStateController =
                 new SplitSelectStateController(this, getStateManager(),
                         getDepthController(), getStatsLogManager(),
@@ -546,6 +550,7 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
     protected void onActivityFlagsChanged(int changeBits) {
         if ((changeBits & ACTIVITY_STATE_STARTED) != 0) {
             mDepthController.setActivityStarted(isStarted());
+            updateWallpaperZoomForSystemUi();
         }
 
         if ((changeBits & ACTIVITY_STATE_RESUMED) != 0) {
@@ -757,6 +762,11 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
 
     @Override
     public void onDestroy() {
+        if (mDepthController != null) {
+            SystemUiProxy.INSTANCE.get(this)
+                    .removeOnSystemUiStateChangeListener(mSystemUiStateChangeListener);
+            mDepthController.dispose();
+        }
         if (!LauncherPrefs.SHOW_STATUS_BAR.get(this)) {
             getStateManager().removeStateListener(noStatusBarStateListener);
         }
@@ -791,6 +801,16 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         super.onDestroy();
         if (mViewCapture != null) mViewCapture.close();
         removeBackAnimationCallback(mSplitSelectStateController.getSplitBackHandler());
+    }
+
+    private void updateWallpaperZoomForSystemUi() {
+        if (mDepthController == null) {
+            return;
+        }
+        long stateFlags = SystemUiProxy.INSTANCE.get(this).getLastSystemUiStateFlags();
+        boolean wallpaperOwnedBySystemUi = SystemUiFlagUtils.isLocked(stateFlags)
+                || (stateFlags & SYSUI_STATE_DEVICE_DOZING) != 0;
+        mDepthController.setWallpaperZoomSuppressed(wallpaperOwnedBySystemUi);
     }
 
     @Override
