@@ -213,14 +213,14 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     private boolean mFolderOpen;
 
     public boolean shouldShowFolderName() {
-        return shouldReserveFolderLabelSpace()
+        return !mFolderOpen
+                && shouldReserveFolderLabelSpace()
                 && mInfo != null
                 && !TextUtils.isEmpty(mInfo.title);
     }
 
     private boolean shouldReserveFolderLabelSpace() {
         return mRequestedTextVisible && mFolderName != null
-                && !mFolderOpen
                 && mFolderName.shouldShowLabel();
     }
 

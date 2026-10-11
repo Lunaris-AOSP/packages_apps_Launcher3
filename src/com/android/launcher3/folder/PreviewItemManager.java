@@ -186,8 +186,8 @@ public class PreviewItemManager {
                             && mIntrinsicIconSize > 0
                             && !mFirstPageParams.isEmpty()
                             && mIcon.isLaidOut()
-                            && mPrevUsesWorkspacePreviewLayout
-                            && usesWorkspacePreview;
+                            && (isMultiSpan(mPrevSpanX, mPrevSpanY)
+                                    || isMultiSpan(spanX, spanY));
 
             Rect previousBackgroundBounds = null;
             FolderPreviewLayout.Snapshot previousSnapshot = null;
@@ -195,8 +195,7 @@ public class PreviewItemManager {
             if (animateResize) {
                 previousBackgroundBounds = new Rect();
                 mIcon.mBackground.getBounds(previousBackgroundBounds);
-                previousSnapshot = calculateWorkspacePreviewSnapshot(
-                        mIcon.mInfo.getContents(), mPrevSpanX, mPrevSpanY);
+                previousSnapshot = calculatePreviewSnapshotForResize(mPrevSpanX, mPrevSpanY);
             }
 
             mIntrinsicIconSize = drawableSize;
@@ -227,7 +226,7 @@ public class PreviewItemManager {
 
             if (animateResize) {
                 FolderPreviewLayout.Snapshot newSnapshot =
-                        calculateWorkspacePreviewSnapshot();
+                        calculatePreviewSnapshotForResize(spanX, spanY);
                 animateWorkspacePreviewResize(previousSnapshot, newSnapshot);
                 mIcon.mBackground.animateBoundsFrom(
                         previousBackgroundBounds,
@@ -236,6 +235,10 @@ public class PreviewItemManager {
                 updatePreviewItems(false);
             }
         }
+    }
+
+    private static boolean isMultiSpan(int spanX, int spanY) {
+        return spanX > 1 || spanY > 1;
     }
 
     private FolderPreviewLayout.Grid calculateWorkspacePreviewGrid(
@@ -417,6 +420,48 @@ public class PreviewItemManager {
                 mIntrinsicIconSize,
                 isRtl,
                 folderColumnCount);
+    }
+
+    /**
+     * Calculates a snapshot using the layout which actually renders the given span.
+     *
+     * A 1x1 folder keeps the legacy clipped preview layout even when it is on the desktop. Using
+     * the workspace snapshot grid for that case would replace the clipped positions with the
+     * single-cell overview mini-grid during a resize animation.
+     */
+    private FolderPreviewLayout.Snapshot calculatePreviewSnapshotForResize(
+            int spanX, int spanY) {
+        return isMultiSpan(spanX, spanY)
+                ? calculateWorkspacePreviewSnapshot(mIcon.mInfo.getContents(), spanX, spanY)
+                : calculateLegacyPreviewSnapshot();
+    }
+
+    private FolderPreviewLayout.Snapshot calculateLegacyPreviewSnapshot() {
+        Rect backgroundBounds = new Rect();
+        mIcon.mBackground.getTargetBounds(backgroundBounds);
+        RectF snapshotBounds = new RectF(backgroundBounds);
+        float previewLeft = mIcon.mBackground.getTargetPreviewLeft();
+        float previewTop = mIcon.mBackground.getTargetPreviewTop();
+        List<ItemInfo> items = mIcon.getPreviewItemsOnPage(0);
+        ArrayList<FolderPreviewLayout.ItemPlacement> placements =
+                new ArrayList<>(items.size());
+
+        for (int i = 0; i < items.size(); i++) {
+            PreviewItemDrawingParams params = computePreviewItemDrawingParams(
+                    i, items.size(), null);
+            float itemSize = mIntrinsicIconSize * params.scale;
+            placements.add(new FolderPreviewLayout.ItemPlacement(
+                    items.get(i),
+                    FolderPreviewLayout.ItemRole.DIRECT,
+                    new RectF(
+                            previewLeft + params.transX,
+                            previewTop + params.transY,
+                            previewLeft + params.transX + itemSize,
+                            previewTop + params.transY + itemSize)));
+        }
+
+        return new FolderPreviewLayout.Snapshot(
+                snapshotBounds, null, placements, new ArrayList<>());
     }
 
     @Nullable
