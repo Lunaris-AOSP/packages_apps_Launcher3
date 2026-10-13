@@ -272,6 +272,10 @@ public class RectFSpringAnim extends ReleaseCheck {
                 yVelocityPxPerS, sCachedMinVelocityYPxPerS, sCachedMaxVelocityYPxPerS,
                 sCachedFallOffFactor);
 
+        float durationScale = mUseIconSpringConfig ? OosAppCloseAnimation.DURATION_SCALE : 1f;
+        xVelocityPxPerS /= durationScale;
+        yVelocityPxPerS /= durationScale;
+
         mRectXSpring =
                 new SpringAnimation(this, RECT_CENTER_X)
                         .setSpring(
@@ -305,7 +309,7 @@ public class RectFSpringAnim extends ReleaseCheck {
                                                 ? mRectStiffness : sCachedStiffnessZ)
                                         .setDampingRatio(mUseIconSpringConfig
                                                 ? mRectDamping : sCachedDampingZ))
-                        .setStartVelocity(velocityPxPerMs.y * minVisibleChange)
+                        .setStartVelocity(velocityPxPerMs.y * minVisibleChange / durationScale)
                         .setMaxValue(1f)
                         .setMinimumVisibleChange(minVisibleChange)
                         .addEndListener((animation, canceled, value, velocity) -> {
@@ -536,9 +540,11 @@ public class RectFSpringAnim extends ReleaseCheck {
                 RectF startRect, RectF targetRect) {
             super(context, deviceProfile, startRect, targetRect);
             tracking = TRACKING_CENTER;
-            stiffnessX = 700f;
-            stiffnessY = 900f;
-            rectStiffness = 900f;
+            float stiffnessScale = 1f / (OosAppCloseAnimation.DURATION_SCALE
+                    * OosAppCloseAnimation.DURATION_SCALE);
+            stiffnessX = 700f * stiffnessScale;
+            stiffnessY = 900f * stiffnessScale;
+            rectStiffness = 900f * stiffnessScale;
             dampingX = 0.85f;
             dampingY = 0.85f;
             rectDamping = 0.85f;

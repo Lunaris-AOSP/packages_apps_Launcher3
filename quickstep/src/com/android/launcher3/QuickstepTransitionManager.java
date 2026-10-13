@@ -231,7 +231,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     public static final int RECENTS_LAUNCH_DURATION = 336;
     private static final int LAUNCHER_RESUME_START_DELAY = 100;
-    private static final int CLOSING_TRANSITION_DURATION_MS = 330;
+    private static final int CLOSING_TRANSITION_DURATION_MS = (int) APP_LAUNCH_DURATION;
     public static final int SPLIT_LAUNCH_DURATION = 370;
     public static final int SPLIT_DIVIDER_ANIM_DURATION = 100;
 
@@ -1917,6 +1917,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         SurfaceTransaction transaction = new SurfaceTransaction();
         ValueAnimator closingAnimator = ValueAnimator.ofFloat(0, 1);
         int duration = CLOSING_TRANSITION_DURATION_MS;
+        float durationScale = duration / 330f;
         float windowCornerRadius = getWindowCornerRadius(mLauncher);
         float startShadowRadius = areAllTargetsTranslucent(appTargets) ? 0 : mMaxShadowRadius;
         closingAnimator.setDuration(duration);
@@ -1926,8 +1927,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             : mClosingWindowTransY * 1.0f;
         float endScale = isFreeform ? 0.95f : 0.94f;
         Interpolator alphaInterpolator = isFreeform
-                ? clampToDuration(LINEAR, 0, 100, duration)
-                : clampToDuration(LINEAR, 40, 210, duration);
+                ? clampToDuration(LINEAR, 0, Math.round(100 * durationScale), duration)
+                : clampToDuration(LINEAR, Math.round(40 * durationScale),
+                        Math.round(210 * durationScale), duration);
         closingAnimator.addUpdateListener(new MultiValueUpdateListener() {
             FloatProp mDy = new FloatProp(0, translateY, DECELERATE_1_7);
             FloatProp mScale = new FloatProp(1f, endScale, DECELERATE_1_7);
