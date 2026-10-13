@@ -92,6 +92,9 @@ public class DepthController extends BaseDepthController implements StateHandler
     }
 
     private void ensureDependencies() {
+        if (isDisposed()) {
+            return;
+        }
         View rootView = mLauncher.getRootView();
         if (rootView == null) {
             return;
@@ -113,6 +116,8 @@ public class DepthController extends BaseDepthController implements StateHandler
 
             @Override
             public void onViewDetachedFromWindow(View view) {
+                onWallpaperWindowDetached();
+                removeOnDrawListener();
                 removeSecondaryListeners();
             }
         };
@@ -127,6 +132,7 @@ public class DepthController extends BaseDepthController implements StateHandler
      */
     @Override
     public void dispose() {
+        removeOnDrawListener();
         mLauncher.getStateManager().removeStateListener(mStateListener);
         removeSecondaryListeners();
         super.dispose();
@@ -150,7 +156,11 @@ public class DepthController extends BaseDepthController implements StateHandler
      * Sets if the underlying activity is started or not
      */
     public void setActivityStarted(boolean isStarted) {
+        if (isDisposed()) {
+            return;
+        }
         if (isStarted) {
+            ensureDependencies();
             addOnDrawListener();
         } else {
             removeOnDrawListener();
@@ -192,6 +202,9 @@ public class DepthController extends BaseDepthController implements StateHandler
     }
 
     private void addOnDrawListener() {
+        if (isDisposed()) {
+            return;
+        }
         mRemoveOnDrawListenerCancelled = true;
         if (mIsOnDrawListenerAdded) {
             return;

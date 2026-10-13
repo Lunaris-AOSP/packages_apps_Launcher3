@@ -98,6 +98,8 @@ public class BaseDepthController {
     protected boolean mCrossWindowBlursEnabled;
 
     private float mLastWallpaperZoom = -1f;
+    @Nullable private IBinder mWallpaperWindowToken;
+    private boolean mDisposed;
     private boolean mWallpaperZoomSuppressed;
     private volatile long mWallpaperZoomRequestId;
     @Nullable private ValueAnimator mWallpaperZoomHandoffAnimator;
@@ -185,7 +187,7 @@ public class BaseDepthController {
     }
 
     protected void setCrossWindowBlursEnabled(boolean isEnabled) {
-        if (mCrossWindowBlursEnabled == isEnabled) {
+        if (mDisposed || mCrossWindowBlursEnabled == isEnabled) {
             return;
         }
         mCrossWindowBlursEnabled = isEnabled;
@@ -198,7 +200,7 @@ public class BaseDepthController {
     }
 
     public void pauseBlursOnWindows(boolean pause) {
-        if (mPauseBlurs == pause) {
+        if (mDisposed || mPauseBlurs == pause) {
             return;
         }
         mPauseBlurs = pause;
@@ -215,7 +217,7 @@ public class BaseDepthController {
     }
 
     public void setWallpaperZoomSuppressed(boolean suppressed) {
-        if (mWallpaperZoomSuppressed == suppressed) {
+        if (mDisposed || mWallpaperZoomSuppressed == suppressed) {
             return;
         }
         mWallpaperZoomSuppressed = suppressed;
@@ -240,12 +242,18 @@ public class BaseDepthController {
      */
     private void applyDepthAndBlur(@Nullable SurfaceTransaction surfaceTransaction,
             boolean applyImmediately, boolean skipSimilarBlur) {
+        if (mDisposed) {
+            return;
+        }
         float depth = mDepth;
         applyWallpaperZoom(/* force */ false);
         applyDepthBlur(surfaceTransaction, applyImmediately, skipSimilarBlur, depth);
     }
 
     private void applyWallpaperZoom(boolean force) {
+        if (mDisposed) {
+            return;
+        }
         float zoom = getWallpaperZoom();
         if (!force && mWallpaperZoomHandoffAnimator != null
                 && Float.compare(zoom, mWallpaperZoomHandoffTarget) == 0) {
@@ -265,6 +273,9 @@ public class BaseDepthController {
     }
 
     private void submitWallpaperZoom(float zoom, boolean force) {
+        if (mDisposed) {
+            return;
+        }
         View rootView = mLauncher.getRootView();
         if (rootView == null) {
             return;
@@ -274,7 +285,7 @@ public class BaseDepthController {
             return;
         }
 
-        if (force
+        if (force || windowToken != mWallpaperWindowToken
                 || Math.abs(mLastWallpaperZoom - zoom) >= 0.015f
                 || (zoom == 0f && mLastWallpaperZoom != 0f)
                 || (zoom == 1f && mLastWallpaperZoom != 1f)) {
@@ -288,7 +299,15 @@ public class BaseDepthController {
             });
 
             mLastWallpaperZoom = zoom;
+            mWallpaperWindowToken = windowToken;
         }
+    }
+
+    protected void onWallpaperWindowDetached() {
+        cancelWallpaperZoomHandoff();
+        ++mWallpaperZoomRequestId;
+        mWallpaperWindowToken = null;
+        mLastWallpaperZoom = -1f;
     }
 
     private void animateWallpaperZoomHandoff() {
@@ -518,11 +537,16 @@ public class BaseDepthController {
     }
 
     public void dispose() {
-        cancelWallpaperZoomHandoff();
+        mDisposed = true;
+        onWallpaperWindowDetached();
         LauncherPrefs.get(mLauncher).removeListener(
                 mPreferenceChangeListener,
                 LauncherPrefs.ALLOW_WALLPAPER_ZOOMING,
                 LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING);
+    }
+
+    protected final boolean isDisposed() {
+        return mDisposed;
     }
 
     private @Nullable SurfaceTransaction setupBlurSurface() {
