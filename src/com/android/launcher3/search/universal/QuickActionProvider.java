@@ -33,7 +33,8 @@ public class QuickActionProvider implements SearchProvider {
             "^(call|dial|ring|text|message|msg|sms|email|mail) (.+)$");
     private static final Pattern PHONE = Pattern.compile("^\\+?[0-9][0-9 ()\\-]{3,}[0-9]$");
     private static final Pattern URL = Pattern.compile(
-            "^(https?://)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}(:\\d+)?(/\\S*)?$");
+            "^(https?://)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}(:\\d+)?(/\\S*)?$",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern REMINDER = Pattern.compile(
             "^(?:remind me(?: to)?|reminder|add event|new event) (.+)$");
 
@@ -59,7 +60,7 @@ public class QuickActionProvider implements SearchProvider {
         addAlarm(context, lower, out);
         addContactAction(context, trimmed, lower, out);
         addPhoneNumber(context, trimmed, out);
-        addUrl(context, lower, out);
+        addUrl(context, trimmed, out);
         addReminder(context, trimmed, lower, out);
         return out.size() > max ? out.subList(0, max) : out;
     }
@@ -77,10 +78,10 @@ public class QuickActionProvider implements SearchProvider {
             return;
         }
         String unit = suffix ? m.group(4) : m.group(2);
-        int seconds;
+        long seconds;
         String label;
         if (unit.isEmpty() || unit.startsWith("m")) {
-            seconds = amount * 60;
+            seconds = amount * 60L;
             label = context.getResources().getQuantityString(
                     R.plurals.search_duration_minutes, amount, amount);
         } else if (unit.startsWith("s")) {
@@ -88,7 +89,7 @@ public class QuickActionProvider implements SearchProvider {
             label = context.getResources().getQuantityString(
                     R.plurals.search_duration_seconds, amount, amount);
         } else if (unit.startsWith("h")) {
-            seconds = amount * 3600;
+            seconds = amount * 3600L;
             label = context.getResources().getQuantityString(
                     R.plurals.search_duration_hours, amount, amount);
         } else {
@@ -97,15 +98,13 @@ public class QuickActionProvider implements SearchProvider {
         if (seconds <= 0 || seconds > 24 * 3600) {
             return;
         }
-        // The status bar island shows the running timer, so there is no need to open Clock.
         Intent intent = new Intent(AlarmClock.ACTION_SET_TIMER)
-                .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
-                .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                .putExtra(AlarmClock.EXTRA_LENGTH, (int) seconds)
+                .putExtra(AlarmClock.EXTRA_SKIP_UI, false)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         UniversalSearchResult result = action(context, "timer",
                 context.getString(R.string.search_action_timer, label), null, intent,
                 R.drawable.ic_search_timer);
-        result.confirmation = context.getString(R.string.search_timer_set, label);
         out.add(result);
     }
 
@@ -133,12 +132,11 @@ public class QuickActionProvider implements SearchProvider {
         Intent intent = new Intent(AlarmClock.ACTION_SET_ALARM)
                 .putExtra(AlarmClock.EXTRA_HOUR, hour)
                 .putExtra(AlarmClock.EXTRA_MINUTES, minute)
-                .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                .putExtra(AlarmClock.EXTRA_SKIP_UI, false)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         UniversalSearchResult result = action(context, "alarm",
                 context.getString(R.string.search_action_alarm, label), null, intent,
                 R.drawable.ic_search_alarm);
-        result.confirmation = context.getString(R.string.search_alarm_set, label);
         out.add(result);
     }
 
@@ -159,7 +157,8 @@ public class QuickActionProvider implements SearchProvider {
         } else if (email && target.contains("@")) {
             address = target;
         } else {
-            if (!ContactProvider.hasPermission(context)) {
+            if (!LauncherPrefs.SEARCH_CONTACTS.get(context)
+                    || !ContactProvider.hasPermission(context)) {
                 return;
             }
             String[] match = lookup(context, target, email);
@@ -249,7 +248,7 @@ public class QuickActionProvider implements SearchProvider {
         if (!URL.matcher(query).matches()) {
             return;
         }
-        String url = query.startsWith("http") ? query : "https://" + query;
+        String url = query.regionMatches(true, 0, "http", 0, 4) ? query : "https://" + query;
         out.add(action(context, "url", context.getString(R.string.search_action_open, query),
                 null, new Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         .addCategory(Intent.CATEGORY_BROWSABLE)

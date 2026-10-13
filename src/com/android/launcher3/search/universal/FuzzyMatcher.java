@@ -46,7 +46,6 @@ public final class FuzzyMatcher {
         if (query.length() >= 4 && typoPrefix(query, lower)) {
             return TYPO;
         }
-        // Shorter than this, letters-in-order matches nearly everything ("cat" in Calculator).
         if (query.length() >= 4 && query.charAt(0) == lower.charAt(0)
                 && subsequence(query, lower)) {
             return SUBSEQUENCE;

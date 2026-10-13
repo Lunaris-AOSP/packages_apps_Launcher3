@@ -33,6 +33,10 @@ public class ActionProvider implements SearchProvider {
         Intent intent;
         if (template == null) {
             intent = new Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query);
+            if (context.getPackageManager().resolveActivity(intent, 0) == null) {
+                intent = new Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/search?q=" + Uri.encode(query)));
+            }
         } else if ("google".equals(engine) && isInstalled(context, GOOGLE_APP)) {
             intent = new Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
                     .setPackage(GOOGLE_APP);
@@ -53,7 +57,6 @@ public class ActionProvider implements SearchProvider {
         try {
             ResolveInfo handler = pm.resolveActivity(result.intent,
                     PackageManager.MATCH_DEFAULT_ONLY);
-            // "android" is the chooser, which has no icon worth showing.
             if (handler != null && handler.activityInfo != null
                     && !"android".equals(handler.activityInfo.packageName)) {
                 result.icon = handler.loadIcon(pm);

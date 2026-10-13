@@ -54,7 +54,7 @@ public final class SearchHistory {
     }
 
     static String resultKey(UniversalSearchResult result) {
-        return result.source + ":" + result.id;
+        return result.source + ":" + result.id + "#" + result.user;
     }
 
     public static void recordLaunch(Context context, String key) {
@@ -125,7 +125,7 @@ public final class SearchHistory {
         }
     }
 
-    static void clear(Context context) {
+    public static void clear(Context context) {
         synchronized (sLaunches) {
             sLaunches.clear();
             sQueries.clear();

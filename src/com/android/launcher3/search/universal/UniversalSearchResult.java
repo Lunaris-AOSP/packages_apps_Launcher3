@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.os.UserHandle;
 
+import com.android.launcher3.model.data.ItemInfo;
+
 public class UniversalSearchResult {
 
     public static final int SOURCE_APP = 0;
@@ -33,7 +35,6 @@ public class UniversalSearchResult {
     public int score;
 
     public Drawable icon;
-    // Resolved against the row's theme so vector tints follow it.
     public int iconRes;
     public String packageName;
     public String shortcutId;
@@ -44,9 +45,10 @@ public class UniversalSearchResult {
     public Runnable onTap;
     public Runnable onRemove;
     public Intent whatsapp;
-    public String confirmation;
+    public ItemInfo itemInfo;
     public Toggle toggle;
     public boolean checked;
+    public Runnable onStateChanged;
 
     public interface Toggle {
         boolean set(Context context, boolean on);

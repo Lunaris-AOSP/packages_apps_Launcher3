@@ -1,7 +1,7 @@
 package com.android.launcher3.settings;
 
 import android.annotation.SuppressLint;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -22,7 +22,6 @@ import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.search.universal.UniversalSearchResults;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -47,7 +46,10 @@ public class SearchSectionOrderPreference extends Preference {
                     @NonNull RecyclerView.ViewHolder to) {
                 int a = from.getBindingAdapterPosition();
                 int b = to.getBindingAdapterPosition();
-                Collections.swap(order, a, b);
+                if (a == RecyclerView.NO_POSITION || b == RecyclerView.NO_POSITION || a == b) {
+                    return false;
+                }
+                order.add(b, order.remove(a));
                 rv.getAdapter().notifyItemMoved(a, b);
                 return true;
             }

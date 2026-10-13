@@ -85,7 +85,7 @@ public abstract class BaseAllAppsAdapter
     public static final int VIEW_TYPE_SEARCH_TOP_RESULT = 1 << 14;
     public static final int VIEW_TYPE_SEARCH_FILTERS = 1 << 15;
     public static final int VIEW_TYPE_SEARCH_THUMBNAILS = 1 << 16;
-    public static final int NEXT_ID = 11;
+    public static final int NEXT_ID = 17;
 
     // Common view type masks
     public static final int VIEW_TYPE_MASK_DIVIDER = VIEW_TYPE_ALL_APPS_DIVIDER;
@@ -129,9 +129,7 @@ public abstract class BaseAllAppsAdapter
         public FolderInfo folderInfo = null;
         // Private App Decorator
         public SectionDecorationInfo decorationInfo = null;
-        // Result from a non-app universal search source
         public UniversalSearchResult searchResult = null;
-        // Source id for a universal search section header
         public int searchSection = -1;
         public UniversalSearchResults.Filters searchFilters = null;
         public List<UniversalSearchResult> searchThumbnails = null;
@@ -194,7 +192,9 @@ public abstract class BaseAllAppsAdapter
         }
 
         protected boolean isCountedForAccessibility() {
-            return viewType == VIEW_TYPE_ICON || viewType == VIEW_TYPE_FOLDER;
+            return viewType == VIEW_TYPE_ICON || viewType == VIEW_TYPE_FOLDER
+                    || viewType == VIEW_TYPE_SEARCH_RESULT_ROW
+                    || viewType == VIEW_TYPE_SEARCH_TOP_RESULT;
         }
 
         /**
@@ -208,7 +208,6 @@ public abstract class BaseAllAppsAdapter
                 if (itemInfo == null || other.itemInfo == null) {
                     return itemInfo == other.itemInfo;
                 }
-                // Both itemInfo and other.itemInfo are non-null here
                 return java.util.Objects.equals(itemInfo.user, other.itemInfo.user)
                         && java.util.Objects.equals(itemInfo.getTargetComponent(),
                                 other.itemInfo.getTargetComponent());
@@ -227,7 +226,8 @@ public abstract class BaseAllAppsAdapter
                     || viewType == VIEW_TYPE_SEARCH_TOP_RESULT) {
                 return searchResult != null && other.searchResult != null
                         && searchResult.source == other.searchResult.source
-                        && java.util.Objects.equals(searchResult.id, other.searchResult.id);
+                        && java.util.Objects.equals(searchResult.id, other.searchResult.id)
+                        && java.util.Objects.equals(searchResult.user, other.searchResult.user);
             }
             return true;
         }
@@ -240,7 +240,6 @@ public abstract class BaseAllAppsAdapter
             if (viewType == VIEW_TYPE_SEARCH_RESULT_ROW || viewType == VIEW_TYPE_SEARCH_TOP_RESULT
                     || viewType == VIEW_TYPE_SEARCH_FILTERS
                     || viewType == VIEW_TYPE_SEARCH_THUMBNAILS) {
-                // Titles, subtitles and live state change per query even for the same id.
                 return false;
             }
             return itemInfo == null && other.itemInfo == null;
@@ -389,6 +388,7 @@ public abstract class BaseAllAppsAdapter
                 AdapterItem adapterItem = mApps.getAdapterItems().get(position);
                 BubbleTextView icon = (BubbleTextView) holder.itemView;
                 icon.reset();
+                icon.setVisibility(View.VISIBLE);
                 icon.setTextColor(mTextColor);
                 icon.applyFromApplicationInfo(adapterItem.itemInfo);
                 icon.setOnFocusChangeListener(mIconFocusListener);
@@ -397,8 +397,8 @@ public abstract class BaseAllAppsAdapter
                 if (holder.getItemViewType() != VIEW_TYPE_PRIVATE_SPACE_APP_ICON) {
                     AppInfo app = adapterItem.itemInfo;
                     String query = SearchHistory.currentQuery();
-                    if (mApps.hasSearchResults() && !query.isEmpty() && app.title != null) {
-                        icon.applyLabel(FuzzyMatcher.highlight(query, app.title));
+                    if (mApps.hasSearchResults() && !query.isEmpty()) {
+                        icon.setText(FuzzyMatcher.highlight(query, icon.getText()));
                     }
                     icon.setOnClickListener(!mApps.hasSearchResults() ? mOnIconClickListener
                             : v -> {
@@ -443,6 +443,7 @@ public abstract class BaseAllAppsAdapter
             }
             case VIEW_TYPE_SEARCH_SECTION_HEADER: {
                 AdapterItem item = mApps.getAdapterItems().get(position);
+                ((TextView) holder.itemView).setTextColor(mTextColor);
                 ((TextView) holder.itemView).setText(
                         UniversalSearchResults.getSectionTitle(
                                 mActivityContext.asContext(), item.searchSection));
@@ -452,22 +453,26 @@ public abstract class BaseAllAppsAdapter
             case VIEW_TYPE_SEARCH_TOP_RESULT: {
                 AdapterItem item = mApps.getAdapterItems().get(position);
                 UniversalSearchResults.bind(mActivityContext, holder.itemView, item.searchResult);
+                bindSearchFocus(holder.itemView);
                 break;
             }
             case VIEW_TYPE_SEARCH_FILTERS: {
                 AdapterItem item = mApps.getAdapterItems().get(position);
                 UniversalSearchResults.bindFilters(holder.itemView, item.searchFilters);
+                bindSearchFocus(holder.itemView);
                 break;
             }
             case VIEW_TYPE_SEARCH_THUMBNAILS: {
                 AdapterItem item = mApps.getAdapterItems().get(position);
                 UniversalSearchResults.bindThumbnails(
                         mActivityContext, holder.itemView, item.searchThumbnails);
+                bindSearchFocus(holder.itemView);
                 break;
             }
             case VIEW_TYPE_EMPTY_SEARCH: {
                 AppInfo info = mApps.getAdapterItems().get(position).itemInfo;
                 if (info != null) {
+                    ((TextView) holder.itemView).setTextColor(mTextColor);
                     ((TextView) holder.itemView).setText(mActivityContext.asContext().getString(
                             R.string.all_apps_no_search_results, info.title));
                 }
@@ -517,6 +522,17 @@ public abstract class BaseAllAppsAdapter
                 if (mAdapterProvider.isViewSupported(holder.getItemViewType())) {
                     mAdapterProvider.onBindView(holder, position);
                 }
+        }
+    }
+
+    private void bindSearchFocus(View view) {
+        if (view.isFocusable()) {
+            view.setOnFocusChangeListener(mIconFocusListener);
+        }
+        if (view instanceof ViewGroup group) {
+            for (int i = 0; i < group.getChildCount(); i++) {
+                bindSearchFocus(group.getChildAt(i));
+            }
         }
     }
 

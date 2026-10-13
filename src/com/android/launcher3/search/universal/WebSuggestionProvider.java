@@ -29,7 +29,8 @@ public class WebSuggestionProvider implements SearchProvider {
 
     @Override
     public boolean isEnabled(Context context) {
-        return LauncherPrefs.SEARCH_WEB_SUGGESTIONS.get(context);
+        return LauncherPrefs.SEARCH_WEB_SUGGESTIONS.get(context)
+                && !"default".equals(LauncherPrefs.SEARCH_ENGINE.get(context));
     }
 
     @Override

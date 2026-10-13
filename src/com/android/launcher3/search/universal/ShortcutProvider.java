@@ -9,6 +9,7 @@ import android.os.Process;
 import android.os.SystemClock;
 
 import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.model.data.WorkspaceItemInfo;
 
 import android.graphics.drawable.Drawable;
 
@@ -23,7 +24,6 @@ public class ShortcutProvider implements SearchProvider {
             | LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST
             | LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
             | LauncherApps.ShortcutQuery.FLAG_MATCH_CACHED;
-    // Short enough that a new conversation shows up while the drawer is still open.
     private static final long CACHE_MS = 15_000;
 
     private List<ShortcutInfo> mShortcuts;
@@ -60,6 +60,9 @@ public class ShortcutProvider implements SearchProvider {
             if (out.size() >= max) {
                 break;
             }
+            if (!info.isEnabled() || !SearchProvider.isPackageSearchable(context, info.getPackage())) {
+                continue;
+            }
             boolean conversation = info.isCached();
             if (conversation ? !wantConversations : !wantShortcuts) {
                 continue;
@@ -83,6 +86,7 @@ public class ShortcutProvider implements SearchProvider {
                     score);
             result.packageName = info.getPackage();
             result.shortcutId = info.getId();
+            result.itemInfo = new WorkspaceItemInfo(info, context);
             try {
                 result.icon = launcherApps.getShortcutIconDrawable(
                         info, context.getResources().getDisplayMetrics().densityDpi);

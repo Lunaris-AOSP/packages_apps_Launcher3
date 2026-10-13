@@ -9,12 +9,12 @@ import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.allapps.BaseAllAppsAdapter.AdapterItem;
-import com.android.launcher3.allapps.search.DefaultAppSearchAlgorithm;
+import com.android.launcher3.pm.UserCache;
+import com.android.launcher3.pm.UserManagerState;
 import com.android.launcher3.model.data.AppInfo;
 import com.android.launcher3.search.SearchAlgorithm;
 import com.android.launcher3.search.SearchCallback;
 import com.android.launcher3.util.Executors;
-import com.android.launcher3.util.LooperExecutor;
 
 import java.text.Collator;
 import java.util.ArrayList;
@@ -30,9 +30,7 @@ import java.util.function.Consumer;
 public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
 
     private static final int MAX_PER_PROVIDER = 12;
-    private static final int MAX_GRID_APPS = 5;
     private static final long DEBOUNCE_MS = 60;
-    // Past this, show what has arrived and fold slower providers in when they finish.
     private static final long PROVIDER_TIMEOUT_MS = 150;
     private static final int NO_FILTER = -1;
     private static final int MAX_SCREENSHOTS = 8;
@@ -41,24 +39,23 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     private final LauncherAppState mAppState;
     private final Handler mResultHandler;
     private final Handler mWorker;
-    private final boolean mAppLibrary;
     private final List<SearchProvider> mProviders;
     private final AtomicInteger mRequest = new AtomicInteger();
     private final Collator mCollator = Collator.getInstance();
 
-    // Only touched on mWorker.
     private int mFilter = NO_FILTER;
     private final Set<Integer> mExpanded = new HashSet<>();
     private Pass mLastPass;
+    private String mLastQuery = "";
+    private boolean mResetNextQuery;
 
     private Consumer<String> mQueryHandler = q -> { };
 
-    public UniversalSearchAlgorithm(Context context, LooperExecutor uiExecutor) {
+    public UniversalSearchAlgorithm(Context context) {
         mContext = context.getApplicationContext();
         mAppState = LauncherAppState.getInstance(context);
-        mResultHandler = new Handler(uiExecutor.getLooper());
+        mResultHandler = new Handler(Executors.MAIN_EXECUTOR.getLooper());
         mWorker = new Handler(Executors.UI_HELPER_EXECUTOR.getLooper());
-        mAppLibrary = false;
         mProviders = List.of(new CalculatorProvider(), new QuickActionProvider(),
                 new ShortcutProvider(),
                 new ContactProvider(), new QsTileProvider(), new SettingProvider(),
@@ -79,10 +76,12 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     @Override
     public void cancel(boolean interruptActiveRequests) {
         if (interruptActiveRequests) {
+            mResetNextQuery = true;
             mRequest.incrementAndGet();
             mResultHandler.removeCallbacksAndMessages(null);
             mWorker.removeCallbacksAndMessages(null);
             mWorker.post(this::resetRefinements);
+            SearchHistory.setCurrentQuery("");
         }
     }
 
@@ -96,10 +95,23 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     public void doSearch(String query, SearchCallback<AdapterItem> callback) {
         final int token = mRequest.incrementAndGet();
         SearchHistory.setCurrentQuery(query);
+        mWorker.removeCallbacksAndMessages(null);
+        boolean reset = mResetNextQuery;
+        mResetNextQuery = false;
+        mWorker.post(() -> {
+            if (reset || !mLastQuery.equals(query)) {
+                resetRefinements();
+                mLastQuery = query;
+            }
+        });
         mAppState.getModel().enqueueModelUpdateTask((taskController, dataModel, apps) -> {
+            if (token != mRequest.get()) {
+                return;
+            }
             AppMatches appMatches = matchApps(apps.data, query);
             if (query.trim().isEmpty()) {
-                mWorker.post(() -> publishEmptyQuery(token, query, appMatches.items, callback));
+                Executors.THREAD_POOL_EXECUTOR.execute(
+                        () -> publishEmptyQuery(token, query, appMatches.items, callback));
                 return;
             }
             if (!hasEnabledProvider()) {
@@ -117,15 +129,15 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     private AppMatches matchApps(List<AppInfo> apps, String query) {
         String lower = query.trim().toLowerCase(Locale.getDefault());
         if (lower.isEmpty()) {
-            return new AppMatches(mAppLibrary
-                    ? DefaultAppSearchAlgorithm.getTitleMatchResult(mContext, apps, "")
-                    : new ArrayList<>(), 0);
+            return new AppMatches(new ArrayList<>(), 0);
         }
         record Scored(AppInfo app, int match, int score) {}
         List<Scored> scored = new ArrayList<>();
         boolean anyWordMatch = false;
+        UserManagerState users = UserCache.INSTANCE.get(mContext).getUserManagerState();
         for (AppInfo app : apps) {
-            if (app.title == null) {
+            if (app.title == null || users.isUserQuiet(app.user)
+                    || !users.isUserUnlocked(app.user)) {
                 continue;
             }
             int match = FuzzyMatcher.score(lower, app.title.toString());
@@ -137,14 +149,12 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                     SearchHistory.appKey(app.getTargetComponent(), app.user))));
         }
         if (anyWordMatch) {
-            // Loose matches are for when nothing matched properly, not to pad real results.
             scored.removeIf(s -> s.match < FuzzyMatcher.WORD);
         }
         scored.sort((a, b) -> a.score != b.score ? b.score - a.score
                 : mCollator.compare(a.app.title.toString(), b.app.title.toString()));
         ArrayList<AdapterItem> items = new ArrayList<>();
-        int limit = mAppLibrary ? Integer.MAX_VALUE : MAX_GRID_APPS;
-        for (int i = 0; i < scored.size() && i < limit; i++) {
+        for (int i = 0; i < scored.size(); i++) {
             AppInfo app = scored.get(i).app;
             items.add(AdapterItem.asApp(app));
         }
@@ -157,8 +167,8 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             return;
         }
         ArrayList<AdapterItem> items = new ArrayList<>(historyItems(
-                () -> publishEmptyQuery(mRequest.get(), query, appItems, callback)));
-        if (mAppLibrary && LauncherPrefs.SEARCH_RECENT_SCREENSHOTS.get(mContext)) {
+                () -> publishEmptyQuery(token, query, appItems, callback)));
+        if (LauncherPrefs.SEARCH_RECENT_SCREENSHOTS.get(mContext)) {
             List<UniversalSearchResult> shots = MediaProvider.recentScreenshots(
                     mContext, MAX_SCREENSHOTS);
             if (!shots.isEmpty()) {
@@ -166,13 +176,10 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                 items.add(AdapterItem.asSearchThumbnails(shots));
             }
         }
-        if (LauncherPrefs.SEARCH_PHOTOS.get(mContext) && MediaProvider.hasPermission(mContext)) {
+        if (LauncherPrefs.SEARCH_PHOTOS.get(mContext) && MediaProvider.hasImagePermission(mContext)) {
             PhotoIndex.indexSoon(mContext);
         }
         items.addAll(appItems);
-        if (items.isEmpty() && !mAppLibrary) {
-            return;
-        }
         publish(token, query, items, callback);
     }
 
@@ -191,7 +198,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             row.onTap = () -> mQueryHandler.accept(recent);
             row.onRemove = () -> mWorker.post(() -> {
                 SearchHistory.removeQuery(mContext, recent);
-                refresh.run();
+                Executors.THREAD_POOL_EXECUTOR.execute(refresh);
             });
             items.add(AdapterItem.asSearchResult(row));
         }
@@ -235,14 +242,17 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     private List<UniversalSearchResult> queryProvider(SearchProvider provider, String query) {
         List<UniversalSearchResult> results;
         try {
-            results = provider.query(mContext, query, MAX_PER_PROVIDER);
+            results = provider.query(mContext, query.trim(), MAX_PER_PROVIDER);
         } catch (RuntimeException e) {
-            // A misbehaving provider must not take the whole search down.
             return List.of();
         }
+        results = new ArrayList<>(results);
+        results.removeIf(result -> !SearchProvider.isPackageSearchable(mContext, result.packageName)
+                || (result.intent != null && !SearchProvider.isPackageSearchable(mContext,
+                        result.intent.getComponent() == null ? result.intent.getPackage()
+                                : result.intent.getComponent().getPackageName())));
         for (UniversalSearchResult result : results) {
             result.query = query;
-            // Photos arrive ranked by how sure the labeller is; history must not reshuffle them.
             if (!result.isPlaceholder()
                     && result.source != UniversalSearchResult.SOURCE_PHOTO) {
                 result.score += SearchHistory.boost(mContext, SearchHistory.resultKey(result));
@@ -261,7 +271,11 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     }
 
     private void refine(Runnable change) {
+        int token = mRequest.get();
         mWorker.post(() -> {
+            if (token != mRequest.get()) {
+                return;
+            }
             change.run();
             if (mLastPass != null) {
                 mLastPass.publishResults();
@@ -277,7 +291,6 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             UniversalSearchResult store = ActionProvider.storeSearch(mContext, query.trim());
             if (store != null) {
                 store.query = query;
-                // The store also answers ACTION_SEARCH; one entry for it is enough.
                 all.removeIf(r -> r.source == UniversalSearchResult.SOURCE_WEB
                         && store.packageName.equals(r.packageName));
                 all.add(store);
@@ -292,7 +305,6 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                 }
             }
             if (!forSource.isEmpty()) {
-                // Stable, so equal scores keep the provider's own order (e.g. newest first).
                 forSource.sort((a, b) -> b.score - a.score);
                 bySource.put(source, forSource);
             }
@@ -339,7 +351,8 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         if (best != null && !bestFirst) {
             items.add(AdapterItem.asSearchTopResult(best));
         }
-        int cap = LauncherPrefs.SEARCH_MAX_PER_SECTION.get(mContext);
+        int cap = Math.max(1, Math.min(MAX_PER_PROVIDER,
+                LauncherPrefs.SEARCH_MAX_PER_SECTION.get(mContext)));
         for (Map.Entry<Integer, List<UniversalSearchResult>> section : bySource.entrySet()) {
             List<UniversalSearchResult> results = new ArrayList<>(section.getValue());
             results.remove(best);
@@ -398,7 +411,6 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         UniversalSearchResult best = null;
         for (Map.Entry<Integer, List<UniversalSearchResult>> section : bySource.entrySet()) {
             int source = section.getKey();
-            // Photos are a strip of untitled thumbnails; one alone makes an empty-looking card.
             if (source == UniversalSearchResult.SOURCE_WEB
                     || source == UniversalSearchResult.SOURCE_WEB_SUGGESTION
                     || source == UniversalSearchResult.SOURCE_PHOTO) {
@@ -438,6 +450,9 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         }
 
         void onProviderDone(int slot, List<UniversalSearchResult> results) {
+            if (mToken != mRequest.get()) {
+                return;
+            }
             mResults[slot] = results;
             mPending--;
             if (mPending == 0 || mTimedOut) {
@@ -480,7 +495,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     }
 
     private ArrayList<AdapterItem> withEmptyMessage(ArrayList<AdapterItem> items, String query) {
-        if (!items.isEmpty() || (mAppLibrary && query.isEmpty())) {
+        if (!items.isEmpty() || query.trim().isEmpty()) {
             return items;
         }
         AdapterItem item = new AdapterItem(VIEW_TYPE_EMPTY_SEARCH);

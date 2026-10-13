@@ -164,10 +164,10 @@ public class AllAppsGridAdapter extends BaseAllAppsAdapter {
          */
         private int getRowsNotForAccessibility(int adapterPosition) {
             List<AdapterItem> items = mApps.getAdapterItems();
-            adapterPosition = Math.max(adapterPosition, items.size() - 1);
+            adapterPosition = Math.min(adapterPosition, items.size() - 1);
             int extraRows = 0;
             for (int i = 0; i <= adapterPosition && i < items.size(); i++) {
-                if (!isViewType(items.get(i).viewType, VIEW_TYPE_MASK_ICON)) {
+                if (!items.get(i).isCountedForAccessibility()) {
                     extraRows++;
                 }
             }

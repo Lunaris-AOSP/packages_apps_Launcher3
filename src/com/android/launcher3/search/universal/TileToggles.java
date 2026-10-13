@@ -50,7 +50,9 @@ final class TileToggles {
                     return context.getSystemService(TelephonyManager.class)
                             .isDataEnabledForReason(TelephonyManager.DATA_ENABLED_REASON_USER);
                 case "flashlight":
-                    return registerTorch(context) ? sTorchOn : null;
+                    return context.checkSelfPermission(android.Manifest.permission.CAMERA)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            && registerTorch(context) ? sTorchOn : null;
                 case "dnd":
                     return context.getSystemService(NotificationManager.class).getZenMode()
                             != Settings.Global.ZEN_MODE_OFF;

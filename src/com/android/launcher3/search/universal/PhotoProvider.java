@@ -30,7 +30,7 @@ public class PhotoProvider implements SearchProvider {
 
     @Override
     public boolean isEnabled(Context context) {
-        return LauncherPrefs.SEARCH_PHOTOS.get(context) && MediaProvider.hasPermission(context);
+        return LauncherPrefs.SEARCH_PHOTOS.get(context) && MediaProvider.hasImagePermission(context);
     }
 
     @Override
@@ -49,7 +49,6 @@ public class PhotoProvider implements SearchProvider {
                 bitmap = context.getContentResolver().loadThumbnail(
                         uri, new Size(THUMB_PX, THUMB_PX), null);
             } catch (IOException | RuntimeException e) {
-                // Deleted since it was labelled.
                 continue;
             }
             UniversalSearchResult result = new UniversalSearchResult(

@@ -420,10 +420,12 @@ java_import {
 // Library with all the dependencies for building Launcher3
 android_library {
     name: "Launcher3ResLib",
+    asset_dirs: ["assets"],
     srcs: [],
     resource_dirs: ["res"],
     static_libs: [
         "LauncherPluginLib",
+        "tensorflowlite_java",
         "launcher_quickstep_log_protos_lite",
         "androidx-constraintlayout_constraintlayout",
         "androidx.recyclerview_recyclerview",
@@ -477,6 +479,7 @@ android_library {
 //
 android_app {
     name: "Launcher3",
+    jni_libs: ["libtensorflowlite_jni"],
     defaults: [
         "launcher-non-platform-apis-defaults",
         "launcher_compose_defaults",
@@ -634,7 +637,6 @@ android_library {
         "QuickstepResLib",
         "androidx.room_room-runtime",
         "androidx.room_room-ktx",
-        "tensorflowlite_java",
     ],
     manifest: "quickstep/AndroidManifest.xml",
     platform_apis: true,
@@ -653,6 +655,7 @@ android_library {
 // Build rule for Quickstep app.
 android_app {
     name: "Launcher3QuickStep",
+    jni_libs: ["libtensorflowlite_jni"],
     static_libs: ["Launcher3QuickStepLib"],
     optimize: {
         proguard_flags_files: [":launcher-proguard-rules"],
@@ -698,6 +701,7 @@ android_app {
 // eventually be merged into a single target
 android_app {
     name: "Launcher3Go",
+    jni_libs: ["libtensorflowlite_jni"],
     static_libs: ["Launcher3GoLib"],
     resource_dirs: [],
 
@@ -740,6 +744,7 @@ android_app {
 
 android_app {
     name: "Launcher3QuickStepGo",
+    jni_libs: ["libtensorflowlite_jni"],
     static_libs: ["Launcher3GoLib"],
     resource_dirs: [],
 

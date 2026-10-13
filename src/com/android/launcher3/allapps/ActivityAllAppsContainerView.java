@@ -392,8 +392,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
      * Sets results list for search
      */
     public void setSearchResults(ArrayList<AdapterItem> results) {
+        setSearchResults(results, true);
+    }
+
+    public void setSearchResults(ArrayList<AdapterItem> results, boolean scrollToTop) {
         getMainAdapterProvider().clearHighlightedItem();
-        if (getSearchResultList().setSearchResults(results)) {
+        if (getSearchResultList().setSearchResults(results) && scrollToTop) {
             getSearchRecyclerView().onSearchResultsChanged();
         }
         if (results != null) {

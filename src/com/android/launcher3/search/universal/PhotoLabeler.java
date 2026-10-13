@@ -124,6 +124,9 @@ final class PhotoLabeler implements AutoCloseable {
         Bitmap scaled = bitmap.getWidth() == SIZE && bitmap.getHeight() == SIZE ? bitmap
                 : Bitmap.createScaledBitmap(bitmap, SIZE, SIZE, true);
         scaled.getPixels(mPixels, 0, SIZE, 0, 0, SIZE, SIZE);
+        if (scaled != bitmap) {
+            scaled.recycle();
+        }
         mInput.rewind();
         for (int pixel : mPixels) {
             mInput.put((byte) (pixel >> 16));
@@ -132,8 +135,6 @@ final class PhotoLabeler implements AutoCloseable {
         }
         mInput.rewind();
         mInterpreter.run(mInput, mOutput);
-        // The model ends in logits, not probabilities, so softmax them before any threshold
-        // means anything. Indexed by ImageNet class id; output 0 is the background class.
         float[] probs = new float[mOutput[0].length - 1];
         float max = Float.NEGATIVE_INFINITY;
         for (int i = 0; i < probs.length; i++) {
@@ -162,7 +163,6 @@ final class PhotoLabeler implements AutoCloseable {
                 break;
             }
             for (String word : mLabels[best + 1].toLowerCase(Locale.ROOT).split("[^a-z]+")) {
-                // "Maltese dog" must not make a kitten a dog; kinds come from the groups below.
                 if (word.length() > 2 && !isAnimalWord(word)) {
                     put(terms, word, ranked[best]);
                 }

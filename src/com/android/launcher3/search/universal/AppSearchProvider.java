@@ -15,29 +15,26 @@ import android.os.Process;
 import android.text.TextUtils;
 
 import com.android.launcher3.LauncherPrefs;
-import com.android.launcher3.util.Executors;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /** Readable because the home role holds READ_HOME_APP_SEARCH_DATA. */
 public class AppSearchProvider implements SearchProvider {
 
     private static final long TIMEOUT_MS = 800;
-    // The platform indexes installed apps and contacts itself; those already have sources here.
     private static final String PLATFORM_PACKAGE = "android";
     private static final String[] TITLE_PROPERTIES =
             {"name", "title", "subject", "displayName", "label"};
     private static final String[] SUBTITLE_PROPERTIES =
             {"description", "snippet", "text", "body", "summary"};
     private static final String[] LINK_PROPERTIES = {"url", "uri", "deepLink", "webUrl"};
-
-    private GlobalSearchSession mSession;
 
     @Override
     public int getSource() {
@@ -55,25 +52,22 @@ public class AppSearchProvider implements SearchProvider {
         if (query.trim().length() < 2) {
             return out;
         }
-        GlobalSearchSession session = session(context);
-        if (session == null) {
-            return out;
+        List<SearchResult> page;
+        try (GlobalSearchSession session = session(context)) {
+            if (session == null) {
+                return out;
+            }
+            SearchSpec spec = new SearchSpec.Builder()
+                    .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
+                    .setResultCountPerPage(max * 2)
+                    .build();
+            try (SearchResults results = session.search(query.trim(), spec)) {
+                CompletableFuture<List<SearchResult>> future = new CompletableFuture<>();
+                results.getNextPage(Runnable::run, result -> future.complete(
+                        result.isSuccess() ? result.getResultValue() : null));
+                page = await(future);
+            }
         }
-        SearchSpec spec = new SearchSpec.Builder()
-                .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
-                .setResultCountPerPage(max * 2)
-                .build();
-        List<SearchResult> page = await(latch -> {
-            SearchResults results = session.search(query.trim(), spec);
-            AtomicReference<List<SearchResult>> value = new AtomicReference<>();
-            results.getNextPage(Executors.UI_HELPER_EXECUTOR, result -> {
-                if (result.isSuccess()) {
-                    value.set(result.getResultValue());
-                }
-                results.close();
-                latch.accept(value.get());
-            });
-        });
         if (page == null) {
             return out;
         }
@@ -85,7 +79,7 @@ public class AppSearchProvider implements SearchProvider {
                 break;
             }
             String pkg = hit.getPackageName();
-            if (PLATFORM_PACKAGE.equals(pkg)) {
+            if (PLATFORM_PACKAGE.equals(pkg) || !SearchProvider.isPackageSearchable(context, pkg)) {
                 continue;
             }
             GenericDocument doc = hit.getGenericDocument();
@@ -128,7 +122,6 @@ public class AppSearchProvider implements SearchProvider {
                     return value;
                 }
             } catch (RuntimeException e) {
-                // Property exists with a non-string type in this schema.
             }
         }
         return null;
@@ -146,37 +139,33 @@ public class AppSearchProvider implements SearchProvider {
         return launch == null ? null : launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
 
-    private synchronized GlobalSearchSession session(Context context) {
-        if (mSession != null) {
-            return mSession;
-        }
+    private static GlobalSearchSession session(Context context) {
         AppSearchManager manager = context.getSystemService(AppSearchManager.class);
         if (manager == null) {
             return null;
         }
-        mSession = await(latch -> manager.createGlobalSearchSession(
-                Executors.UI_HELPER_EXECUTOR,
-                (AppSearchResult<GlobalSearchSession> result) ->
-                        latch.accept(result.isSuccess() ? result.getResultValue() : null)));
-        return mSession;
+        CompletableFuture<GlobalSearchSession> future = new CompletableFuture<>();
+        manager.createGlobalSearchSession(Runnable::run,
+                (AppSearchResult<GlobalSearchSession> result) -> {
+                    GlobalSearchSession session = result.isSuccess()
+                            ? result.getResultValue() : null;
+                    if (!future.complete(session) && session != null) {
+                        session.close();
+                    }
+                });
+        return await(future);
     }
 
-    private interface Async<T> {
-        void start(java.util.function.Consumer<T> done);
-    }
-
-    private static <T> T await(Async<T> call) {
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<T> value = new AtomicReference<>();
+    private static <T> T await(CompletableFuture<T> future) {
         try {
-            call.start(result -> {
-                value.set(result);
-                latch.countDown();
-            });
-            latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException | RuntimeException e) {
-            return null;
+            return future.get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
         }
-        return value.get();
+        if (!future.cancel(false) && !future.isCompletedExceptionally()) {
+            return future.getNow(null);
+        }
+        return null;
     }
 }

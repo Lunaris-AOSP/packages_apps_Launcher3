@@ -17,6 +17,8 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.util.Size;
 
+import com.android.launcher3.LauncherPrefs;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,7 +36,7 @@ public final class PhotoIndex {
 
     private static final String TAG = "PhotoIndex";
     private static final int JOB_ID = 0x5EA4C8;
-    private static final int OPPORTUNISTIC_BATCH = 60;
+    private static final int OPPORTUNISTIC_BATCH = 8;
     private static final long OPPORTUNISTIC_INTERVAL_MS = TimeUnit.MINUTES.toMillis(5);
     private static final float RELATIVE_CUTOFF = 0.5f;
 
@@ -65,7 +67,17 @@ public final class PhotoIndex {
         return sInstance;
     }
 
+    public static void cancel(Context context) {
+        JobScheduler scheduler = context.getSystemService(JobScheduler.class);
+        if (scheduler != null) {
+            scheduler.cancel(JOB_ID);
+        }
+    }
+
     static void indexSoon(Context context) {
+        if (!LauncherPrefs.SEARCH_PHOTOS.get(context) || !MediaProvider.hasImagePermission(context)) {
+            return;
+        }
         synchronized (PhotoIndex.class) {
             long now = SystemClock.elapsedRealtime();
             if (now - sLastOpportunistic < OPPORTUNISTIC_INTERVAL_MS) {
@@ -85,6 +97,8 @@ public final class PhotoIndex {
         scheduler.schedule(new JobInfo.Builder(JOB_ID,
                 new ComponentName(context, PhotoIndexJob.class))
                 .setRequiresCharging(true)
+                .setRequiresBatteryNotLow(true)
+                .setRequiresStorageNotLow(true)
                 .setRequiresDeviceIdle(true)
                 .setPeriodic(TimeUnit.DAYS.toMillis(1))
                 .build());
@@ -92,8 +106,11 @@ public final class PhotoIndex {
 
     static void runBulk(Context context, BooleanSupplier stopped, Runnable done) {
         INDEXER.execute(() -> {
-            get(context).index(Integer.MAX_VALUE, stopped);
-            done.run();
+            try {
+                get(context).index(Integer.MAX_VALUE, stopped);
+            } finally {
+                done.run();
+            }
         });
     }
 
@@ -129,7 +146,6 @@ public final class PhotoIndex {
         Map<Long, Float> ranked = scores;
         List<Long> ids = new ArrayList<>(ranked.keySet());
         ids.sort((a, b) -> Float.compare(ranked.get(b), ranked.get(a)));
-        // Next to a clear match, the labeller's unsure guesses are mostly wrong; hide them.
         if (!ids.isEmpty()) {
             float cutoff = ranked.get(ids.get(0)) * RELATIVE_CUTOFF;
             ids.removeIf(id -> ranked.get(id) < cutoff);
@@ -138,7 +154,8 @@ public final class PhotoIndex {
     }
 
     private void index(int budget, BooleanSupplier stopped) {
-        if (!MediaProvider.hasPermission(mContext)) {
+        if (!LauncherPrefs.SEARCH_PHOTOS.get(mContext)
+                || !MediaProvider.hasImagePermission(mContext)) {
             return;
         }
         SQLiteDatabase db;
@@ -165,7 +182,9 @@ public final class PhotoIndex {
             if (c == null) {
                 return;
             }
-            while (c.moveToNext() && labelled < budget && !stopped.getAsBoolean()) {
+            while (c.moveToNext() && labelled < budget && !stopped.getAsBoolean()
+                    && LauncherPrefs.SEARCH_PHOTOS.get(mContext)
+                    && MediaProvider.hasImagePermission(mContext)) {
                 long id = c.getLong(0);
                 if (done.contains(id)) {
                     continue;
@@ -176,9 +195,12 @@ public final class PhotoIndex {
                     Bitmap thumb = mContext.getContentResolver().loadThumbnail(
                             ContentUris.withAppendedId(images, id),
                             new Size(PhotoLabeler.SIZE, PhotoLabeler.SIZE), null);
-                    terms = labeler.describe(thumb);
+                    try {
+                        terms = labeler.describe(thumb);
+                    } finally {
+                        thumb.recycle();
+                    }
                 } catch (IOException | RuntimeException e) {
-                    // Unreadable or vanished; record it so it is not retried every pass.
                     terms = Map.of();
                 }
                 db.beginTransaction();
@@ -222,7 +244,6 @@ public final class PhotoIndex {
 
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-            // Older versions scored tags wrongly; relabel everything rather than patch them.
             db.execSQL("DROP TABLE IF EXISTS photos");
             db.execSQL("DROP TABLE IF EXISTS terms");
             onCreate(db);

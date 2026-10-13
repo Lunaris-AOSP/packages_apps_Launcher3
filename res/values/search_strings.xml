@@ -4,7 +4,7 @@
     <string name="search_section_shortcuts">Shortcuts</string>
     <string name="search_section_contacts">Contacts</string>
     <string name="search_section_settings">Settings</string>
-    <string name="search_sources_title">Search</string>
+    <string name="search_sources_title">Search sources</string>
     <string name="search_shortcuts_title">App shortcuts</string>
     <string name="search_shortcuts_summary">Include shortcuts published by apps in drawer search</string>
     <string name="search_conversations_title">Chats</string>
@@ -25,7 +25,7 @@
     <string name="search_calculator_title">Calculator</string>
     <string name="search_calculator_summary">Answer sums, unit and currency conversions, time zones and date math as you type. Currency rates are downloaded from the ECB.</string>
     <string name="search_files_title">Files and media</string>
-    <string name="search_files_summary">Include files and media by name</string>
+    <string name="search_files_summary">Find accessible media by name, or type “screenshots” or “downloads”</string>
     <string name="search_events_title">Calendar events</string>
     <string name="search_events_summary">Include calendar events. Needs permission to read your calendar.</string>
     <string name="search_actions_title">Web and in-app search</string>
@@ -81,20 +81,18 @@
     <string name="search_app_content_title">Content from apps</string>
     <string name="search_app_content_summary">Include notes, messages and other items apps share with the system search index</string>
     <string name="search_web_suggestions_title">Web suggestions</string>
-    <string name="search_web_suggestions_summary">Suggest searches as you type. What you type is sent to your search engine.</string>
+    <string name="search_web_suggestions_summary">Suggest searches as you type. What you type is sent to the selected engine. Choose an engine other than System default to enable this.</string>
     <string name="search_engine_title">Search engine</string>
     <string name="search_behavior_title">Search behavior</string>
     <string name="search_history_title">Search history</string>
     <string name="search_history_summary">Show recent searches and rank what you open often higher</string>
-    <string name="search_auto_keyboard_title">Open keyboard with the drawer</string>
-    <string name="search_auto_keyboard_summary">Focus the search bar as soon as the app drawer opens</string>
     <string name="search_section_order_title">Section order</string>
     <string name="search_section_order_summary">Choose which kinds of results come first</string>
     <string name="search_section_order_reset">Reset</string>
     <string name="search_section_order_drag">Drag to reorder</string>
     <string name="search_max_per_section_title">Results per section</string>
     <string-array name="search_engine_entries">
-        <item>Browser default</item>
+        <item>System default</item>
         <item>Google</item>
         <item>DuckDuckGo</item>
         <item>Bing</item>
@@ -117,8 +115,11 @@
     <string name="search_recent_screenshots_summary">Show your latest screenshots in search before you type</string>
     <string name="search_whatsapp">WhatsApp</string>
     <string name="search_history_remove">Remove from recent searches</string>
-    <string name="search_timer_set">Timer set for %1$s</string>
-    <string name="search_alarm_set">Alarm set for %1$s</string>
     <string name="search_currency_source">%1$s · ECB rates, %2$s</string>
     <string name="search_currency_source_stale">%1$s · ECB rates from %2$s, offline</string>
+    <string name="universal_search_title">Universal search</string>
+    <string name="universal_search_summary">Search sources, history and result preferences</string>
+    <string name="universal_search_hint">Search apps and more</string>
+    <string name="search_toggle_on">On</string>
+    <string name="search_toggle_off">Off</string>
 </resources>

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/search_top_result"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="8dp"
     android:layout_marginVertical="4dp"
-    android:background="@drawable/search_top_result_bg"
+    android:background="?android:attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true"
     android:gravity="center_vertical"
@@ -48,8 +49,9 @@
 
     <ImageView
         android:id="@+id/search_result_call"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:focusable="true"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:padding="8dp"
         android:contentDescription="@string/search_menu_call"
@@ -58,8 +60,9 @@
 
     <ImageView
         android:id="@+id/search_result_message"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:focusable="true"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/search_menu_message"
         android:padding="8dp"
@@ -68,8 +71,9 @@
 
     <ImageView
         android:id="@+id/search_result_whatsapp"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:focusable="true"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/search_whatsapp"
         android:padding="8dp"
@@ -77,15 +81,16 @@
 
     <ImageView
         android:id="@+id/search_result_remove"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:focusable="true"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/search_history_remove"
         android:padding="10dp"
         android:src="@drawable/ic_search_close"
         android:visibility="gone" />
 
-    <Switch
+    <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/search_result_switch"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

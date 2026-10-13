@@ -50,6 +50,8 @@ public class AllAppsSearchBarController
     protected ExtendedEditText mInput;
     protected String mQuery;
     private String[] mTextConversions;
+    private String mResultQuery;
+    private boolean mResetting;
 
     protected SearchAlgorithm<AdapterItem> mSearchAlgorithm;
 
@@ -63,7 +65,22 @@ public class AllAppsSearchBarController
     public final void initialize(
             SearchAlgorithm<AdapterItem> searchAlgorithm, ExtendedEditText input,
             ActivityContext launcher, SearchCallback<AdapterItem> callback) {
-        mCallback = callback;
+        mCallback = new SearchCallback<>() {
+            @Override
+            public void onSearchResult(String query, java.util.ArrayList<AdapterItem> items) {
+                if (!mResetting && query.equals(mQuery)
+                        && query.equals(mInput.getText().toString())) {
+                    mResultQuery = query;
+                    callback.onSearchResult(query, items);
+                }
+            }
+
+            @Override
+            public void clearSearchResult() {
+                mResultQuery = null;
+                callback.clearSearchResult();
+            }
+        };
         mLauncher = launcher;
 
         mInput = input;
@@ -73,7 +90,8 @@ public class AllAppsSearchBarController
         mSearchAlgorithm = searchAlgorithm;
         if (mSearchAlgorithm.hasEmptyQueryResults()) {
             mInput.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus && mInput.getEditableText().length() == 0) {
+                if (hasFocus && !mResetting && mInput.getEditableText().length() == 0) {
+                    mQuery = "";
                     mSearchAlgorithm.cancel(false);
                     mSearchAlgorithm.doSearch("", mTextConversions, mCallback);
                 }
@@ -110,7 +128,8 @@ public class AllAppsSearchBarController
     @Override
     public void afterTextChanged(final Editable s) {
         mQuery = s.toString();
-        if (mQuery.isEmpty()) {
+        if (mQuery.trim().isEmpty() && (mResetting || !mInput.hasFocus()
+                || !mSearchAlgorithm.hasEmptyQueryResults())) {
             mSearchAlgorithm.cancel(true);
             mCallback.clearSearchResult();
         } else {
@@ -120,12 +139,13 @@ public class AllAppsSearchBarController
     }
 
     public void refreshSearchResult() {
-        if (TextUtils.isEmpty(mQuery)) {
+        if (mQuery == null || (mQuery.trim().isEmpty() && (!mInput.hasFocus()
+                || !mSearchAlgorithm.hasEmptyQueryResults()))) {
             return;
         }
         // If play store continues auto updating an app, we want to show partial result.
         mSearchAlgorithm.cancel(false);
-        mSearchAlgorithm.doSearch(mQuery, mCallback);
+        mSearchAlgorithm.doSearch(mQuery, mTextConversions, mCallback);
     }
 
     @Override
@@ -133,7 +153,9 @@ public class AllAppsSearchBarController
 
         if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_GO || (
                 actionId == EditorInfo.IME_NULL && event != null
-                        && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                        && event.getAction() == KeyEvent.ACTION_DOWN
+                        && (event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                                || event.getKeyCode() == KeyEvent.KEYCODE_NUMPAD_ENTER))) {
             if (actionId == EditorInfo.IME_NULL) {
                 Log.i(TAG, "User pressed ENTER key");
             } else {
@@ -141,7 +163,7 @@ public class AllAppsSearchBarController
             }
             // Skip if the query is empty
             String query = v.getText().toString();
-            if (query.isEmpty()) {
+            if (query.trim().isEmpty()) {
                 return false;
             }
 
@@ -152,19 +174,19 @@ public class AllAppsSearchBarController
     }
 
     private boolean launchTopResult() {
-        if (TextUtils.isEmpty(mQuery)) {
+        if (TextUtils.isEmpty(mQuery) || mQuery.trim().isEmpty()
+                || !mQuery.equals(mResultQuery)) {
             return false;
         }
         List<AdapterItem> items = mLauncher.getAppsView().getSearchResultList().getAdapterItems();
         for (AdapterItem item : items) {
-            if (item.searchResult != null) {
+            if (item.searchResult != null && !item.searchResult.isPlaceholder()) {
                 return UniversalSearchResults.launch(mLauncher, mInput, item.searchResult);
             }
             if (item.itemInfo != null && BaseAllAppsAdapter.isIconViewType(item.viewType)) {
                 SearchHistory.recordLaunch(mInput.getContext(), SearchHistory.appKey(
                         item.itemInfo.getTargetComponent(), item.itemInfo.user));
-                return mLauncher.startActivitySafely(
-                        mInput, item.itemInfo.getIntent(), item.itemInfo) != null;
+                return UniversalSearchResults.launchItem(mLauncher, mInput, item.itemInfo);
             }
         }
         return false;
@@ -184,12 +206,21 @@ public class AllAppsSearchBarController
     /**
      * Resets the search bar state.
      */
+    public void cancelSearch() {
+        mSearchAlgorithm.cancel(true);
+        mResultQuery = null;
+    }
+
     public void reset() {
+        mResetting = true;
+        cancelSearch();
         mCallback.clearSearchResult();
         mInput.reset();
         mInput.clearFocus();
         mInput.hideKeyboard();
         mQuery = null;
+        mResultQuery = null;
+        mResetting = false;
     }
 
     /**

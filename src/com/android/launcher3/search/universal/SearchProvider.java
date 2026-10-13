@@ -8,7 +8,20 @@ import android.provider.Settings;
 
 import java.util.List;
 
+import com.android.launcher3.lineage.trust.db.TrustDatabaseHelper;
+
 public interface SearchProvider {
+
+    static boolean isPackageSearchable(Context context, String packageName) {
+        try {
+            return packageName == null
+                    || (!TrustDatabaseHelper.getInstance(context).isPackageHidden(packageName)
+                            && !TrustDatabaseHelper.getInstance(context)
+                                    .isPackageProtected(packageName));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
 
     int getSource();
 

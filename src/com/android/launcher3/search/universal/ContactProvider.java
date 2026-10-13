@@ -35,11 +35,13 @@ public class ContactProvider implements SearchProvider {
         }
     }
 
-    // WhatsApp adds a data row of this type to contacts that use it; viewing it opens the chat.
     private static final String WHATSAPP_PROFILE = "vnd.android.cursor.item/vnd.com.whatsapp.profile";
     private static final String WHATSAPP = "com.whatsapp";
 
     private static Intent whatsappChat(Context context, long contactId) {
+        if (!SearchProvider.isPackageSearchable(context, WHATSAPP)) {
+            return null;
+        }
         try (Cursor c = context.getContentResolver().query(ContactsContract.Data.CONTENT_URI,
                 new String[]{ContactsContract.Data._ID},
                 ContactsContract.Data.CONTACT_ID + "=? AND " + ContactsContract.Data.MIMETYPE
@@ -60,7 +62,7 @@ public class ContactProvider implements SearchProvider {
 
     private static Drawable loadPhoto(Context context, Uri contactUri) {
         try (InputStream in = ContactsContract.Contacts.openContactPhotoInputStream(
-                context.getContentResolver(), contactUri, true)) {
+                context.getContentResolver(), contactUri, false)) {
             if (in == null) {
                 return null;
             }

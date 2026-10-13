@@ -26,7 +26,6 @@ public class MediaProvider implements SearchProvider {
 
     private static final Pattern SCREENSHOTS = Pattern.compile("^screen ?shots?$");
     private static final Pattern DOWNLOADS = Pattern.compile("^downloads?$");
-    // Newest first is already the right order for these, so keep it through the sort.
     private static final int RECENT_SCORE = 90;
 
     private static final String[] PROJECTION = {
@@ -45,7 +44,22 @@ public class MediaProvider implements SearchProvider {
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO,
             Manifest.permission.READ_MEDIA_AUDIO,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
     };
+
+    public static final String[] IMAGE_PERMISSIONS = {
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+    };
+
+    public static boolean hasImagePermission(Context context) {
+        for (String permission : IMAGE_PERMISSIONS) {
+            if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static Drawable loadThumbnail(Context context, Uri uri) {
         try {
@@ -59,7 +73,7 @@ public class MediaProvider implements SearchProvider {
 
     static List<UniversalSearchResult> recentScreenshots(Context context, int max) {
         List<UniversalSearchResult> out = new ArrayList<>();
-        if (!hasPermission(context)) {
+        if (!hasImagePermission(context)) {
             return out;
         }
         Uri images = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL);
@@ -126,7 +140,6 @@ public class MediaProvider implements SearchProvider {
             args = new String[]{"Download%"};
         } else {
             recent = false;
-            // Folders are rows here too, with no MIME type; they can't be opened as files.
             selection = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ? AND "
                     + MediaStore.Files.FileColumns.MIME_TYPE + " IS NOT NULL";
             args = new String[]{"%" + query + "%"};
@@ -147,8 +160,11 @@ public class MediaProvider implements SearchProvider {
                 }
                 Uri uri = ContentUris.withAppendedId(collection, c.getLong(idIndex));
                 String mime = mimeIndex < 0 ? null : c.getString(mimeIndex);
+                if (TextUtils.isEmpty(mime)) {
+                    continue;
+                }
                 Intent intent = new Intent(Intent.ACTION_VIEW)
-                        .setDataAndType(uri, TextUtils.isEmpty(mime) ? "*/*" : mime)
+                        .setDataAndType(uri, mime)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                                 | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 UniversalSearchResult result = new UniversalSearchResult(

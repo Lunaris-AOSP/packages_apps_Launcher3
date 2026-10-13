@@ -54,6 +54,8 @@ import com.android.launcher3.R;
 import com.android.launcher3.search.universal.CalendarProvider;
 import com.android.launcher3.search.universal.ContactProvider;
 import com.android.launcher3.search.universal.MediaProvider;
+import com.android.launcher3.search.universal.PhotoIndex;
+import com.android.launcher3.search.universal.SearchHistory;
 import com.android.launcher3.allapps.AppDrawerStyle;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.util.Executors;
@@ -119,6 +121,10 @@ public class SettingsAppDrawer extends CollapsingToolbarBaseActivity
 
 @Override
 public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+    if (LauncherPrefs.SEARCH_PHOTOS.getSharedPrefKey().equals(key)
+            && !LauncherPrefs.SEARCH_PHOTOS.get(this)) {
+        PhotoIndex.cancel(this);
+    }
     if (LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.getSharedPrefKey().equals(key) ||
         LauncherPrefs.ALL_APPS_DARK_TEXT.getSharedPrefKey().equals(key) ||
         LauncherPrefs.APP_DRAWER_STYLE.getSharedPrefKey().equals(key) ||
@@ -173,7 +179,7 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
     public boolean onPreferenceStartScreen(PreferenceFragmentCompat caller, PreferenceScreen pref) {
         Bundle args = new Bundle();
         args.putString(ARG_PREFERENCE_ROOT, pref.getKey());
-        return startPreference(getString(R.string.app_drawer_category_title), args, pref.getKey());
+        return startPreference(caller.getClass().getName(), args, pref.getKey());
     }
 
     @Override
@@ -195,6 +201,8 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
         private static final int REQUEST_READ_CONTACTS = 40;
         private static final int REQUEST_READ_CALENDAR = 41;
         private static final int REQUEST_READ_MEDIA = 42;
+        private static final int REQUEST_READ_MEDIA_PHOTOS = 43;
+        private static final int REQUEST_READ_SCREENSHOTS = 44;
 
         private boolean mRestartOnResume = false;
 
@@ -215,8 +223,6 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             super.onCreate(savedInstanceState);
         }
 
-        private static final int REQUEST_READ_MEDIA_PHOTOS = 43;
-
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             final Bundle args = getArguments();
@@ -228,13 +234,11 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
 
             getPreferenceManager().setSharedPreferencesName(LauncherFiles.SHARED_PREFERENCES_KEY);
             setPreferencesFromResource(R.xml.launcher_app_drawer_preferences, rootKey);
+            getPreferenceManager().getSharedPreferences()
+                    .registerOnSharedPreferenceChangeListener(this);
 
             PreferenceScreen screen = getPreferenceScreen();
-            wireContactsToggle(screen);
-            wireCalendarToggle(screen);
-            wireFilesToggle(screen);
-            wireMediaToggle(screen, LauncherPrefs.SEARCH_PHOTOS.getSharedPrefKey(),
-                    REQUEST_READ_MEDIA_PHOTOS);
+            wireSearchPreferences(screen);
 
             mSearchPlacementPref = screen.findPreference(KEY_SEARCH_PLACEMENT);
             mDrawerStylePref = screen.findPreference(KEY_APP_DRAWER_STYLE);
@@ -271,80 +275,53 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
                 getActivity().setTitle(getPreferenceScreen().getTitle());
             }
 
-            getPreferenceManager().getSharedPreferences()
-                    .registerOnSharedPreferenceChangeListener(this);
         }
 
-        private void wireMediaToggle(PreferenceScreen screen, String key, int requestCode) {
-            if (!(screen.findPreference(key) instanceof TwoStatePreference toggle)) {
-                return;
+        private void wireSearchPreferences(PreferenceScreen screen) {
+            Preference suggestions = screen.findPreference(
+                    LauncherPrefs.SEARCH_WEB_SUGGESTIONS.getSharedPrefKey());
+            if (suggestions != null) {
+                suggestions.setEnabled(!"default".equals(
+                        LauncherPrefs.SEARCH_ENGINE.get(requireContext())));
             }
-            if (toggle.isChecked() && !MediaProvider.hasPermission(requireContext())) {
-                toggle.setChecked(false);
-            }
-            toggle.setOnPreferenceChangeListener((preference, value) -> {
-                if (!((Boolean) value) || MediaProvider.hasPermission(requireContext())) {
+            wirePermissionToggle(screen, LauncherPrefs.SEARCH_CONTACTS.getSharedPrefKey(),
+                    REQUEST_READ_CONTACTS, new String[]{android.Manifest.permission.READ_CONTACTS},
+                    () -> ContactProvider.hasPermission(requireContext()));
+            wirePermissionToggle(screen, LauncherPrefs.SEARCH_EVENTS.getSharedPrefKey(),
+                    REQUEST_READ_CALENDAR, new String[]{android.Manifest.permission.READ_CALENDAR},
+                    () -> CalendarProvider.hasPermission(requireContext()));
+            wirePermissionToggle(screen, LauncherPrefs.SEARCH_FILES.getSharedPrefKey(),
+                    REQUEST_READ_MEDIA, MediaProvider.PERMISSIONS,
+                    () -> MediaProvider.hasPermission(requireContext()));
+            wirePermissionToggle(screen, LauncherPrefs.SEARCH_PHOTOS.getSharedPrefKey(),
+                    REQUEST_READ_MEDIA_PHOTOS, MediaProvider.IMAGE_PERMISSIONS,
+                    () -> MediaProvider.hasImagePermission(requireContext()));
+            wirePermissionToggle(screen, LauncherPrefs.SEARCH_RECENT_SCREENSHOTS.getSharedPrefKey(),
+                    REQUEST_READ_SCREENSHOTS, MediaProvider.IMAGE_PERMISSIONS,
+                    () -> MediaProvider.hasImagePermission(requireContext()));
+            Preference clear = screen.findPreference("pref_search_clear_history");
+            if (clear != null) {
+                clear.setOnPreferenceClickListener(preference -> {
+                    SearchHistory.clear(requireContext());
                     return true;
-                }
-                requestPermissions(MediaProvider.PERMISSIONS, requestCode);
-                return false;
-            });
+                });
+            }
         }
 
-        private void wireFilesToggle(PreferenceScreen screen) {
-            Preference pref = screen.findPreference(
-                    LauncherPrefs.SEARCH_FILES.getSharedPrefKey());
+        private void wirePermissionToggle(PreferenceScreen screen, String key, int requestCode,
+                String[] permissions, java.util.function.BooleanSupplier hasPermission) {
+            Preference pref = screen.findPreference(key);
             if (!(pref instanceof TwoStatePreference toggle)) {
                 return;
             }
-            if (toggle.isChecked() && !MediaProvider.hasPermission(requireContext())) {
+            if (toggle.isChecked() && !hasPermission.getAsBoolean()) {
                 toggle.setChecked(false);
             }
             toggle.setOnPreferenceChangeListener((preference, value) -> {
-                if (!((Boolean) value) || MediaProvider.hasPermission(requireContext())) {
+                if (!((Boolean) value) || hasPermission.getAsBoolean()) {
                     return true;
                 }
-                requestPermissions(MediaProvider.PERMISSIONS, REQUEST_READ_MEDIA);
-                return false;
-            });
-        }
-
-        private void wireCalendarToggle(PreferenceScreen screen) {
-            Preference pref = screen.findPreference(
-                    LauncherPrefs.SEARCH_EVENTS.getSharedPrefKey());
-            if (!(pref instanceof TwoStatePreference toggle)) {
-                return;
-            }
-            if (toggle.isChecked() && !CalendarProvider.hasPermission(requireContext())) {
-                toggle.setChecked(false);
-            }
-            toggle.setOnPreferenceChangeListener((preference, value) -> {
-                if (!((Boolean) value) || CalendarProvider.hasPermission(requireContext())) {
-                    return true;
-                }
-                requestPermissions(
-                        new String[]{android.Manifest.permission.READ_CALENDAR},
-                        REQUEST_READ_CALENDAR);
-                return false;
-            });
-        }
-
-        private void wireContactsToggle(PreferenceScreen screen) {
-            Preference pref = screen.findPreference(
-                    LauncherPrefs.SEARCH_CONTACTS.getSharedPrefKey());
-            if (!(pref instanceof TwoStatePreference toggle)) {
-                return;
-            }
-            if (toggle.isChecked() && !ContactProvider.hasPermission(requireContext())) {
-                toggle.setChecked(false);
-            }
-            toggle.setOnPreferenceChangeListener((preference, value) -> {
-                if (!((Boolean) value) || ContactProvider.hasPermission(requireContext())) {
-                    return true;
-                }
-                requestPermissions(
-                        new String[]{android.Manifest.permission.READ_CONTACTS},
-                        REQUEST_READ_CONTACTS);
+                requestPermissions(permissions, requestCode);
                 return false;
             });
         }
@@ -353,28 +330,32 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
         public void onRequestPermissionsResult(int requestCode, String[] permissions,
                 int[] grantResults) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-            if (getPreferenceScreen() == null) {
+            if (getPreferenceScreen() == null || !isAdded()) {
                 return;
             }
             String key;
+            boolean granted;
             if (requestCode == REQUEST_READ_CONTACTS) {
                 key = LauncherPrefs.SEARCH_CONTACTS.getSharedPrefKey();
+                granted = ContactProvider.hasPermission(requireContext());
             } else if (requestCode == REQUEST_READ_CALENDAR) {
                 key = LauncherPrefs.SEARCH_EVENTS.getSharedPrefKey();
+                granted = CalendarProvider.hasPermission(requireContext());
             } else if (requestCode == REQUEST_READ_MEDIA) {
                 key = LauncherPrefs.SEARCH_FILES.getSharedPrefKey();
+                granted = MediaProvider.hasPermission(requireContext());
             } else if (requestCode == REQUEST_READ_MEDIA_PHOTOS) {
                 key = LauncherPrefs.SEARCH_PHOTOS.getSharedPrefKey();
+                granted = MediaProvider.hasImagePermission(requireContext());
+            } else if (requestCode == REQUEST_READ_SCREENSHOTS) {
+                key = LauncherPrefs.SEARCH_RECENT_SCREENSHOTS.getSharedPrefKey();
+                granted = MediaProvider.hasImagePermission(requireContext());
             } else {
                 return;
             }
-            boolean granted = false;
-            for (int result : grantResults) {
-                granted |= result == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            }
             Preference pref = getPreferenceScreen().findPreference(key);
-            if (granted && pref instanceof TwoStatePreference toggle) {
-                toggle.setChecked(true);
+            if (pref instanceof TwoStatePreference toggle) {
+                toggle.setChecked(granted);
             }
         }
 
@@ -382,6 +363,10 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             for (int i = 0; i < parent.getPreferenceCount(); i++) {
                 Preference pref = parent.getPreference(i);
                 if (pref.getKey() != null && pref.getKey().equals(targetKey)) {
+                    return true;
+                }
+                if (pref instanceof PreferenceGroup && !(pref instanceof PreferenceScreen)
+                        && isKeyInPreferenceGroup(targetKey, (PreferenceGroup) pref)) {
                     return true;
                 }
             }
@@ -397,6 +382,9 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
          */
         @Nullable
         private PreferenceScreen findParentPreference(PreferenceScreen parent, String targetKey) {
+            if (isKeyInPreferenceGroup(targetKey, parent)) {
+                return parent;
+            }
             for (int i = 0; i < parent.getPreferenceCount(); i++) {
                 Preference pref = parent.getPreference(i);
                 if (pref instanceof PreferenceScreen) {
@@ -439,6 +427,7 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
         @Override
         public void onResume() {
             super.onResume();
+            wireSearchPreferences(getPreferenceScreen());
 
             if (isAdded() && !mPreferenceHighlighted) {
                 PreferenceHighlighter highlighter = createHighlighter();
@@ -462,6 +451,9 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
 
         @Override
         public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+            if (LauncherPrefs.SEARCH_ENGINE.getSharedPrefKey().equals(key)) {
+                wireSearchPreferences(getPreferenceScreen());
+            }
             if (KEY_SEARCH_PLACEMENT.equals(key) || KEY_APP_DRAWER_STYLE.equals(key)) {
                 updateOpenKeyboardEnabled();
                 updateDrawerStyleSummary();

@@ -31,8 +31,10 @@ public class CalculatorProvider implements SearchProvider {
 
     private static final Pattern CONVERSION = Pattern.compile(
             "^\\s*(-?[0-9.]+)\\s*([a-z°]+)\\s+(?:in|to)\\s+([a-z°]+)\\s*$");
-    private static final DecimalFormat FORMAT = new DecimalFormat("#,##0.######");
-    private static final DecimalFormat MONEY = new DecimalFormat("#,##0.00");
+    private static final ThreadLocal<DecimalFormat> FORMAT =
+            ThreadLocal.withInitial(() -> new DecimalFormat("#,##0.######"));
+    private static final ThreadLocal<DecimalFormat> MONEY =
+            ThreadLocal.withInitial(() -> new DecimalFormat("#,##0.00"));
     private static final Pattern CURRENCY = Pattern.compile(
             "^\\s*([0-9][0-9.,]*)\\s*([a-z]{3})(?:\\s+(?:in|to)\\s+([a-z]{3}))?\\s*$");
     private static final Pattern TIME_IN = Pattern.compile(
@@ -40,7 +42,6 @@ public class CalculatorProvider implements SearchProvider {
     private static final Pattern DATE_MATH = Pattern.compile(
             "^(in )?(\\d+) (day|week|month|year)s?( from today| from now| later| ago)?$");
 
-    // Currencies in the ECB reference feed.
     private static final Set<String> CURRENCIES = Set.of("eur", "usd", "jpy", "bgn", "czk",
             "dkk", "gbp", "huf", "pln", "ron", "sek", "chf", "isk", "nok", "try", "aud", "brl",
             "cad", "cny", "hkd", "idr", "ils", "inr", "krw", "mxn", "myr", "nzd", "php", "sgd",
@@ -98,7 +99,7 @@ public class CalculatorProvider implements SearchProvider {
     public List<UniversalSearchResult> query(Context context, String query, int max) {
         List<UniversalSearchResult> out = new ArrayList<>();
         String trimmed = query.trim();
-        if (trimmed.isEmpty()) {
+        if (trimmed.isEmpty() || trimmed.length() > 256) {
             return out;
         }
         String lower = trimmed.toLowerCase(Locale.ROOT);
@@ -164,7 +165,7 @@ public class CalculatorProvider implements SearchProvider {
             return null;
         }
         double result = value / rates.get(from) * rates.get(to);
-        return MONEY.format(result) + " " + to.toUpperCase(Locale.ROOT);
+        return MONEY.get().format(result) + " " + to.toUpperCase(Locale.ROOT);
     }
 
     private static String currencySource(Context context, String query) {
@@ -313,7 +314,7 @@ public class CalculatorProvider implements SearchProvider {
         if (result == null) {
             result = scale(value, from, to, DATA);
         }
-        return result == null ? null : FORMAT.format(result) + " " + to;
+        return result == null ? null : FORMAT.get().format(result) + " " + to;
     }
 
     private static Double scale(double value, String from, String to, Map<String, Double> units) {
@@ -348,7 +349,7 @@ public class CalculatorProvider implements SearchProvider {
             if (!parser.done() || Double.isNaN(value) || Double.isInfinite(value)) {
                 return null;
             }
-            return FORMAT.format(value);
+            return FORMAT.get().format(value);
         } catch (RuntimeException e) {
             return null;
         }
@@ -377,10 +378,10 @@ public class CalculatorProvider implements SearchProvider {
         }
 
         private double term() {
-            double value = power();
+            double value = unary();
             while (!done() && (peek() == '*' || peek() == '/' || peek() == '%')) {
                 char op = mText.charAt(mPos++);
-                double rhs = power();
+                double rhs = unary();
                 if (op == '*') {
                     value *= rhs;
                 } else if (op == '/') {
@@ -393,10 +394,10 @@ public class CalculatorProvider implements SearchProvider {
         }
 
         private double power() {
-            double value = unary();
+            double value = atom();
             if (!done() && peek() == '^') {
                 mPos++;
-                return Math.pow(value, power());
+                return Math.pow(value, unary());
             }
             return value;
         }
@@ -410,7 +411,7 @@ public class CalculatorProvider implements SearchProvider {
                 mPos++;
                 return unary();
             }
-            return atom();
+            return power();
         }
 
         private double atom() {

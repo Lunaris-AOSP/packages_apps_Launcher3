@@ -92,6 +92,9 @@ public class QsTileProvider implements SearchProvider {
             if (intent == null && state == null) {
                 continue;
             }
+            if (state == null && intent == null) {
+                continue;
+            }
             UniversalSearchResult result = new UniversalSearchResult(
                     UniversalSearchResult.SOURCE_QS_TILE,
                     spec,

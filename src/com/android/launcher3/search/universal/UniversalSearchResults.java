@@ -28,6 +28,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.R;
 import com.android.launcher3.views.ActivityContext;
 
@@ -194,7 +195,9 @@ public class UniversalSearchResults {
             thumb.setClipToOutline(true);
             thumb.setForeground(view.getContext().getDrawable(
                     android.R.drawable.list_selector_background));
-            thumb.setContentDescription(view.getContext().getString(R.string.search_photo));
+            thumb.setContentDescription(TextUtils.isEmpty(result.title)
+                    ? view.getContext().getString(R.string.search_photo) : result.title);
+            thumb.setFocusable(true);
             thumb.setOnClickListener(v -> launch(activityContext, v, result));
             group.addView(thumb);
         }
@@ -202,19 +205,31 @@ public class UniversalSearchResults {
 
     public static void bindFilters(View view, Filters filters) {
         ViewGroup group = view.findViewById(R.id.search_filters_group);
-        group.removeAllViews();
         if (filters == null) {
+            group.removeAllViews();
+            group.setTag(null);
             return;
         }
+        boolean reuse = filters.sources().equals(group.getTag())
+                && group.getChildCount() == filters.sources().size();
+        if (!reuse) {
+            group.removeAllViews();
+            group.setTag(new ArrayList<>(filters.sources()));
+        }
         LayoutInflater inflater = LayoutInflater.from(view.getContext());
-        for (int source : filters.sources()) {
-            TextView chip = (TextView) inflater.inflate(R.layout.search_filter_chip, group, false);
+        for (int i = 0; i < filters.sources().size(); i++) {
+            int source = filters.sources().get(i);
+            TextView chip = reuse ? (TextView) group.getChildAt(i)
+                    : (TextView) inflater.inflate(R.layout.search_filter_chip, group, false);
             chip.setText(source < 0
                     ? view.getContext().getString(R.string.search_filter_all)
                     : getSectionTitle(view.getContext(), source));
-            chip.setSelected(source == filters.selected());
+            SearchResultTheme.bindChip(chip, source == filters.selected());
+            chip.setFocusable(true);
             chip.setOnClickListener(v -> filters.onSelect().accept(source));
-            group.addView(chip);
+            if (!reuse) {
+                group.addView(chip);
+            }
         }
     }
 
@@ -223,6 +238,7 @@ public class UniversalSearchResults {
         if (result == null) {
             return;
         }
+        SearchResultTheme.bindRow(view);
         ImageView icon = view.findViewById(R.id.search_result_icon);
         TextView title = view.findViewById(R.id.search_result_title);
         TextView subtitle = view.findViewById(R.id.search_result_subtitle);
@@ -276,21 +292,19 @@ public class UniversalSearchResults {
         applyIcon(icon, result);
         CompoundButton toggle = view.findViewById(R.id.search_result_switch);
         if (result.toggle == null) {
+            view.setStateDescription(null);
+            result.onStateChanged = null;
             toggle.setVisibility(View.GONE);
             view.setOnClickListener(v -> launch(activityContext, v, result));
         } else {
             toggle.setVisibility(View.VISIBLE);
-            toggle.setChecked(result.checked);
-            view.setOnClickListener(v -> {
-                boolean on = !result.checked;
-                if (result.toggle.set(v.getContext(), on)) {
-                    result.checked = on;
-                    toggle.setChecked(on);
-                    SearchHistory.recordLaunch(v.getContext(), SearchHistory.resultKey(result));
-                } else if (result.intent != null) {
-                    activityContext.startActivitySafely(v, result.intent, null);
-                }
-            });
+            result.onStateChanged = () -> {
+                toggle.setChecked(result.checked);
+                view.setStateDescription(view.getContext().getString(result.checked
+                        ? R.string.search_toggle_on : R.string.search_toggle_off));
+            };
+            result.onStateChanged.run();
+            view.setOnClickListener(v -> launch(activityContext, v, result));
         }
         boolean hasMenu = !result.isPlaceholder() && buildMenu(null, result);
         view.setOnLongClickListener(hasMenu ? v -> {
@@ -456,10 +470,14 @@ public class UniversalSearchResults {
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             icon.setClipToOutline(false);
             icon.setOutlineProvider(null);
+            icon.setImageTintList(result.iconRes == R.drawable.ic_search_engine_google
+                    ? null : android.content.res.ColorStateList.valueOf(
+                            SearchResultTheme.textColor(icon.getContext())));
             icon.setImageResource(result.iconRes != 0 ? result.iconRes
                     : getFallbackIcon(result.source));
             return;
         }
+        icon.setImageTintList(null);
         icon.setImageDrawable(result.icon);
         if (!result.thumbnail) {
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -482,6 +500,20 @@ public class UniversalSearchResults {
         icon.setClipToOutline(true);
     }
 
+    public static boolean launchItem(ActivityContext activityContext, View view, ItemInfo item) {
+        if (view.getWindowToken() == null) {
+            return false;
+        }
+        Object previousTag = view.getTag();
+        try {
+            view.setTag(item);
+            activityContext.getItemOnClickListener().onClick(view);
+            return true;
+        } finally {
+            view.setTag(previousTag);
+        }
+    }
+
     public static boolean launch(ActivityContext activityContext, View view,
             UniversalSearchResult result) {
         if (result.onTap != null) {
@@ -489,22 +521,23 @@ public class UniversalSearchResults {
             return true;
         }
         Context context = activityContext.asContext();
+        if (!SearchProvider.isPackageSearchable(context, result.packageName)) {
+            return false;
+        }
+        if (result.itemInfo != null) {
+            SearchHistory.recordLaunch(context, SearchHistory.resultKey(result));
+            return launchItem(activityContext, view, result.itemInfo);
+        }
         if (result.toggle != null && result.toggle.set(context, !result.checked)) {
             result.checked = !result.checked;
+            if (result.onStateChanged != null) {
+                result.onStateChanged.run();
+            }
             SearchHistory.recordLaunch(context, SearchHistory.resultKey(result));
             return true;
         }
         if (!result.isPlaceholder()) {
             SearchHistory.recordLaunch(context, SearchHistory.resultKey(result));
-        }
-        if (result.confirmation != null && result.intent != null) {
-            try {
-                context.startActivity(result.intent);
-                Toast.makeText(context, result.confirmation, Toast.LENGTH_SHORT).show();
-                return true;
-            } catch (android.content.ActivityNotFoundException | SecurityException e) {
-                // No clock app takes it silently; fall through and open whatever handles it.
-            }
         }
         if (result.intent != null) {
             return activityContext.startActivitySafely(view, result.intent, null) != null;
@@ -521,7 +554,6 @@ public class UniversalSearchResults {
                     result.user);
             return true;
         } catch (SecurityException | IllegalStateException e) {
-            // The shortcut's app was uninstalled or disabled between query and tap.
             return false;
         }
     }

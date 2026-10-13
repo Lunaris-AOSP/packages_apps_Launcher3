@@ -73,6 +73,8 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     private final SpannableStringBuilder mSearchQueryBuilder;
 
     private ActivityAllAppsContainerView<?> mAppsView;
+    private String mResultQuery;
+    private boolean mPrivateSpaceQueryHandled;
 
     // The amount of pixels to shift down and overlap with the rest of the content.
     private final int mContentOverlap;
@@ -101,16 +103,19 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        if(mAppsView != null)
+        if (mAppsView != null) {
             mAppsView.getAppsStore().addUpdateListener(this);
-        
+            mSearchBarController.refreshSearchResult();
+        }
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        if(mAppsView != null)
+        if (mAppsView != null) {
             mAppsView.getAppsStore().removeUpdateListener(this);
+            mSearchBarController.cancelSearch();
+        }
     }
 
     @Override
@@ -193,7 +198,8 @@ public class AppsSearchContainerLayout extends ExtendedEditText
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 if (event.getAction() == MotionEvent.ACTION_UP) {
-                    float touchX = event.getX();
+                    float touchX = getLayoutDirection() == LAYOUT_DIRECTION_RTL
+                            ? getWidth() - event.getX() : event.getX();
                     Drawable rightDrawable = getCompoundDrawablesRelative()[2];
                     Drawable leftDrawable = getCompoundDrawablesRelative()[0];
 
@@ -204,7 +210,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
                                     .getLaunchIntentForPackage(Utilities.GSA_PACKAGE);
                             if (gIntent != null) {
                                 gIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                                getContext().startActivity(gIntent);
+                                mLauncher.startActivitySafely(v, gIntent, null);
                                 return true;
                             }
                         }
@@ -220,7 +226,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
                                 Intent voiceIntent = new Intent(Intent.ACTION_VOICE_COMMAND)
                                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
                                         .setPackage(searchPackage);
-                                getContext().startActivity(voiceIntent);
+                                mLauncher.startActivitySafely(v, voiceIntent, null);
                             }
                         } else {
                             // Lens slot
@@ -231,23 +237,13 @@ public class AppsSearchContainerLayout extends ExtendedEditText
                                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                         .setData(Uri.parse(Utilities.LENS_URI))
                                         .putExtra("LensHomescreenShortcut", true);
-                                getContext().startActivity(lensIntent);
+                                mLauncher.startActivitySafely(v, lensIntent, null);
                             }
                         }
                         return true;
                     }
 
-                    // Middle area – Pixel Search if installed
-                    if (touchX > (getPaddingStart() + leftSlotWidth) && touchX < rightGroupStart) {
-                        Intent pixelSearchIntent = getContext().getPackageManager()
-                                .getLaunchIntentForPackage("rk.android.app.pixelsearch");
-                        if (pixelSearchIntent != null) {
-                            pixelSearchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                            getContext().startActivity(pixelSearchIntent);
-                            return true;
-                        }
-                        return false;
-                    }
+
                 }
                 return false;
             }
@@ -285,12 +281,23 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     public void initializeSearch(ActivityAllAppsContainerView<?> appsView) {
         mAppsView = appsView;
         UniversalSearchAlgorithm algorithm =
-                new UniversalSearchAlgorithm(getContext(), mLauncher.getUiExecutor());
+                new UniversalSearchAlgorithm(getContext());
         algorithm.setQueryHandler(query -> {
             setText(query);
             setSelection(query.length());
         });
         mSearchBarController.initialize(algorithm, this, mLauncher, this);
+        if (isAttachedToWindow()) {
+            mAppsView.getAppsStore().addUpdateListener(this);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (hasWindowFocus && mAppsView != null) {
+            mSearchBarController.refreshSearchResult();
+        }
     }
 
     @Override
@@ -330,11 +337,23 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     public void onSearchResult(String query, ArrayList<AdapterItem> items) {
         if (query.equalsIgnoreCase(mContext.getString(R.string.private_space_label))) {
-            privateSpaceQuery();
+            if (!mPrivateSpaceQueryHandled) {
+                mPrivateSpaceQueryHandled = true;
+                mAppsView.onClearSearchResult();
+                mResultQuery = null;
+                privateSpaceQuery();
+            }
             return;
         }
+        mPrivateSpaceQueryHandled = false;
         if (items != null) {
-            mAppsView.setSearchResults(items);
+            if (query.trim().isEmpty() && items.isEmpty()) {
+                mAppsView.onClearSearchResult();
+                mResultQuery = null;
+            } else {
+                mAppsView.setSearchResults(items, !query.equals(mResultQuery));
+                mResultQuery = query;
+            }
         }
     }
 
@@ -345,7 +364,8 @@ public class AppsSearchContainerLayout extends ExtendedEditText
         mSearchQueryBuilder.clearSpans();
         Selection.setSelection(mSearchQueryBuilder, 0);
         mAppsView.onClearSearchResult();
-        
+        mResultQuery = null;
+        mPrivateSpaceQueryHandled = false;
     }
 
     @Override
@@ -362,7 +382,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
     private void privateSpaceQuery() {
         PrivateProfileManager privateProfileManager = mAppsView.getPrivateProfileManager();
-        if (privateProfileManager.isPrivateSpaceHidden()) {
+        if (privateProfileManager != null && privateProfileManager.isPrivateSpaceHidden()) {
             privateProfileManager.setQuietMode(false);
         } else if (!mAppsView.hasPrivateProfile()) {
             final Intent privateSpaceSettingsIntent =

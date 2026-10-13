@@ -5,18 +5,26 @@ import android.app.job.JobService;
 
 public class PhotoIndexJob extends JobService {
 
-    private volatile boolean mStopped;
+    private java.util.concurrent.atomic.AtomicBoolean mStopped;
 
     @Override
     public boolean onStartJob(JobParameters params) {
-        mStopped = false;
-        PhotoIndex.runBulk(this, () -> mStopped, () -> jobFinished(params, false));
+        java.util.concurrent.atomic.AtomicBoolean stopped =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        mStopped = stopped;
+        PhotoIndex.runBulk(this, stopped::get, () -> {
+            if (!stopped.get()) {
+                jobFinished(params, false);
+            }
+        });
         return true;
     }
 
     @Override
     public boolean onStopJob(JobParameters params) {
-        mStopped = true;
+        if (mStopped != null) {
+            mStopped.set(true);
+        }
         return true;
     }
 }

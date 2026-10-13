@@ -379,18 +379,23 @@ public class AlphabeticalAppsList implements AllAppsStore.OnUpdateListener {
         }
 
         if (mAdapter != null) {
-            final List<AdapterItem> oldItemsSnapshot = oldItems;
-            final List<AdapterItem> newItemsSnapshot = new ArrayList<>(mAdapterItems);
-            DATA_HELPER_EXECUTOR.execute(() -> {
-                DiffUtil.DiffResult diffResult =
-                        DiffUtil.calculateDiff(
-                                new MyDiffCallback(oldItemsSnapshot, newItemsSnapshot), false);
-                MAIN_EXECUTOR.execute(() -> {
-                    if (mAdapter != null) {
-                        diffResult.dispatchUpdatesTo(mAdapter);
-                    }
+            if (mAllAppsStore == null) {
+                DiffUtil.calculateDiff(new MyDiffCallback(oldItems,
+                        new ArrayList<>(mAdapterItems)), false).dispatchUpdatesTo(mAdapter);
+            } else {
+                final List<AdapterItem> oldItemsSnapshot = oldItems;
+                final List<AdapterItem> newItemsSnapshot = new ArrayList<>(mAdapterItems);
+                DATA_HELPER_EXECUTOR.execute(() -> {
+                    DiffUtil.DiffResult diffResult =
+                            DiffUtil.calculateDiff(
+                                    new MyDiffCallback(oldItemsSnapshot, newItemsSnapshot), false);
+                    MAIN_EXECUTOR.execute(() -> {
+                        if (mAdapter != null) {
+                            diffResult.dispatchUpdatesTo(mAdapter);
+                        }
+                    });
                 });
-            });
+            }
         }
     }
 
