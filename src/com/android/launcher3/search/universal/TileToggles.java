@@ -8,7 +8,6 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.hardware.camera2.CameraAccessException;
-import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.display.ColorDisplayManager;
 import android.location.LocationManager;
@@ -21,6 +20,7 @@ import android.provider.Settings;
 import android.telephony.TelephonyManager;
 
 import com.android.launcher3.util.Executors;
+import com.android.launcher3.util.FlashlightUtils;
 
 /**
  * Flips quick settings tiles in place. The launcher is platform signed, so it holds the same
@@ -190,16 +190,7 @@ final class TileToggles {
         CameraManager camera = context.getApplicationContext()
                 .getSystemService(CameraManager.class);
         try {
-            for (String id : camera.getCameraIdList()) {
-                CameraCharacteristics c = camera.getCameraCharacteristics(id);
-                Boolean flash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
-                Integer facing = c.get(CameraCharacteristics.LENS_FACING);
-                if (Boolean.TRUE.equals(flash) && facing != null
-                        && facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    sTorchId = id;
-                    break;
-                }
-            }
+            sTorchId = FlashlightUtils.getRearCameraId(camera);
         } catch (CameraAccessException | RuntimeException e) {
             return false;
         }

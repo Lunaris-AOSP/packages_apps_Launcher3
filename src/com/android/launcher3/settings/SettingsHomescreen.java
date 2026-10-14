@@ -20,6 +20,8 @@ import static androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationManager;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -54,6 +56,9 @@ import com.android.launcher3.SessionCommitReceiver;
 import com.android.launcher3.allapps.AppDrawerStyle;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
+import com.android.launcher3.search.universal.CalendarProvider;
+import com.android.launcher3.smartspace.SmartspaceEvent;
+import com.android.launcher3.notification.NotificationListener;
 import com.android.launcher3.util.SettingsCache;
 import com.android.launcher3.util.VibratorWrapper;
 
@@ -178,7 +183,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
     public boolean onPreferenceStartScreen(PreferenceFragmentCompat caller, PreferenceScreen pref) {
         Bundle args = new Bundle();
         args.putString(ARG_PREFERENCE_ROOT, pref.getKey());
-        return startPreference(getString(R.string.home_category_title), args, pref.getKey());
+        return startPreference(HomescreenSettingsFragment.class.getName(), args, pref.getKey());
     }
 
     @Override
@@ -209,6 +214,11 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
         private Preference mShowGoogleAppPref;
         private Preference mShowGoogleBarPref;
         private SwitchPreferenceCompat mAutoAddIconsPref;
+        private Preference mCalendarPermissionPref;
+        private Preference mBluetoothPermissionPref;
+        private Preference mNotificationPermissionPref;
+        private static final int REQUEST_SMARTSPACE_CALENDAR = 42;
+        private static final int REQUEST_SMARTSPACE_BLUETOOTH = 43;
 
         @Override
         public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -226,6 +236,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
             getPreferenceManager().setSharedPreferencesName(LauncherFiles.SHARED_PREFERENCES_KEY);
             setPreferencesFromResource(R.xml.launcher_home_screen_preferences, rootKey);
+            addSmartspacePreferences();
 
             PreferenceScreen screen = getPreferenceScreen();
 
@@ -254,7 +265,9 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             if (!VibratorWrapper.INSTANCE.get(getContext()).hasVibrator()) {
                 PreferenceCategory generalCategory = (PreferenceCategory) findPreference(KEY_GENERAL_CATEGORY);
                 Preference d2SHaptic = screen.findPreference(LauncherPrefs.SLEEP_GESTURE_HAPTIC.getSharedPrefKey());
-                generalCategory.removePreference(d2SHaptic);
+                if (generalCategory != null && d2SHaptic != null) {
+                    generalCategory.removePreference(d2SHaptic);
+                }
             }
 
             // If the target preference is not in the current preference screen, find the parent
@@ -428,6 +441,40 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             if (getContext() == null) {
                 return;
             }
+            boolean smartspace = LauncherPrefs.USE_SMARTSPACE.get(getContext());
+            PreferenceGroup glance = findPreference("at_a_glance_category");
+            if (glance != null) {
+                for (int i = 0; i < glance.getPreferenceCount(); i++) {
+                    Preference pref = glance.getPreference(i);
+                    String key = pref.getKey();
+                    if (key != null && key.startsWith("pref_quickspace_")) {
+                        pref.setVisible(!smartspace);
+                    }
+                }
+            }
+            Preference events = findPreference("smartspace_events");
+            if (events != null) {
+                events.setVisible(smartspace);
+                events.setEnabled(smartspace && LauncherPrefs.SHOW_QUICKSPACE.get(getContext()));
+            }
+            if (mCalendarPermissionPref != null) {
+                mCalendarPermissionPref.setVisible(smartspace
+                        && LauncherPrefs.SMARTSPACE_CALENDAR.get(getContext())
+                        && !CalendarProvider.hasPermission(getContext()));
+            }
+            if (mBluetoothPermissionPref != null) {
+                mBluetoothPermissionPref.setVisible(smartspace
+                        && SmartspaceEvent.BLUETOOTH.isEnabled(getContext())
+                        && getContext().checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED);
+            }
+            if (mNotificationPermissionPref != null) {
+                NotificationManager manager = getContext().getSystemService(NotificationManager.class);
+                mNotificationPermissionPref.setVisible(smartspace
+                        && SmartspaceEvent.TIMERS.isEnabled(getContext()) && manager != null
+                        && !manager.isNotificationListenerAccessGranted(
+                                new ComponentName(getContext(), NotificationListener.class)));
+            }
             int style;
             try {
                 style = Integer.parseInt(
@@ -436,7 +483,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                 style = LauncherPrefs.get(getContext()).get(LauncherPrefs.SHOW_QUICKSPACE_ALT)
                         ? 1 : 0;
             }
-            boolean isOosClock = style == 2;
+            boolean isOosClock = style == 2 && !smartspace;
             setQuickspacePrefVisible(
                     LauncherPrefs.QUICKSPACE_CLOCK_CUSTOM_COLOR.getSharedPrefKey(), isOosClock);
             setQuickspacePrefVisible(
@@ -448,6 +495,71 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
             if (pref != null) {
                 pref.setVisible(visible);
             }
+        }
+
+        private void addSmartspacePreferences() {
+            PreferenceGroup category = findPreference("smartspace_events");
+            if (category == null) return;
+            Preference info = new Preference(getPreferenceManager().getContext());
+            info.setSummary(R.string.smartspace_events_summary);
+            info.setSelectable(false);
+            info.setIconSpaceReserved(false);
+            info.setOrder(-1);
+            category.addPreference(info);
+            for (SmartspaceEvent event : SmartspaceEvent.values()) {
+                SwitchPreferenceCompat pref = new SwitchPreferenceCompat(
+                        getPreferenceManager().getContext());
+                pref.setKey(event.preference.getSharedPrefKey());
+                pref.setTitle(event.title);
+                pref.setDefaultValue(true);
+                pref.setPersistent(true);
+                pref.setIconSpaceReserved(false);
+                pref.setOrder(event.ordinal() * 2);
+                category.addPreference(pref);
+            }
+            mCalendarPermissionPref = new Preference(getPreferenceManager().getContext());
+            mCalendarPermissionPref.setTitle(R.string.smartspace_calendar_permission);
+            mCalendarPermissionPref.setSummary(R.string.smartspace_calendar_permission_summary);
+            mCalendarPermissionPref.setIconSpaceReserved(false);
+            mCalendarPermissionPref.setOrder(SmartspaceEvent.CALENDAR.ordinal() * 2 + 1);
+            mCalendarPermissionPref.setOnPreferenceClickListener(pref -> {
+                requestPermissions(new String[] {android.Manifest.permission.READ_CALENDAR},
+                        REQUEST_SMARTSPACE_CALENDAR);
+                return true;
+            });
+            category.addPreference(mCalendarPermissionPref);
+            mBluetoothPermissionPref = new Preference(getPreferenceManager().getContext());
+            mBluetoothPermissionPref.setTitle(R.string.smartspace_bluetooth_permission);
+            mBluetoothPermissionPref.setSummary(R.string.smartspace_bluetooth_permission_summary);
+            mBluetoothPermissionPref.setIconSpaceReserved(false);
+            mBluetoothPermissionPref.setOrder(SmartspaceEvent.BLUETOOTH.ordinal() * 2 + 1);
+            mBluetoothPermissionPref.setOnPreferenceClickListener(pref -> {
+                requestPermissions(new String[] {android.Manifest.permission.BLUETOOTH_CONNECT},
+                        REQUEST_SMARTSPACE_BLUETOOTH);
+                return true;
+            });
+            category.addPreference(mBluetoothPermissionPref);
+            mNotificationPermissionPref = new Preference(getPreferenceManager().getContext());
+            mNotificationPermissionPref.setTitle(R.string.smartspace_notification_permission);
+            mNotificationPermissionPref.setSummary(R.string.smartspace_notification_permission_summary);
+            mNotificationPermissionPref.setIconSpaceReserved(false);
+            mNotificationPermissionPref.setOrder(SmartspaceEvent.TIMERS.ordinal() * 2 + 1);
+            mNotificationPermissionPref.setOnPreferenceClickListener(pref -> {
+                startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                        .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                                new ComponentName(getContext(), NotificationListener.class)
+                                        .flattenToString()));
+                return true;
+            });
+            category.addPreference(mNotificationPermissionPref);
+        }
+
+        @Override
+        public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                int[] grantResults) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+            if (requestCode == REQUEST_SMARTSPACE_CALENDAR
+                    || requestCode == REQUEST_SMARTSPACE_BLUETOOTH) updateQuickspaceClockColorPrefs();
         }
 
         @Override
@@ -501,6 +613,10 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
 
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+            if (key == null || key.startsWith("pref_smartspace")
+                    || LauncherPrefs.SHOW_QUICKSPACE.getSharedPrefKey().equals(key)) {
+                updateQuickspaceClockColorPrefs();
+            }
             if (LauncherPrefs.APP_DRAWER_STYLE.getSharedPrefKey().equals(key)) {
                 updateAutoAddIconsPreferenceState();
             }

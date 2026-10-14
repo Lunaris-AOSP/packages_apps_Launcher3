@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="start|center_vertical"
+    android:orientation="vertical">
+    <com.android.launcher3.quickspace.views.DoubleShadowTextView
+        android:id="@+id/smartspace_date"
+        style="@style/QuickSpaceText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textColor="?workspaceTextColor"
+        android:textSize="20sp" />
+    <com.android.launcher3.quickspace.views.DoubleShadowTextView
+        android:id="@+id/smartspace_weather"
+        style="@style/QuickSpaceSubText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:drawablePadding="6dp"
+        android:gravity="center_vertical"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="?workspaceTextColor"
+        android:textSize="16sp" />
+</LinearLayout>

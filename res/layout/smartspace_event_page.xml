@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/smartspace_card"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="start|center_vertical"
+    android:background="?android:selectableItemBackground"
+    android:orientation="horizontal">
+    <ImageView
+        android:id="@+id/smartspace_icon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginEnd="12dp"
+        android:importantForAccessibility="no" />
+    <LinearLayout
+        android:id="@+id/smartspace_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+        <com.android.launcher3.quickspace.views.DoubleShadowTextView
+            android:id="@+id/smartspace_title"
+            style="@style/QuickSpaceText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="?workspaceTextColor"
+            android:textSize="18sp" />
+        <com.android.launcher3.quickspace.views.DoubleShadowTextView
+            android:id="@+id/smartspace_subtitle"
+            style="@style/QuickSpaceSubText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="?workspaceTextColor"
+            android:textSize="14sp" />
+        <com.android.launcher3.quickspace.views.DoubleShadowTextView
+            android:id="@+id/smartspace_details"
+            style="@style/QuickSpaceSubText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="?workspaceTextColor"
+            android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

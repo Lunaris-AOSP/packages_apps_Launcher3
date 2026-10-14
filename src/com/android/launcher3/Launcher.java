@@ -108,9 +108,12 @@ import static com.android.launcher3.popup.SystemShortcut.WIDGETS;
 import static com.android.launcher3.states.RotationHelper.REQUEST_LOCK;
 import static com.android.launcher3.states.RotationHelper.REQUEST_NONE;
 import static com.android.launcher3.testing.shared.TestProtocol.LAUNCHER_ACTIVITY_STOPPED_MESSAGE;
+import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
+import static com.android.launcher3.util.Executors.UI_HELPER_EXECUTOR;
 import static com.android.launcher3.util.ItemInfoMatcher.forFolderMatch;
 import static com.android.launcher3.util.SettingsCache.TOUCHPAD_NATURAL_SCROLLING;
 
+import android.Manifest;
 import android.animation.Animator;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
@@ -123,6 +126,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
@@ -221,7 +225,7 @@ import com.android.launcher3.pm.PinRequestHelper;
 import com.android.launcher3.popup.ArrowPopup;
 import com.android.launcher3.popup.PopupController;
 import com.android.launcher3.popup.SystemShortcut;
-import com.android.launcher3.quickspace.QuickSpaceView;
+import com.android.launcher3.smartspace.AtAGlanceView;
 import com.android.launcher3.statemanager.StateManager;
 import com.android.launcher3.statemanager.StateManager.StateHandler;
 import com.android.launcher3.statemanager.StatefulActivity;
@@ -235,6 +239,7 @@ import com.android.launcher3.util.ActivityResultInfo;
 import com.android.launcher3.util.BackPressHandler;
 import com.android.launcher3.util.CannedAnimationCoordinator;
 import com.android.launcher3.util.ContextTracker;
+import com.android.launcher3.util.FlashlightUtils;
 import com.android.launcher3.util.IntSet;
 import com.android.launcher3.util.ItemInflater;
 import com.android.launcher3.util.KeyboardShortcutsDelegate;
@@ -312,6 +317,7 @@ public class Launcher extends StatefulActivity<LauncherState>
      * request codes used internally.
      */
     protected static final int REQUEST_LAST = 100;
+    private static final int REQUEST_TURN_OFF_FLASHLIGHT = 99;
 
     public static final String INTENT_ACTION_ALL_APPS_TOGGLE =
             "launcher.intent_action_all_apps_toggle";
@@ -440,7 +446,7 @@ public class Launcher extends StatefulActivity<LauncherState>
     private boolean mIsTopResumedActivity;
 
     // QuickSpace
-    private QuickSpaceView mQuickSpace;
+    private AtAGlanceView mQuickSpace;
 
     public static Launcher getLauncher(Context context) {
         return fromContext(context);
@@ -2177,6 +2183,36 @@ public class Launcher extends StatefulActivity<LauncherState>
                 onUiChangedWhileSleeping();
             }
             mStateManager.goToState(NORMAL);
+        }
+    }
+
+    public void turnOffFlashlight() {
+        if (!hasBeenResumed()) {
+            addEventCallback(EVENT_RESUMED, this::turnOffFlashlight);
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.CAMERA}, REQUEST_TURN_OFF_FLASHLIGHT);
+            return;
+        }
+        Context context = getApplicationContext();
+        UI_HELPER_EXECUTOR.execute(() -> {
+            if (!FlashlightUtils.setEnabled(context, false)) {
+                MAIN_EXECUTOR.execute(() -> Toast.makeText(context,
+                        R.string.smartspace_flashlight_error, Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_TURN_OFF_FLASHLIGHT) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            turnOffFlashlight();
+        } else {
+            Toast.makeText(this, R.string.smartspace_flashlight_permission,
+                    Toast.LENGTH_LONG).show();
         }
     }
 

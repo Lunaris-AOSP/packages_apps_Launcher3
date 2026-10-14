@@ -188,14 +188,30 @@
     </PreferenceCategory>
 
     <PreferenceCategory
-        android:title="@string/quickspace_category_title">
+        android:key="at_a_glance_category"
+        android:title="@string/at_a_glance_title">
 
         <SwitchPreferenceCompat
             android:key="pref_quickspace"
-            android:title="@string/show_quickspace_title"
-            android:summary="@string/show_quickspace_summary"
+            android:title="@string/show_at_a_glance_title"
+            android:summary="@string/show_at_a_glance_summary"
             android:defaultValue="true"
             android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_smartspace"
+            android:title="@string/use_smartspace_title"
+            android:summaryOn="@string/use_smartspace_on"
+            android:summaryOff="@string/use_smartspace_off"
+            android:dependency="pref_quickspace"
+            android:defaultValue="false"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
+        <PreferenceScreen
+            android:key="smartspace_events"
+            android:title="@string/smartspace_events_title"
             launcher:iconSpaceReserved="false" />
 
         <ListPreference

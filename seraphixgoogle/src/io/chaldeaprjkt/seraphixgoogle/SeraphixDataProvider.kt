@@ -38,6 +38,8 @@ class SeraphixDataProvider(
     private var isWidgetBound = false
     private var isListening = false
 
+    fun isBound(): Boolean = isWidgetBound
+
     fun setOnDataUpdated(listener: DataProviderListener? = null): SeraphixDataProvider {
         widgetHost.setOnDataUpdated(listener)
         return this
@@ -78,9 +80,9 @@ class SeraphixDataProvider(
     }
 
     fun unbind() {
-        if (!isWidgetBound) return
         pauseListening()
-        widgetHost.deleteHost()
+        if (widgetId > -1) widgetHost.deleteHost()
+        widgetId = -1
         if (::widgetHostView.isInitialized) {
             widgetHostView.setOnUpdateAppWidget(null)
         }

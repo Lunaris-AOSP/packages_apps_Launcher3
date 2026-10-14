@@ -16,6 +16,7 @@
 
 package com.android.launcher3.notification;
 
+import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
 import static com.android.launcher3.util.Executors.UI_HELPER_EXECUTOR;
 import static com.android.launcher3.util.SettingsCache.NOTIFICATION_BADGING_URI;
 
@@ -23,6 +24,9 @@ import static java.util.Collections.emptyList;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.ComponentName;
+import android.content.Context;
 import android.os.Handler;
 import android.os.Message;
 import android.service.notification.NotificationListenerService;
@@ -43,6 +47,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -62,10 +69,48 @@ public class NotificationListener extends NotificationListenerService {
 
     private static final Function<PackageUserKey, DotInfo> DOT_FACTOR = key -> new DotInfo();
 
+    public interface NotificationsChangedListener {
+        void onNotificationPosted(StatusBarNotification notification);
+        void onNotificationRemoved(StatusBarNotification notification);
+        void onNotificationsFullRefresh(List<StatusBarNotification> notifications);
+    }
+
+    private static final Set<NotificationsChangedListener> sNotificationsListeners =
+            new CopyOnWriteArraySet<>();
+    private static volatile NotificationListener sConnectedInstance;
+
+    public static void addNotificationsChangedListener(Context context,
+            NotificationsChangedListener listener) {
+        sNotificationsListeners.add(listener);
+        NotificationListener instance = sConnectedInstance;
+        if (instance != null) {
+            instance.onNotificationFullRefresh();
+        } else {
+            requestRebind(new ComponentName(context, NotificationListener.class));
+        }
+    }
+
+    public static void removeNotificationsChangedListener(NotificationsChangedListener listener) {
+        sNotificationsListeners.remove(listener);
+        NotificationListener instance = sConnectedInstance;
+        if (instance != null && instance.mSettingsCache != null) {
+            instance.onNotificationSettingsChanged(
+                    instance.mSettingsCache.getValue(NOTIFICATION_BADGING_URI));
+        }
+    }
+
+    private static void dispatchNotifications(Consumer<NotificationsChangedListener> update) {
+        for (NotificationsChangedListener listener : sNotificationsListeners) {
+            MAIN_EXECUTOR.execute(() -> {
+                if (sNotificationsListeners.contains(listener)) update.accept(listener);
+            });
+        }
+    }
+
     private final Handler mWorkerHandler;
     private final Ranking mTempRanking = new Ranking();
 
-    private boolean mIsConnected = false;
+    private volatile boolean mIsConnected = false;
 
     /** Maps packages to their DotInfo's . */
     private final Map<PackageUserKey, DotInfo> mPackageUserToDotInfos = new HashMap<>();
@@ -86,6 +131,7 @@ public class NotificationListener extends NotificationListenerService {
         switch (message.what) {
             case MSG_NOTIFICATION_POSTED: {
                 StatusBarNotification sbn = (StatusBarNotification) message.obj;
+                dispatchNotifications(listener -> listener.onNotificationPosted(sbn));
                 if (notificationIsValidForUI(sbn)) {
                     handleNotificationPosted(sbn);
                 } else {
@@ -95,6 +141,7 @@ public class NotificationListener extends NotificationListenerService {
             }
             case MSG_NOTIFICATION_REMOVED: {
                 StatusBarNotification sbn = (StatusBarNotification) message.obj;
+                dispatchNotifications(listener -> listener.onNotificationRemoved(sbn));
                 NotificationGroup notificationGroup = mNotificationGroupMap.get(sbn.getGroupKey());
                 String key = sbn.getKey();
                 if (notificationGroup != null) {
@@ -107,13 +154,14 @@ public class NotificationListener extends NotificationListenerService {
                 handleNotificationRemoved(sbn);
                 return true;
             }
-            case MSG_NOTIFICATION_FULL_REFRESH:
-                handleNotificationFullRefresh(mIsConnected
-                        ? Arrays.stream(getActiveNotificationsSafely(null))
-                            .filter(this::notificationIsValidForUI)
-                            .toList()
-                        : emptyList());
+            case MSG_NOTIFICATION_FULL_REFRESH: {
+                List<StatusBarNotification> notifications = mIsConnected
+                        ? Arrays.asList(getActiveNotificationsSafely(null)) : emptyList();
+                dispatchNotifications(listener -> listener.onNotificationsFullRefresh(notifications));
+                handleNotificationFullRefresh(notifications.stream()
+                        .filter(this::notificationIsValidForUI).toList());
                 return true;
+            }
             case MSG_RANKING_UPDATE: {
                 String[] keys = ((RankingMap) message.obj).getOrderedKeys();
                 for (StatusBarNotification sbn : getActiveNotificationsSafely(keys)) {
@@ -197,6 +245,7 @@ public class NotificationListener extends NotificationListenerService {
         super.onListenerConnected();
         Log.i(TAG, "onListenerConnected");
         mIsConnected = true;
+        sConnectedInstance = this;
 
         // Register an observer to rebind the notification listener when dots are re-enabled.
         mSettingsCache = SettingsCache.INSTANCE.get(this);
@@ -209,7 +258,7 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     private void onNotificationSettingsChanged(boolean areNotificationDotsEnabled) {
-        if (!areNotificationDotsEnabled && mIsConnected) {
+        if (!areNotificationDotsEnabled && mIsConnected && sNotificationsListeners.isEmpty()) {
             requestUnbind();
         }
     }
@@ -223,8 +272,17 @@ public class NotificationListener extends NotificationListenerService {
         super.onListenerDisconnected();
         Log.i(TAG, "onListenerDisconnected");
         mIsConnected = false;
-        mSettingsCache.unregister(NOTIFICATION_BADGING_URI, mNotificationSettingsChangedListener);
+        if (sConnectedInstance == this) sConnectedInstance = null;
+        if (mSettingsCache != null) {
+            mSettingsCache.unregister(NOTIFICATION_BADGING_URI, mNotificationSettingsChangedListener);
+        }
         onNotificationFullRefresh();
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (!sNotificationsListeners.isEmpty() && manager != null
+                && manager.isNotificationListenerAccessGranted(
+                        new ComponentName(this, NotificationListener.class))) {
+            requestRebind(new ComponentName(this, NotificationListener.class));
+        }
     }
 
     @Override

@@ -27,8 +27,11 @@ import android.media.session.MediaSessionLegacyHelper
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 
@@ -55,50 +58,45 @@ class MediaSessionManagerHelper private constructor(private val context: Context
     private val mediaSessionManager: MediaSessionManager = context.getSystemService(MediaSessionManager::class.java)!!
     private var activeController: MediaController? = null
     private val listeners = mutableSetOf<MediaMetadataListener>()
+    private val sessionControllers = mutableListOf<MediaController>()
+    private val handler = Handler(Looper.getMainLooper())
+    private var observingSessions = false
+    private var observationGeneration = 0
+    private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener {
+        if (observingSessions) updateSessions(it.orEmpty())
+    }
 
     private val mediaControllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
-            _mediaMetadata.value = metadata
+            updateActiveController()
         }
 
         override fun onPlaybackStateChanged(state: PlaybackState?) {
-            _playbackState.value = state
+            updateActiveController()
         }
     }
-
-    private val tickerFlow = flow {
-        while (true) {
-            emit(Unit)
-            delay(1000)
-        }
-    }.flowOn(Dispatchers.Default)
 
     init {
         lastSavedPackageName = Settings.System.getString(
             context.contentResolver,
             "media_session_last_package_name"
         )
-
-        scope.launch {
-            tickerFlow
-                .map { fetchActiveController() }
-                .distinctUntilChanged { old, new -> sameSessions(old, new) }
-                .collect { controller ->
-                    activeController?.unregisterCallback(mediaControllerCallback)
-                    activeController = controller
-                    controller?.registerCallback(mediaControllerCallback)
-                    _mediaMetadata.value = controller?.metadata
-                    _playbackState.value = controller?.playbackState
-                    saveLastNonNullPackageName()
-                }
-        }
     }
 
-    private suspend fun fetchActiveController(): MediaController? = withContext(Dispatchers.IO) {
+    private fun updateSessions(controllers: List<MediaController>) {
+        observationGeneration++
+        sessionControllers.forEach { it.unregisterCallback(mediaControllerCallback) }
+        sessionControllers.clear()
+        sessionControllers.addAll(controllers)
+        sessionControllers.forEach { it.registerCallback(mediaControllerCallback, handler) }
+        updateActiveController()
+    }
+
+    private fun updateActiveController() {
         var localController: MediaController? = null
         val remoteSessions = mutableSetOf<String>()
 
-        mediaSessionManager.getActiveSessions(null)
+        sessionControllers
             .filter { controller ->
                 controller.playbackState?.state == PlaybackState.STATE_PLAYING &&
                 controller.playbackInfo != null
@@ -118,12 +116,52 @@ class MediaSessionManagerHelper private constructor(private val context: Context
                     }
                 }
             }
-        localController
+        activeController = localController
+        _mediaMetadata.value = localController?.metadata
+        _playbackState.value = localController?.playbackState
+        saveLastNonNullPackageName()
+    }
+
+    private fun startObservingSessions() {
+        if (observingSessions) return
+        observingSessions = true
+        val generation = ++observationGeneration
+        try {
+            mediaSessionManager.addOnActiveSessionsChangedListener(sessionsListener, null, handler)
+            Executors.UI_HELPER_EXECUTOR.execute {
+                val controllers = try {
+                    mediaSessionManager.getActiveSessions(null)
+                } catch (e: SecurityException) {
+                    Log.w("LauncherMedia", "Cannot read media sessions", e)
+                    emptyList()
+                }
+                handler.post {
+                    if (observingSessions && observationGeneration == generation) {
+                        updateSessions(controllers)
+                    }
+                }
+            }
+        } catch (e: SecurityException) {
+            observingSessions = false
+            Log.w("LauncherMedia", "Cannot observe media sessions", e)
+        }
+    }
+
+    private fun stopObservingSessions() {
+        if (observingSessions) {
+            mediaSessionManager.removeOnActiveSessionsChangedListener(sessionsListener)
+        }
+        observingSessions = false
+        observationGeneration++
+        sessionControllers.forEach { it.unregisterCallback(mediaControllerCallback) }
+        sessionControllers.clear()
+        activeController = null
+        _mediaMetadata.value = null
+        _playbackState.value = null
     }
 
     fun addMediaMetadataListener(listener: MediaMetadataListener) {
-        listeners.add(listener)
-        if (listeners.size == 1) {
+        if (listeners.add(listener) && listeners.size == 1) {
             startCollecting()
         }
         listener.onMediaMetadataChanged()
@@ -138,6 +176,7 @@ class MediaSessionManagerHelper private constructor(private val context: Context
     }
 
     private fun startCollecting() {
+        startObservingSessions()
         collectJob = scope.launch {
             launch { mediaMetadata.collect { notifyListeners { onMediaMetadataChanged() } } }
             launch { playbackState.collect { notifyListeners { onPlaybackStateChanged() } } }
@@ -147,10 +186,11 @@ class MediaSessionManagerHelper private constructor(private val context: Context
     private fun stopCollecting() {
         collectJob?.cancel()
         collectJob = null
+        stopObservingSessions()
     }
 
     private fun notifyListeners(action: MediaMetadataListener.() -> Unit) {
-        listeners.forEach { it.action() }
+        listeners.toList().forEach { it.action() }
     }
 
     fun seekTo(time: Long) {
@@ -198,12 +238,6 @@ class MediaSessionManagerHelper private constructor(private val context: Context
 
     fun getMediaControllerPlaybackState(): PlaybackState? {
         return activeController?.playbackState ?: null
-    }
-
-    private fun sameSessions(a: MediaController?, b: MediaController?): Boolean {
-        if (a == b) return true
-        if (a == null) return false
-        return a.controlsSameSession(b)
     }
 
     private fun dispatchMediaKeyWithWakeLockToMediaSession(keycode: Int) {
@@ -257,7 +291,7 @@ class MediaSessionManagerHelper private constructor(private val context: Context
 
         fun getInstance(context: Context): MediaSessionManagerHelper =
             instance ?: synchronized(this) {
-                instance ?: MediaSessionManagerHelper(context).also { instance = it }
+                instance ?: MediaSessionManagerHelper(context.applicationContext).also { instance = it }
             }
     }
 }
