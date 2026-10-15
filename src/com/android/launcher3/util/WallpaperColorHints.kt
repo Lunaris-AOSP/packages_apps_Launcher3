@@ -73,12 +73,7 @@ constructor(@ApplicationContext private val context: Context, tracker: DaggerSin
             }
         }
         scope.launch {
-            val service = WallpaperService.INSTANCE.get(context)
-            val wallpapers = runCatching { service.getTopWallpapers() }
-                .getOrDefault(emptyList())
-            if (wallpapers.isEmpty()) {
-                service.saveWallpaper(wallpaperManager)
-            }
+            WallpaperService.INSTANCE.get(context).saveWallpaper(wallpaperManager)
         }
     }
 

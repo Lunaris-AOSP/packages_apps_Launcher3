@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Update
 import androidx.sqlite.db.SupportSQLiteQuery
 
 import com.android.launcher3.data.wallpaper.Wallpaper
@@ -18,8 +19,14 @@ interface WallpaperDao {
     @Query("SELECT * FROM wallpapers WHERE checksum = :checksum LIMIT 1")
     suspend fun getByChecksum(checksum: String): Wallpaper?
 
+    @Query("SELECT * FROM wallpapers WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): Wallpaper?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(wallpaper: Wallpaper): Long
+
+    @Update
+    suspend fun update(wallpaper: Wallpaper)
 
     @Query("DELETE FROM wallpapers WHERE id = :id")
     suspend fun deleteWallpaper(id: Long): Int

@@ -20,16 +20,20 @@ import static com.android.launcher3.LauncherConstants.ActivityCodes.REQUEST_HOME
 
 import android.app.ActivityOptions;
 import android.app.Person;
+import android.app.WallpaperManager;
 import android.app.role.RoleManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.LauncherActivityInfo;
 import android.content.pm.ShortcutInfo;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.UserHandle;
+import android.util.SparseArray;
 import android.view.SurfaceControlViewHost;
 
 import androidx.annotation.NonNull;
@@ -44,6 +48,8 @@ import com.android.launcher3.dagger.LauncherAppComponent;
 import com.android.launcher3.dagger.LauncherAppSingleton;
 import com.android.launcher3.icons.BitmapRenderer;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -78,6 +84,20 @@ public class ApiWrapper {
 
     public Map<String, LauncherActivityInfo> getActivityOverrides() {
         return Collections.emptyMap();
+    }
+
+    @Nullable
+    public ParcelFileDescriptor getWallpaperSource(WallpaperManager manager) {
+        return manager.getWallpaperFile(WallpaperManager.FLAG_SYSTEM);
+    }
+
+    public SparseArray<Rect> getWallpaperCropHints(WallpaperManager manager) {
+        return new SparseArray<>();
+    }
+
+    public int setWallpaperWithCrops(WallpaperManager manager, InputStream image,
+            SparseArray<Rect> crops, int which) throws IOException {
+        return manager.setStream(image, crops.size() > 0 ? crops.valueAt(0) : null, true, which);
     }
 
     /**

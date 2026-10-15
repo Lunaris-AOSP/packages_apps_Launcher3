@@ -10,4 +10,6 @@ data class Wallpaper(
     val rank: Int,
     val timestamp: Long,
     val checksum: String? = null,
+    val originalImagePath: String? = null,
+    val cropHints: String? = null,
 )

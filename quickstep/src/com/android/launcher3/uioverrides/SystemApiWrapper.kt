@@ -17,6 +17,7 @@ package com.android.launcher3.uioverrides
 
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.app.WallpaperManager
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.IIntentReceiver
@@ -32,6 +33,7 @@ import android.os.Bundle
 import android.os.Flags.allowPrivateProfile
 import android.os.IBinder
 import android.os.UserHandle
+import android.util.SparseArray
 import android.view.SurfaceControlViewHost
 import android.widget.Toast
 import android.window.RemoteTransition
@@ -49,6 +51,7 @@ import com.android.launcher3.util.ApiWrapper
 import com.android.launcher3.util.Executors
 import com.android.launcher3.util.StartActivityParams
 import com.android.quickstep.util.FadeOutRemoteTransition
+import java.io.InputStream
 import java.util.function.Supplier
 import javax.inject.Inject
 
@@ -61,6 +64,19 @@ open class SystemApiWrapper @Inject constructor(@ApplicationContext context: Con
 
     override fun getActivityOverrides(): Map<String, LauncherActivityInfo> =
         mContext.getSystemService(LauncherApps::class.java)!!.activityOverrides
+
+    override fun getWallpaperSource(manager: WallpaperManager) =
+        manager.getWallpaperFile(WallpaperManager.FLAG_SYSTEM, false)
+
+    override fun getWallpaperCropHints(manager: WallpaperManager): SparseArray<Rect> =
+        manager.getBitmapCrops(WallpaperManager.FLAG_SYSTEM)
+
+    override fun setWallpaperWithCrops(
+        manager: WallpaperManager,
+        image: InputStream,
+        crops: SparseArray<Rect>,
+        which: Int,
+    ): Int = manager.setStreamWithCrops(image, crops, true, which)
 
     override fun createFadeOutAnimOptions(): ActivityOptions =
         ActivityOptions.makeBasic().apply {

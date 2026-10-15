@@ -4,10 +4,11 @@ import android.app.WallpaperManager
 import android.app.WallpaperManager.FLAG_LOCK
 import android.app.WallpaperManager.FLAG_SYSTEM
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory 
-import android.graphics.drawable.BitmapDrawable
+import android.graphics.Rect
+import android.os.ParcelFileDescriptor
+import android.util.AtomicFile
 import android.util.Log
+import android.util.SparseArray
 
 import androidx.room.withTransaction
 
@@ -17,21 +18,22 @@ import com.android.launcher3.dagger.LauncherAppComponent
 import com.android.launcher3.dagger.LauncherAppSingleton
 import com.android.launcher3.data.AppDatabase
 import com.android.launcher3.data.wallpaper.Wallpaper
+import com.android.launcher3.util.ApiWrapper
 import com.android.launcher3.util.DaggerSingletonObject
 import com.android.launcher3.util.SafeCloseable
 
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.security.MessageDigest
 import javax.inject.Inject
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 @LauncherAppSingleton
 class WallpaperService @Inject constructor(
@@ -42,32 +44,49 @@ class WallpaperService @Inject constructor(
 
     private val roomDb by lazy { AppDatabase.INSTANCE.get(context) }
     private val dao by lazy { roomDb.wallpaperDao() }
+    private val apiWrapper by lazy { ApiWrapper.INSTANCE.get(context) }
 
     @Volatile
-    private var lastHandledWallpaperId: Int = -1 
+    private var lastHandledWallpaperId: Int = -1
 
     suspend fun saveWallpaper(wallpaperManager: WallpaperManager) {
-        if (wallpaperManager.wallpaperInfo != null) return
-
         runCatching {
             withContext(Dispatchers.IO) {
                 rankMutex.withLock {
+                    if (wallpaperManager.wallpaperInfo != null) return@withLock
                     val wallpaperId = wallpaperManager.getWallpaperId(FLAG_SYSTEM)
                     if (wallpaperId == lastHandledWallpaperId) return@withLock
 
-                    val bytes = readSystemWallpaperBytes(wallpaperManager) ?: return@withLock
-                    saveWallpaperLocked(bytes)
+                    val originalBytes = apiWrapper.getWallpaperSource(wallpaperManager)?.let {
+                        ParcelFileDescriptor.AutoCloseInputStream(it).use { stream ->
+                            stream.readBytes()
+                        }
+                    } ?: return@withLock
+                    val bytes = wallpaperManager.getWallpaperFile(FLAG_SYSTEM)?.let {
+                        ParcelFileDescriptor.AutoCloseInputStream(it).use { stream ->
+                            stream.readBytes()
+                        }
+                    } ?: return@withLock
+                    val cropHints = encodeCropHints(apiWrapper.getWallpaperCropHints(wallpaperManager))
+                    if (wallpaperManager.getWallpaperId(FLAG_SYSTEM) != wallpaperId) return@withLock
+
+                    saveWallpaperLocked(bytes, originalBytes, cropHints)
                     lastHandledWallpaperId = wallpaperId
                 }
             }
         }.onFailure {
+            if (it is CancellationException) throw it
             Log.e("WallpaperService", "Error reading current wallpaper: ${it.message}", it)
         }
     }
 
-    private suspend fun saveWallpaperLocked(imageData: ByteArray) {
+    private suspend fun saveWallpaperLocked(
+        imageData: ByteArray,
+        originalData: ByteArray,
+        cropHints: String,
+    ) {
         val timestamp = System.currentTimeMillis()
-        val checksum = calculateChecksum(imageData)
+        val checksum = calculateChecksum(originalData, cropHints)
 
         val existingWallpapers = dao.getTopWallpapers()
         existingWallpapers.firstOrNull { it.checksum == checksum }?.let {
@@ -75,19 +94,45 @@ class WallpaperService @Inject constructor(
             return
         }
 
-        if (existingWallpapers.size >= 4) {
-            existingWallpapers.minByOrNull { it.timestamp }?.let {
-                dao.deleteWallpaper(it.id)
-                deleteWallpaperFile(it.imagePath)
-            }
-        }
-
-        if (dao.getTopWallpapers().any { it.rank == 0 }) {
-            dao.bumpAllRanks()
-        }
-
         val imagePath = saveImageToAppStorage(imageData, checksum)
-        dao.insert(Wallpaper(imagePath = imagePath, rank = 0, timestamp = timestamp, checksum = checksum))
+        val originalImagePath = saveImageToAppStorage(originalData, "${checksum}_original")
+        val legacyChecksum = calculateChecksum(imageData)
+        val legacyWallpaper = existingWallpapers.firstOrNull {
+            it.originalImagePath == null && it.checksum == legacyChecksum
+        }
+        if (legacyWallpaper != null) {
+            roomDb.withTransaction {
+                dao.update(legacyWallpaper.copy(
+                    imagePath = imagePath,
+                    originalImagePath = originalImagePath,
+                    cropHints = cropHints,
+                    checksum = checksum,
+                ))
+                promoteToRank0(legacyWallpaper.id, timestamp)
+            }
+            deleteWallpaperFile(legacyWallpaper.imagePath)
+            return
+        }
+
+        val toRemove = if (existingWallpapers.size >= 4) {
+            existingWallpapers.minByOrNull { it.timestamp }
+        } else null
+        roomDb.withTransaction {
+            toRemove?.let { dao.deleteWallpaper(it.id) }
+            dao.bumpAllRanks()
+            dao.insert(Wallpaper(
+                imagePath = imagePath,
+                originalImagePath = originalImagePath,
+                cropHints = cropHints,
+                rank = 0,
+                timestamp = timestamp,
+                checksum = checksum,
+            ))
+        }
+        toRemove?.let {
+            deleteWallpaperFile(it.imagePath)
+            it.originalImagePath?.let { path -> deleteWallpaperFile(path) }
+        }
     }
 
     suspend fun applyWallpaper(
@@ -96,69 +141,51 @@ class WallpaperService @Inject constructor(
     ): Boolean = withContext(Dispatchers.IO) {
         rankMutex.withLock {
             runCatching {
-                val bmp = BitmapFactory.decodeFile(wallpaper.imagePath) ?: return@runCatching false
-                val newId = wallpaperManager.setBitmap(bmp, null, true, FLAG_SYSTEM)
-                if (newId == 0) return@runCatching false
-                if (LauncherPrefs.WALLPAPER_CAROUSEL_LOCKSCREEN.get(context)) {
-                    wallpaperManager.setBitmap(bmp, null, true, FLAG_LOCK)
+                val savedWallpaper = dao.getById(wallpaper.id) ?: return@runCatching false
+                val crops = decodeCropHints(savedWallpaper.cropHints)
+                val which = if (LauncherPrefs.WALLPAPER_CAROUSEL_LOCKSCREEN.get(context)) {
+                    FLAG_SYSTEM or FLAG_LOCK
+                } else FLAG_SYSTEM
+                val imagePath = savedWallpaper.originalImagePath ?: savedWallpaper.imagePath
+                val newId = FileInputStream(imagePath).use {
+                    apiWrapper.setWallpaperWithCrops(wallpaperManager, it, crops, which)
                 }
+                if (newId == 0) return@runCatching false
                 promoteToRank0(wallpaper.id, System.currentTimeMillis())
                 lastHandledWallpaperId = newId
                 true
+            }.onFailure {
+                if (it is CancellationException) throw it
+                Log.e("WallpaperService", "Error applying wallpaper: ${it.message}", it)
             }.getOrDefault(false)
         }
     }
 
-    private fun readSystemWallpaperBytes(wm: WallpaperManager): ByteArray? {
-        return wm.getWallpaperFile(FLAG_SYSTEM)?.use { pfd ->
-            FileInputStream(pfd.fileDescriptor).use { it.readBytes() }
-        }
+    private fun encodeCropHints(crops: SparseArray<Rect>): String {
+        return JSONObject().apply {
+            for (index in 0 until crops.size()) {
+                put(crops.keyAt(index).toString(), crops.valueAt(index).flattenToString())
+            }
+        }.toString()
     }
 
-    private fun calculateChecksum(imageData: ByteArray): String {
+    private fun decodeCropHints(value: String?): SparseArray<Rect> {
+        val crops = SparseArray<Rect>()
+        if (value == null) return crops
+        val json = JSONObject(value)
+        for (key in json.keys()) {
+            val rect = requireNotNull(Rect.unflattenFromString(json.getString(key)))
+            require(!rect.isEmpty)
+            crops.put(key.toInt(), rect)
+        }
+        return crops
+    }
+
+    private fun calculateChecksum(imageData: ByteArray, cropHints: String = ""): String {
         return MessageDigest.getInstance("MD5")
+            .apply { update(cropHints.toByteArray(Charsets.UTF_8)) }
             .digest(imageData)
             .joinToString("") { "%02x".format(it) }
-    }
-
-    private suspend fun saveWallpaper(imageData: ByteArray) = withContext(Dispatchers.IO) {
-        rankMutex.withLock {
-            val timestamp = System.currentTimeMillis()
-            val checksum = calculateChecksum(imageData)
-
-            val existingWallpapers = dao.getTopWallpapers()
-
-            val matched = existingWallpapers.firstOrNull { it.checksum == checksum }
-            if (matched != null) {
-                Log.d("WallpaperService", "Wallpaper already exists with checksum: $checksum")
-                promoteToRank0(matched.id, timestamp)
-                return@withContext
-            }
-
-            if (existingWallpapers.size >= 4) {
-                val toRemove = existingWallpapers.minByOrNull { it.timestamp }
-                if (toRemove != null) {
-                    dao.deleteWallpaper(toRemove.id)
-                    deleteWallpaperFile(toRemove.imagePath)
-                }
-            }
-
-            val topWallpapers = dao.getTopWallpapers()
-
-            if (topWallpapers.any { it.rank == 0 }) {
-                dao.bumpAllRanks()
-            }
-
-            val imagePath = saveImageToAppStorage(imageData, checksum)
-            dao.insert(
-                Wallpaper(
-                    imagePath = imagePath,
-                    rank = 0,
-                    timestamp = timestamp,
-                    checksum = checksum
-                )
-            )
-        }
     }
 
     private suspend fun promoteToRank0(id: Long, timestamp: Long) {
@@ -193,20 +220,21 @@ class WallpaperService @Inject constructor(
         val storageDir = File(context.filesDir, "wallpapers").apply { if (!exists()) mkdirs() }
         val imageFile = File(storageDir, "wallpaper_$checksum.jpg")
         if (!imageFile.exists()) {
-            runCatching { FileOutputStream(imageFile).use { it.write(imageData) } }
-                .onFailure { Log.e("WallpaperService", "Error saving image: ${it.message}", it) }
+            val atomicFile = AtomicFile(imageFile)
+            val stream = atomicFile.startWrite()
+            try {
+                stream.write(imageData)
+                atomicFile.finishWrite(stream)
+            } catch (e: Exception) {
+                atomicFile.failWrite(stream)
+                throw e
+            }
         }
         return imageFile.absolutePath
     }
 
     override fun close() {
         // Backed by an app-scoped DB singleton; nothing to release.
-    }
-
-    private fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
-        val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        return stream.toByteArray()
     }
 
     companion object {
