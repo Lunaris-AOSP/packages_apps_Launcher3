@@ -1883,7 +1883,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     startWindowCornerRadius));
         }
 
-        // Use a fixed velocity to start the animation.
+        // Use a fixed velocity to start the animation. Let the spring finish independently:
+        // predictive back to All Apps can have an empty content AnimatorSet, which ends
+        // immediately after starting the spring.
         animation.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
@@ -1894,11 +1896,6 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             @Override
             public void onAnimationCancel(Animator animation) {
                 if (useIconSpring) anim.cancel();
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                if (useIconSpring) anim.end();
             }
         });
         return anim;
