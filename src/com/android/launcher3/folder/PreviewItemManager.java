@@ -556,6 +556,8 @@ public class PreviewItemManager {
         }
 
         Path clipPath = bg.getClipPath();
+        // Small folder preview icons extend beyond the background at rest. Only clip them
+        // while resizing or sliding between pages.
         boolean shouldClipResize = bg.isBoundsAnimating();
         float firstPageItemsTransX = 0;
         if (mShouldSlideInFirstPage) {
@@ -568,7 +570,7 @@ public class PreviewItemManager {
                     canvas,
                     mCurrentPageParams,
                     firstPageOffset,
-                    (shouldClip || shouldClipResize || mIcon.usesWorkspacePreviewLayout())
+                    (shouldClip || shouldClipResize)
                             && !mIcon.isMultiSpanFolder(),
                     clipPath);
 
@@ -579,8 +581,7 @@ public class PreviewItemManager {
                 bg.getPreviewTop());
         boolean shouldClipFirstPage =
                 (shouldClipResize
-                        || Math.abs(firstPageItemsTransX) > mClipThreshold
-                        || mIcon.usesWorkspacePreviewLayout())
+                        || Math.abs(firstPageItemsTransX) > mClipThreshold)
                 && !mIcon.isMultiSpanFolder();
 
         if (mIcon.isMultiSpanFolder() && mIntrinsicIconSize > 0) {
