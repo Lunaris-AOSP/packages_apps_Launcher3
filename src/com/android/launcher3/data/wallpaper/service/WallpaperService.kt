@@ -88,7 +88,7 @@ class WallpaperService @Inject constructor(
         val timestamp = System.currentTimeMillis()
         val checksum = calculateChecksum(originalData, cropHints)
 
-        val existingWallpapers = dao.getTopWallpapers()
+        val existingWallpapers = getTopWallpapersLocked()
         existingWallpapers.firstOrNull { it.checksum == checksum }?.let {
             promoteToRank0(it.id, timestamp)
             return
@@ -200,12 +200,44 @@ class WallpaperService @Inject constructor(
     }
 
     suspend fun getTopWallpapers(): List<Wallpaper> = withContext(Dispatchers.IO) {
-        dao.getTopWallpapers()
+        rankMutex.withLock { getTopWallpapersLocked() }
     }
 
     fun getTopWallpapersBlocking(): List<Wallpaper> {
-        return runBlocking {
-            withContext(Dispatchers.IO) { dao.getTopWallpapers() }
+        return runBlocking { getTopWallpapers() }
+    }
+
+    private suspend fun getTopWallpapersLocked(): List<Wallpaper> {
+        removeDuplicateWallpapersLocked()
+        return dao.getTopWallpapers()
+    }
+
+    /**
+     * Older versions could insert the same wallpaper more than once when WallpaperManager
+     * delivered repeated color callbacks. Keep the newest/current row for each checksum so
+     * those rows cannot make the carousel render the same wallpaper twice.
+     */
+    private suspend fun removeDuplicateWallpapersLocked() {
+        val duplicates = dao.getAllWallpapers()
+            .asSequence()
+            .filter { it.checksum != null }
+            .groupBy { it.checksum }
+            .values
+            .filter { it.size > 1 }
+            .flatMap { wallpapers ->
+                val keep = wallpapers.maxWithOrNull(
+                    compareBy<Wallpaper> { it.rank == 0 }
+                        .thenBy { it.timestamp }
+                        .thenBy { it.id },
+                )
+                wallpapers.filter { it != keep }
+            }
+            .toList()
+
+        if (duplicates.isEmpty()) return
+
+        roomDb.withTransaction {
+            duplicates.forEach { dao.deleteWallpaper(it.id) }
         }
     }
 

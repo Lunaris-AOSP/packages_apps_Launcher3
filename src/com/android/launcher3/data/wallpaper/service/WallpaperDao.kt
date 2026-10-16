@@ -16,6 +16,9 @@ interface WallpaperDao {
     @Query("SELECT * FROM wallpapers ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getTopWallpapers(limit: Int = 4): List<Wallpaper>
 
+    @Query("SELECT * FROM wallpapers")
+    suspend fun getAllWallpapers(): List<Wallpaper>
+
     @Query("SELECT * FROM wallpapers WHERE checksum = :checksum LIMIT 1")
     suspend fun getByChecksum(checksum: String): Wallpaper?
 
