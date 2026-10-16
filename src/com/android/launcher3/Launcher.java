@@ -1221,6 +1221,9 @@ public class Launcher extends StatefulActivity<LauncherState>
         } else if (ALL_APPS.equals(state) && DRAWER_OPEN_KEYBOARD.get(this)) {
             getAppsView().getSearchUiManager().focusSearchField();
         }
+        if (!ALL_APPS.equals(state)) {
+            getAppsView().setUniversalSearchActive(false);
+        }
         setTitle(state);
     }
 
@@ -2755,7 +2758,8 @@ public class Launcher extends StatefulActivity<LauncherState>
     }
 
     public boolean canOpenAllApps() {
-        return !isIosStyleDrawer();
+        return !isIosStyleDrawer()
+                || (mAppsView != null && mAppsView.isUniversalSearchActive());
     }
 
     private boolean isIosStyleDrawer() {

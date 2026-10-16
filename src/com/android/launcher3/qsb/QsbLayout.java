@@ -224,18 +224,25 @@ public class QsbLayout extends FrameLayout implements Reorderable {
     private void setupGeminiIcon() {
         if (geminiIcon == null) return;
 
-        if (!Utilities.isPackageInstalled(getContext(), Utilities.GEMINI_PACKAGE)) {
+        boolean universalSearch = LauncherPrefs.DOCK_UNIVERSAL_SEARCH.get(getContext());
+        if (!universalSearch
+                && !Utilities.isPackageInstalled(getContext(), Utilities.GEMINI_PACKAGE)) {
             geminiIcon.setVisibility(View.GONE);
             return;
         }
 
         geminiIcon.setVisibility(View.VISIBLE);
+        geminiIcon.setContentDescription(getContext().getString(universalSearch
+                ? R.string.universal_search_title : R.string.label_gemini_search));
         geminiIcon.setImageResource(mIsThemed
                 ? R.drawable.ic_gemini_themed
                 : R.drawable.ic_gemini_color);
 
         geminiIcon.setOnClickListener(view -> {
-            Context ctx = view.getContext();
+            if (LauncherPrefs.DOCK_UNIVERSAL_SEARCH.get(view.getContext())) {
+                UniversalSearchLauncher.launch(view.getContext());
+                return;
+            }
             try {
                 Intent intent = view.getContext().getPackageManager().getLaunchIntentForPackage(Utilities.GEMINI_PACKAGE);
                 if (intent != null) {

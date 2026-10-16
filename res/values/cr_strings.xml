@@ -154,6 +154,8 @@
     <string name="compact_search_bar_action_lens">Google Lens</string>
     <string name="compact_search_bar_action_mic">Voice search</string>
     <string name="compact_search_bar_action_gemini">Gemini</string>
+    <string name="dock_universal_search_title">Replace AI search</string>
+    <string name="dock_universal_search_summary">Open Universal search from the AI button in the default and Google search bar styles</string>
     <string name="dock_theme_title">Themed icons</string>
     <string name="dock_theme_summary">Use themed icons for search bar</string>
     <string name="search_radius_title">Corner radius</string>

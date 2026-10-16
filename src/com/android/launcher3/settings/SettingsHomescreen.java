@@ -133,6 +133,7 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                 LauncherPrefs.DOCK_THEME.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SEARCH_RADIUS_SIZE.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.DOCK_MUSIC_SEARCH.getSharedPrefKey().equals(key) ||
+                LauncherPrefs.DOCK_UNIVERSAL_SEARCH.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.HOTSEAT_QSB_HEIGHT.getSharedPrefKey().equals(key) ||
@@ -422,6 +423,8 @@ public class SettingsHomescreen extends CollapsingToolbarBaseActivity
                     !isCompact);
             setQsbPrefEnabled(LauncherPrefs.COMPACT_SEARCH_BAR_ACTION.getSharedPrefKey(),
                     isDockSearch && isCompact);
+            setQsbPrefEnabled(LauncherPrefs.DOCK_UNIVERSAL_SEARCH.getSharedPrefKey(),
+                    isDockSearch && !isCompact && !customWidget);
             setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_OPACITY.getSharedPrefKey(),
                     (!isGoogleStyle || isCompact) && !customWidget);
             setQsbPrefEnabled(LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.getSharedPrefKey(),

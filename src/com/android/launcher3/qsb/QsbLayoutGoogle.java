@@ -105,7 +105,8 @@ public class QsbLayoutGoogle extends FrameLayout
 
     @Override
     public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
-        if (key.equals(LauncherPrefs.DOCK_MUSIC_SEARCH.getSharedPrefKey())) {
+        if (LauncherPrefs.DOCK_MUSIC_SEARCH.getSharedPrefKey().equals(key)
+                || LauncherPrefs.DOCK_UNIVERSAL_SEARCH.getSharedPrefKey().equals(key)) {
             setIcons();
         }
     }
@@ -131,6 +132,9 @@ public class QsbLayoutGoogle extends FrameLayout
         }
 
         if (mAiModeButton != null) {
+            mAiModeButton.setContentDescription(mContext.getString(
+                    LauncherPrefs.DOCK_UNIVERSAL_SEARCH.get(mContext)
+                            ? R.string.universal_search_title : R.string.label_ai_mode));
             mAiModeButton.setImageResource(isThemed
                     ? R.drawable.ic_ai_mode_themed_google
                     : R.drawable.ic_ai_mode_color_google);
@@ -211,6 +215,10 @@ public class QsbLayoutGoogle extends FrameLayout
     private void setupAiModeButton() {
         if (mAiModeButton == null) return;
         mAiModeButton.setOnClickListener(v -> {
+            if (LauncherPrefs.DOCK_UNIVERSAL_SEARCH.get(mContext)) {
+                UniversalSearchLauncher.launch(mContext);
+                return;
+            }
             if (Utilities.isAiMusicSearchEnabled(mContext)) {
                 launchAiMusicSearch();
                 return;

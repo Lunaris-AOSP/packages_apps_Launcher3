@@ -188,6 +188,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     private View mBottomSheetHandleArea;
     private boolean mHasWorkApps;
     private boolean mHasPrivateApps;
+    private boolean mUniversalSearchActive;
     private float[] mBottomSheetCornerRadii;
     private ScrimView mScrimView;
     private int mHeaderColor;
@@ -316,7 +317,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     protected void onFinishInflate() {
         super.onFinishInflate();
 
-        String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+        String searchPlacement = getSearchBarPlacement();
         if ("hidden".equals(searchPlacement)) {
             mSearchContainer.setVisibility(View.GONE);
         } else {
@@ -379,6 +380,29 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     public View getSearchView() {
         return mSearchContainer;
+    }
+
+    public boolean isUniversalSearchActive() {
+        return mUniversalSearchActive;
+    }
+
+    public void setUniversalSearchActive(boolean active) {
+        if (mUniversalSearchActive == active) {
+            return;
+        }
+        mUniversalSearchActive = active;
+        if ("hidden".equals(LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext()))) {
+            rebindAdapters(true);
+        }
+        if (active) {
+            // Hide the app grid before the container is shown, without waiting for results.
+            animateToSearchState(true, 0);
+        }
+    }
+
+    private String getSearchBarPlacement() {
+        String placement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+        return mUniversalSearchActive && "hidden".equals(placement) ? "top" : placement;
     }
 
     /** Invoke when the current search session is finished. */
@@ -794,7 +818,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         removeCustomRules(rvContainer);
         removeCustomRules(getSearchRecyclerView());
 
-        String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+        String searchPlacement = getSearchBarPlacement();
         if ("hidden".equals(searchPlacement)) {
             getSearchRecyclerView().setVisibility(View.GONE);
             if (mSearchContainer != null) {
@@ -899,7 +923,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
         removeCustomRules(mHeader);
 
-        String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+        String searchPlacement = getSearchBarPlacement();
         if (isSearchBarFloating() || "bottom".equals(searchPlacement) || "hidden".equals(searchPlacement)) {
             alignParentTop(mHeader, false /* includeTabsMargin */);
         } else {
@@ -1468,7 +1492,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         }
         if (mSearchContainer != null && mSearchContainer.getLayoutParams() instanceof MarginLayoutParams) {
             MarginLayoutParams searchLp = (MarginLayoutParams) mSearchContainer.getLayoutParams();
-            String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+            String searchPlacement = getSearchBarPlacement();
             if ("bottom".equals(searchPlacement) && !isSearchBarFloating()) {
                 int extraMargin = getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_bottom_padding_extra);
                 int bottomPaddingArea = Math.max(insets.bottom, mNavBarScrimHeight);
@@ -1509,7 +1533,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         
         if (mSearchContainer != null && mSearchContainer.getLayoutParams() instanceof MarginLayoutParams) {
             MarginLayoutParams searchLp = (MarginLayoutParams) mSearchContainer.getLayoutParams();
-            String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+            String searchPlacement = getSearchBarPlacement();
             if ("bottom".equals(searchPlacement) && !isSearchBarFloating()) {
                 int extraMargin = getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_bottom_padding_extra);
                 int bottomPaddingArea = Math.max(insets.getInsets(WindowInsets.Type.systemBars()).bottom, mNavBarScrimHeight);
@@ -1547,7 +1571,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                 && mSearchContainer != null
                 && mSearchContainer.getVisibility() == VISIBLE) {
 
-            String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+            String searchPlacement = getSearchBarPlacement();
             if ("bottom".equals(searchPlacement) && !isSearchBarFloating()) {
                 float searchTop = mSearchContainer.getTop() + mSearchContainer.getTranslationY();
                 if (searchTop > child.getTop()) {
@@ -1990,7 +2014,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             }
         }
 
-        String searchPlacement = LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+        String searchPlacement = getSearchBarPlacement();
         boolean searchBottom = "bottom".equals(searchPlacement) && !isSearchBarFloating();
         if (searchBottom && mSearchContainer != null && mSearchContainer.getVisibility() == VISIBLE) {
             mHeaderPaint.setColor(mHeaderColor);
@@ -2143,8 +2167,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                 if (isSearchBarFloating()) {
                     bottomOffset += mSearchContainer.getHeight();
                 } else {
-                    String searchPlacement =
-                            LauncherPrefs.ALL_APPS_SEARCH_PLACEMENT.get(getContext());
+                    String searchPlacement = getSearchBarPlacement();
                     if ("2".equals(searchPlacement) && mSearchContainer != null
                             && !AppDrawerStyle.isVerticalPaged(mAppDrawerStyle)) {
                         bottomOffset += mSearchContainer.getHeight();

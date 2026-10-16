@@ -347,7 +347,8 @@ public class AppsSearchContainerLayout extends ExtendedEditText
         }
         mPrivateSpaceQueryHandled = false;
         if (items != null) {
-            if (query.trim().isEmpty() && items.isEmpty()) {
+            if (query.trim().isEmpty() && items.isEmpty()
+                    && !mAppsView.isUniversalSearchActive()) {
                 mAppsView.onClearSearchResult();
                 mResultQuery = null;
             } else {

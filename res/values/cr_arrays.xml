@@ -34,6 +34,7 @@
         <item>@string/compact_search_bar_action_lens</item>
         <item>@string/compact_search_bar_action_mic</item>
         <item>@string/compact_search_bar_action_gemini</item>
+        <item>@string/universal_search_title</item>
     </string-array>
 
     <string-array name="compact_search_bar_action_values" translatable="false">
@@ -41,6 +42,7 @@
         <item>lens</item>
         <item>mic</item>
         <item>gemini</item>
+        <item>universal_search</item>
     </string-array>
 
     <!-- App drawer searchbar -->

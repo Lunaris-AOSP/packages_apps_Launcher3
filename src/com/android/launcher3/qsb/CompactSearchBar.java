@@ -35,6 +35,7 @@ public class CompactSearchBar extends FrameLayout
     private static final String ACTION_LENS = "lens";
     private static final String ACTION_MIC = "mic";
     private static final String ACTION_GEMINI = "gemini";
+    private static final String ACTION_UNIVERSAL_SEARCH = "universal_search";
 
     private final MultiTranslateDelegate mTranslateDelegate = new MultiTranslateDelegate(this);
     private final Context mContext;
@@ -121,6 +122,7 @@ public class CompactSearchBar extends FrameLayout
                 }
                 break;
             case ACTION_GEMINI:
+            case ACTION_UNIVERSAL_SEARCH:
                 mActionIcon.setImageResource(isThemed
                         ? R.drawable.ic_gemini_themed
                         : R.drawable.ic_gemini_color);
@@ -131,6 +133,11 @@ public class CompactSearchBar extends FrameLayout
                         ? R.drawable.ic_super_g_themed
                         : R.drawable.ic_super_g_color);
                 break;
+        }
+        if (mInner != null) {
+            mInner.setContentDescription(mContext.getString(
+                    ACTION_UNIVERSAL_SEARCH.equals(getAction())
+                            ? R.string.universal_search_title : R.string.label_search));
         }
     }
 
@@ -188,6 +195,9 @@ public class CompactSearchBar extends FrameLayout
                 break;
             case ACTION_GEMINI:
                 launchGemini();
+                break;
+            case ACTION_UNIVERSAL_SEARCH:
+                UniversalSearchLauncher.launch(mContext);
                 break;
             case ACTION_GOOGLE_SEARCH:
             default:
