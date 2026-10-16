@@ -223,10 +223,9 @@ public class BaseDepthController {
         mWallpaperZoomSuppressed = suppressed;
         if (suppressed) {
             cancelWallpaperZoomHandoff();
-            applyWallpaperZoom(/* force */ true);
-        } else {
-            animateWallpaperZoomHandoff();
+            return;
         }
+        animateWallpaperZoomHandoff();
     }
 
     protected void applyDepthAndBlur() {
@@ -251,7 +250,7 @@ public class BaseDepthController {
     }
 
     private void applyWallpaperZoom(boolean force) {
-        if (mDisposed) {
+        if (mDisposed || mWallpaperZoomSuppressed) {
             return;
         }
         float zoom = getWallpaperZoom();
