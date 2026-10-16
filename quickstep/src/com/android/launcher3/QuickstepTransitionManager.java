@@ -1422,12 +1422,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     /** Returns animator that controls depth/blur of the background during app/widget opening. */
     private Animator getBackgroundAnimator(boolean scrimHandlesBlur) {
         boolean skipLauncherBlur = Flags.allAppsBlur() && !scrimHandlesBlur;
+        boolean appLaunchBlurEnabled = isAppLaunchBlurEnabled();
 
         // When launching an app from overview that doesn't map to a task, we still want to just
         // blur the wallpaper instead of the launcher surface as well
         LauncherState launcherState = mLauncher.getStateManager().getState();
         boolean allowBlurringLauncher =
-                !skipLauncherBlur && !scrimHandlesBlur && launcherState != OVERVIEW
+                appLaunchBlurEnabled && !skipLauncherBlur && !scrimHandlesBlur
+                        && launcherState != OVERVIEW
                         && BlurUtils.supportsBlursOnWindows();
 
         DepthController depthController = mLauncher.getDepthController();
@@ -1437,7 +1439,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 .setDuration(APP_LAUNCH_DURATION);
         backgroundRadiusAnim.setInterpolator(APP_LAUNCH_DEPTH_INTERPOLATOR);
 
-        if (scrimHandlesBlur || skipLauncherBlur) {
+        if (scrimHandlesBlur || skipLauncherBlur || !appLaunchBlurEnabled) {
             backgroundRadiusAnim.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationStart(Animator animation) {
