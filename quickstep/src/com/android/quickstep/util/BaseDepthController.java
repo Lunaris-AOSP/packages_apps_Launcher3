@@ -306,7 +306,6 @@ public class BaseDepthController {
         cancelWallpaperZoomHandoff();
         ++mWallpaperZoomRequestId;
         mWallpaperWindowToken = null;
-        mLastWallpaperZoom = -1f;
     }
 
     private void animateWallpaperZoomHandoff() {
