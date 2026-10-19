@@ -51,7 +51,6 @@ import com.android.launcher3.statemanager.StateManager;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.MultiPropertyFactory;
 import com.android.launcher3.util.MultiPropertyFactory.MultiProperty;
-import com.android.launcher3.util.Executors;
 import com.android.systemui.shared.system.BlurUtils;
 
 /**
@@ -101,7 +100,6 @@ public class BaseDepthController {
     @Nullable private IBinder mWallpaperWindowToken;
     private boolean mDisposed;
     private boolean mWallpaperZoomSuppressed;
-    private volatile long mWallpaperZoomRequestId;
     @Nullable private ValueAnimator mWallpaperZoomHandoffAnimator;
     private float mWallpaperZoomHandoffTarget;
 
@@ -288,14 +286,7 @@ public class BaseDepthController {
                 || Math.abs(mLastWallpaperZoom - zoom) >= 0.015f
                 || (zoom == 0f && mLastWallpaperZoom != 0f)
                 || (zoom == 1f && mLastWallpaperZoom != 1f)) {
-            final float finalZoom = zoom;
-            final long requestId = ++mWallpaperZoomRequestId;
-
-            Executors.UI_HELPER_EXECUTOR.execute(() -> {
-                if (requestId == mWallpaperZoomRequestId) {
-                    mWallpaperManager.setWallpaperZoomOut(windowToken, finalZoom);
-                }
-            });
+            mWallpaperManager.setWallpaperZoomOut(windowToken, zoom);
 
             mLastWallpaperZoom = zoom;
             mWallpaperWindowToken = windowToken;
@@ -304,7 +295,6 @@ public class BaseDepthController {
 
     protected void onWallpaperWindowDetached() {
         cancelWallpaperZoomHandoff();
-        ++mWallpaperZoomRequestId;
         mWallpaperWindowToken = null;
         mLastWallpaperZoom = -1f;
     }
