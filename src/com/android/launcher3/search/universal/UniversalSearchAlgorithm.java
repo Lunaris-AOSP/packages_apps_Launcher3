@@ -108,7 +108,7 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
             if (token != mRequest.get()) {
                 return;
             }
-            AppMatches appMatches = matchApps(apps.data, query);
+            AppMatches appMatches = matchApps(apps.getSearchableApps(), query);
             if (query.trim().isEmpty()) {
                 Executors.THREAD_POOL_EXECUTOR.execute(
                         () -> publishEmptyQuery(token, query, appMatches.items, callback));

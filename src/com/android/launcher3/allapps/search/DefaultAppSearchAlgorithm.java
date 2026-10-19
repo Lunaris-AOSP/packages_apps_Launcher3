@@ -63,8 +63,8 @@ public class DefaultAppSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     @Override
     public void doSearch(String query, SearchCallback<AdapterItem> callback) {
         mAppState.getModel().enqueueModelUpdateTask((taskController, dataModel, apps) ->  {
-            ArrayList<AdapterItem> result = getTitleMatchResult(mAppState.getContext(), apps.data,
-                    query);
+            ArrayList<AdapterItem> result = getTitleMatchResult(mAppState.getContext(),
+                    apps.getSearchableApps(), query);
             if (mAddNoResultsMessage && result.isEmpty()) {
                 result.add(getEmptyMessageAdapterItem(query));
             }

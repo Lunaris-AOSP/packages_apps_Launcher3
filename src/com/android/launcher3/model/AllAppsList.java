@@ -37,7 +37,6 @@ import com.android.launcher3.dagger.ApplicationContext;
 import com.android.launcher3.dagger.LauncherAppSingleton;
 import com.android.launcher3.icons.IconCache;
 import com.android.launcher3.lineage.trust.db.TrustDatabaseHelper;
-import com.android.launcher3.lineage.trust.HiddenAppsFilter;
 import com.android.launcher3.model.data.AppInfo;
 import com.android.launcher3.model.data.AppsListData;
 import com.android.launcher3.model.data.ItemInfo;
@@ -77,6 +76,9 @@ public class AllAppsList {
     /** The list off all apps. */
     public final ArrayList<AppInfo> data = new ArrayList<>(DEFAULT_APPLICATIONS_NUMBER);
 
+    private final ArrayList<AppInfo> mSearchableApps =
+            new ArrayList<>(DEFAULT_APPLICATIONS_NUMBER);
+
     @NonNull
     private final IconCache mIconCache;
 
@@ -105,7 +107,7 @@ public class AllAppsList {
      */
     @Inject
     public AllAppsList(@NonNull IconCache iconCache,
-            @NonNull HiddenAppsFilter appFilter,
+            @NonNull AppFilter appFilter,
             @NonNull Provider<AppsListRepository> repositoryProvider,
             @ApplicationContext Context context) {
         mIconCache = iconCache;
@@ -152,6 +154,10 @@ public class AllAppsList {
         return new AppsListData(copyData(), mFlags);
     }
 
+    public List<AppInfo> getSearchableApps() {
+        return mSearchableApps;
+    }
+
     /**
      * Add the supplied ApplicationInfo objects to the list, and enqueue it into the
      * list to broadcast when notify() is called.
@@ -163,13 +169,10 @@ public class AllAppsList {
     }
 
     public void add(AppInfo info, LauncherActivityInfo activityInfo, boolean loadIcon) {
-        if (mTrustData.isPackageHidden(info.getTargetPackage())) {
-            return;
-        }
         if (!mAppFilter.shouldShowApp(info.componentName)) {
             return;
         }
-        if (data.stream().anyMatch(it ->
+        if (mSearchableApps.stream().anyMatch(it ->
                 it.getTargetComponent().equals(info.componentName) && it.user.equals(info.user))) {
             return;
         }
@@ -180,7 +183,10 @@ public class AllAppsList {
             info.title = "";
         }
 
-        data.add(info);
+        mSearchableApps.add(info);
+        if (!mTrustData.isPackageHidden(info.getTargetPackage())) {
+            data.add(info);
+        }
         mDataChanged = true;
     }
 
@@ -193,8 +199,8 @@ public class AllAppsList {
             FlagOp runtimeFlagUpdate) {
         List<AppInfo> updatedAppInfos = new ArrayList<>();
         UserHandle user = installInfo.user;
-        for (int i = data.size() - 1; i >= 0; i--) {
-            final AppInfo appInfo = data.get(i);
+        for (int i = mSearchableApps.size() - 1; i >= 0; i--) {
+            final AppInfo appInfo = mSearchableApps.get(i);
             if (installInfo.packageName.equals(appInfo.getTargetPackage())
                     && appInfo.user.equals(user)) {
                 if (installInfo.state == PackageInstallInfo.STATUS_INSTALLED_DOWNLOADING
@@ -213,10 +219,12 @@ public class AllAppsList {
                     appInfo.setProgressLevel(installInfo);
                     appInfo.runtimeStatusFlags =
                             runtimeFlagUpdate.apply(appInfo.runtimeStatusFlags);
-                    if (Flags.modelRepository()) {
-                        mRepo.get().dispatchIncrementationUpdate(appInfo);
+                    if (data.contains(appInfo)) {
+                        if (Flags.modelRepository()) {
+                            mRepo.get().dispatchIncrementationUpdate(appInfo);
+                        }
+                        updatedAppInfos.add(appInfo);
                     }
-                    updatedAppInfos.add(appInfo);
                 }
             }
         }
@@ -225,6 +233,7 @@ public class AllAppsList {
 
     public void clear() {
         data.clear();
+        mSearchableApps.clear();
         mDataChanged = false;
         // Reset the index as locales might have changed
         mIndex = new AlphabeticIndexCompat(LocaleList.getDefault());
@@ -234,8 +243,10 @@ public class AllAppsList {
      * Remove the apps for the given apk identified by packageName.
      */
     public void removePackage(String packageName, UserHandle user) {
-        boolean removed = data.removeIf(
-                info -> info.user.equals(user) && packageName.equals(info.getTargetPackage()));
+        Predicate<AppInfo> matcher =
+                info -> info.user.equals(user) && packageName.equals(info.getTargetPackage());
+        boolean removed = mSearchableApps.removeIf(matcher);
+        data.removeIf(matcher);
         mDataChanged |= removed;
     }
 
@@ -243,7 +254,7 @@ public class AllAppsList {
      * Updates the disabled flags of apps matching {@param matcher} based on {@param op}.
      */
     public void updateDisabledFlags(Predicate<ItemInfo> matcher, FlagOp op) {
-        final List<AppInfo> data = this.data;
+        final List<AppInfo> data = mSearchableApps;
         for (int i = data.size() - 1; i >= 0; i--) {
             AppInfo info = data.get(i);
             if (matcher.test(info)) {
@@ -254,7 +265,7 @@ public class AllAppsList {
     }
 
     public void updateIconsAndLabels(HashSet<String> packages, UserHandle user) {
-        for (AppInfo info : data) {
+        for (AppInfo info : mSearchableApps) {
             if (info.user.equals(user) && packages.contains(info.componentName.getPackageName())) {
                 mIconCache.updateTitleAndIcon(info);
                 info.sectionName = mIndex.computeSectionName(info.title);
@@ -266,7 +277,7 @@ public class AllAppsList {
     /** Updates the display title for a single app after a custom rename. */
     public void updateCustomAppTitle(Context context, IconCache iconCache,
             ComponentName component, UserHandle user) {
-        for (AppInfo info : data) {
+        for (AppInfo info : mSearchableApps) {
             if (!info.user.equals(user) || !component.equals(info.componentName)) {
                 continue;
             }
@@ -298,7 +309,7 @@ public class AllAppsList {
         Map<ComponentName, LauncherActivityInfo> activityMap = matches.stream().collect(
                 Collectors.toMap(LauncherActivityInfo::getComponentName, lai -> lai));
 
-        Iterator<AppInfo> iterator = data.iterator();
+        Iterator<AppInfo> iterator = mSearchableApps.iterator();
         while (iterator.hasNext()) {
             AppInfo appInfo = iterator.next();
             if (user.equals(appInfo.user) && packageName.equals(appInfo.getTargetPackage())) {
@@ -310,6 +321,7 @@ public class AllAppsList {
                     mIconCache.remove(cn, user);
                     outRemovedComponents.add(cn);
                     iterator.remove();
+                    data.remove(appInfo);
                     if (DEBUG) {
                         Log.w(TAG, "updatePackage: removing unavailable component, cn=" + cn
                                 + ", user=" + user);
