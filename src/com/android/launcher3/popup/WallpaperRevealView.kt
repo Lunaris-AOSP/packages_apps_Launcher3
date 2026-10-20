@@ -16,6 +16,7 @@ import android.graphics.Path
 import android.graphics.Point
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.animation.PathInterpolator
 import com.android.launcher3.views.ActivityContext
 import com.android.launcher3.views.BaseDragLayer
@@ -48,6 +49,8 @@ class WallpaperRevealView(context: Context) : View(context) {
     private var applyFinished = false
     private var applySucceeded = false
     private var started = false
+    private var finishing = false
+    private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
     private var onSettled: ((success: Boolean) -> Unit)? = null
 
     init {
@@ -103,23 +106,28 @@ class WallpaperRevealView(context: Context) : View(context) {
         previousWallpaper: Bitmap,
         nextWallpaper: Bitmap?,
         onSettled: (success: Boolean) -> Unit,
-    ) {
-        val dragLayer =
-            resolveDragLayer()
-                ?: run {
-                    onSettled(true)
-                    return
-                }
+    ): Boolean {
+        val dragLayer = resolveDragLayer() ?: return false
+        if (
+            !dragLayer.isAttachedToWindow ||
+                previousWallpaper.isRecycled ||
+                nextWallpaper == null ||
+                nextWallpaper.isRecycled
+        )
+            return false
 
-        detachFromParent()
+        cancelAndRemove()
+        // Skip the wipe if a view cannot be captured (for example a hardware bitmap).
+        // The regular wallpaper apply still runs, with the live workspace visible.
+        uiSnapshot = captureUi(dragLayer) ?: return false
         oldWallpaper = previousWallpaper
         newWallpaper = nextWallpaper
-        uiSnapshot = captureUi(dragLayer)
         this.onSettled = onSettled
         wipeFinished = false
         applyFinished = false
         applySucceeded = false
         started = false
+        finishing = false
         radius = 0f
         alpha = 1f
 
@@ -129,11 +137,11 @@ class WallpaperRevealView(context: Context) : View(context) {
         dragLayer.addView(this, fullBleedParams())
         dragLayer.bringChildToFront(this)
 
-        viewTreeObserver.addOnPreDrawListener(
-            object : android.view.ViewTreeObserver.OnPreDrawListener {
+        preDrawListener =
+            object : ViewTreeObserver.OnPreDrawListener {
                 override fun onPreDraw(): Boolean {
                     if (width <= 0 || height <= 0) return true
-                    viewTreeObserver.removeOnPreDrawListener(this)
+                    removePreDrawListener()
                     updateOriginFromWindow()
                     fitMatrix(oldWallpaper, oldMatrix, width, height)
                     fitMatrix(newWallpaper, newMatrix, width, height)
@@ -142,15 +150,18 @@ class WallpaperRevealView(context: Context) : View(context) {
                     return true
                 }
             }
-        )
+        viewTreeObserver.addOnPreDrawListener(preDrawListener)
         requestLayout()
+        return true
     }
 
     fun onApplyFinished(success: Boolean) {
+        if (onSettled == null) return
         applyFinished = true
         applySucceeded = success
         if (!success && !wipeFinished) {
             wipeAnimator?.cancel()
+            removePreDrawListener()
             fadeAndFinish()
             return
         }
@@ -158,10 +169,14 @@ class WallpaperRevealView(context: Context) : View(context) {
     }
 
     fun cancelAndRemove() {
+        animate().withEndAction(null).cancel()
         wipeAnimator?.cancel()
         wipeAnimator = null
+        removePreDrawListener()
         onSettled = null
         detachFromParent()
+        oldWallpaper = null
+        newWallpaper = null
     }
 
     private fun startWipe() {
@@ -205,11 +220,12 @@ class WallpaperRevealView(context: Context) : View(context) {
     }
 
     private fun maybeFinish() {
-        if (!wipeFinished || !applyFinished) return
+        if (!wipeFinished || !applyFinished || finishing) return
         if (!applySucceeded) {
             fadeAndFinish()
             return
         }
+        finishing = true
         animate()
             .alpha(0f)
             .setDuration(SETTLE_MS)
@@ -221,6 +237,8 @@ class WallpaperRevealView(context: Context) : View(context) {
     }
 
     private fun fadeAndFinish() {
+        if (finishing) return
+        finishing = true
         animate()
             .alpha(0f)
             .setDuration(resources.getInteger(android.R.integer.config_shortAnimTime).toLong())
@@ -241,20 +259,18 @@ class WallpaperRevealView(context: Context) : View(context) {
         val w = dragLayer.width
         val h = dragLayer.height
         if (w <= 0 || h <= 0) return null
+        var snapshot: Bitmap? = null
         return runCatching {
-                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bmp ->
-                    val canvas = Canvas(bmp)
-                    for (i in 0 until dragLayer.childCount) {
-                        val child = dragLayer.getChildAt(i)
-                        if (child.visibility != VISIBLE || child is WallpaperRevealView) continue
-                        val save = canvas.save()
-                        canvas.translate(child.left.toFloat(), child.top.toFloat())
-                        child.draw(canvas)
-                        canvas.restoreToCount(save)
-                    }
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
+                    snapshot = bitmap
+                    // ViewGroup.draw respects child transforms, alpha and drawing order.
+                    dragLayer.draw(Canvas(bitmap))
                 }
             }
-            .getOrNull()
+            .getOrElse {
+                snapshot?.recycle()
+                null
+            }
     }
 
     private fun fitMatrix(bitmap: Bitmap?, matrix: Matrix, w: Int, h: Int) {
@@ -295,6 +311,26 @@ class WallpaperRevealView(context: Context) : View(context) {
         (parent as? ViewGroup)?.removeView(this)
         uiSnapshot?.recycle()
         uiSnapshot = null
+    }
+
+    private fun removePreDrawListener() {
+        preDrawListener?.let {
+            if (viewTreeObserver.isAlive) viewTreeObserver.removeOnPreDrawListener(it)
+        }
+        preDrawListener = null
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        animate().withEndAction(null).cancel()
+        wipeAnimator?.cancel()
+        wipeAnimator = null
+        removePreDrawListener()
+        uiSnapshot?.recycle()
+        uiSnapshot = null
+        oldWallpaper = null
+        newWallpaper = null
+        finish(applySucceeded)
     }
 
     companion object {
