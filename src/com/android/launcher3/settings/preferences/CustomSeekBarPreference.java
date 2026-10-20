@@ -66,6 +66,7 @@ public class CustomSeekBarPreference extends Preference implements SeekBar.OnSee
 
         TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.CustomSeekBarPreference);
         try {
+            mInterval = Math.max(1, a.getInt(R.styleable.CustomSeekBarPreference_interval, mInterval));
             mShowSign = a.getBoolean(R.styleable.CustomSeekBarPreference_showSign, mShowSign);
             String units = a.getString(R.styleable.CustomSeekBarPreference_units);
             if (units != null)
@@ -80,14 +81,9 @@ public class CustomSeekBarPreference extends Preference implements SeekBar.OnSee
             a.recycle();
         }
 
-        try {
-            String newInterval = attrs.getAttributeValue(SETTINGS_NS, "interval");
-            if (newInterval != null)
-                mInterval = Integer.parseInt(newInterval);
-        } catch (Exception e) {
-            Log.e(TAG, "Invalid interval value", e);
-        }
-        mMinValue = attrs.getAttributeIntValue(SETTINGS_NS, "min", mMinValue);
+        mMinValue = attrs.getAttributeIntValue(ANDROIDNS, "min",
+                attrs.getAttributeIntValue("http://schemas.android.com/apk/res/com.android.launcher3",
+                        "min", attrs.getAttributeIntValue(SETTINGS_NS, "min", mMinValue)));
         mMaxValue = attrs.getAttributeIntValue(ANDROIDNS, "max", mMaxValue);
         if (mMaxValue < mMinValue)
             mMaxValue = mMinValue;
@@ -360,8 +356,11 @@ public class CustomSeekBarPreference extends Preference implements SeekBar.OnSee
     }
 
     public void setValue(int newValue) {
-        mValue = getLimitedValue(newValue);
+        int limited = getLimitedValue(newValue);
+        if (mValue == limited) return;
+        mValue = limited;
         if (mSeekBar != null) mSeekBar.setProgress(getSeekValue(mValue));
+        notifyChanged();
     }
 
     public void setValue(int newValue, boolean update) {
@@ -376,6 +375,23 @@ public class CustomSeekBarPreference extends Preference implements SeekBar.OnSee
 
     public int getValue() {
         return mValue;
+    }
+
+    public int getMin() { return mMinValue; }
+    public int getMax() { return mMaxValue; }
+    public int getInterval() { return mInterval; }
+    public int getDefaultValue() { return mDefaultValue; }
+    public boolean hasDefaultValue() { return mDefaultValueExists; }
+    public String formatValue(int value) { return getTextValue(value); }
+
+    /** Commit a Compose slider gesture once, using the same validation and storage as the view. */
+    public void commitValue(int value) {
+        int limited = getLimitedValue(value);
+        if (limited == mValue || !callChangeListener(limited)) return;
+        changeValue(limited);
+        persistInt(limited);
+        mValue = limited;
+        notifyChanged();
     }
 
     public void refresh(int newValue) {

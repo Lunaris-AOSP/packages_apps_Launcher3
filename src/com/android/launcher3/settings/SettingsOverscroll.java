@@ -20,27 +20,22 @@ import android.os.Bundle;
 import android.view.MenuItem;
 
 import androidx.fragment.app.FragmentManager;
-import androidx.preference.PreferenceFragmentCompat;
 
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 
-import com.android.settingslib.collapsingtoolbar.CollapsingToolbarBaseActivity;
-import com.android.settingslib.widget.SettingsBasePreferenceFragment;
-
-public class SettingsOverscroll extends CollapsingToolbarBaseActivity {
+public class SettingsOverscroll extends ComposeSettingsActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.settings_activity);
 
         if (savedInstanceState == null) {
             final FragmentManager fm = getSupportFragmentManager();
             fm.beginTransaction()
-                    .replace(com.android.settingslib.collapsingtoolbar.R.id.content_frame,
+                    .replace(R.id.content_frame,
                             new OverscrollSettingsFragment())
                     .commit();
         }
@@ -55,7 +50,7 @@ public class SettingsOverscroll extends CollapsingToolbarBaseActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    public static class OverscrollSettingsFragment extends SettingsBasePreferenceFragment
+    public static class OverscrollSettingsFragment extends ComposePreferenceFragment
             implements SharedPreferences.OnSharedPreferenceChangeListener {
 
         @Override

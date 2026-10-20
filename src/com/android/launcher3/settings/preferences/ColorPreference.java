@@ -50,12 +50,22 @@ public class ColorPreference extends Preference {
     }
 
     public void setValue(int color) {
+        if (mColor == color) return;
         mColor = color;
         updatePreview(mPreviewView, mColor);
+        notifyChanged();
     }
 
     public int getValue() {
         return mColor;
+    }
+
+    /** Shared commit path for the Compose color picker. */
+    public void commitValue(int color) {
+        if (!callChangeListener(color)) return;
+        setValue(color);
+        persistInt(color);
+        notifyChanged();
     }
 
     @Override

@@ -21,32 +21,18 @@ import static androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
-import android.view.MenuItem;
-import android.view.View;
 
 import androidx.annotation.Nullable;
-import androidx.annotation.VisibleForTesting;
-import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.preference.Preference;
-import androidx.preference.PreferenceCategory;
-import androidx.preference.PreferenceFragmentCompat;
-import androidx.preference.PreferenceFragmentCompat.OnPreferenceStartFragmentCallback;
-import androidx.preference.PreferenceFragmentCompat.OnPreferenceStartScreenCallback;
-import androidx.preference.PreferenceGroup;
-import androidx.preference.PreferenceGroup.PreferencePositionCallback;
 import androidx.preference.PreferenceScreen;
 import androidx.preference.ListPreference;
 import androidx.preference.TwoStatePreference;
-import androidx.recyclerview.widget.RecyclerView;
 
-import com.android.launcher3.BuildConfig;
-import com.android.launcher3.Flags;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
 import com.android.launcher3.LauncherPrefs;
@@ -57,19 +43,13 @@ import com.android.launcher3.search.universal.MediaProvider;
 import com.android.launcher3.search.universal.PhotoIndex;
 import com.android.launcher3.search.universal.SearchHistory;
 import com.android.launcher3.allapps.AppDrawerStyle;
-import com.android.launcher3.Utilities;
-import com.android.launcher3.util.Executors;
 import com.android.launcher3.util.SettingsCache;
-
-import com.android.settingslib.collapsingtoolbar.CollapsingToolbarBaseActivity;
-import com.android.settingslib.widget.SettingsBasePreferenceFragment;
 
 /**
  * Settings activity for Launcher.
  */
-public class SettingsAppDrawer extends CollapsingToolbarBaseActivity
-        implements OnPreferenceStartFragmentCallback, OnPreferenceStartScreenCallback,
-        SharedPreferences.OnSharedPreferenceChangeListener {
+public class SettingsAppDrawer extends ComposeSettingsActivity
+        implements SharedPreferences.OnSharedPreferenceChangeListener {
 
     public static final String EXTRA_FRAGMENT_ARGS = ":settings:fragment_args";
 
@@ -84,7 +64,6 @@ public class SettingsAppDrawer extends CollapsingToolbarBaseActivity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.settings_activity);
 
         Intent intent = getIntent();
 
@@ -108,7 +87,7 @@ public class SettingsAppDrawer extends CollapsingToolbarBaseActivity
                     getString(R.string.app_drawer_settings_fragment_name));
             f.setArguments(args);
             // Display the fragment as the main content.
-            fm.beginTransaction().replace(com.android.settingslib.collapsingtoolbar.R.id.content_frame, f).commit();
+            fm.beginTransaction().replace(R.id.content_frame, f).commit();
         }
         LauncherPrefs.getPrefs(this).registerOnSharedPreferenceChangeListener(this);
     }
@@ -151,50 +130,10 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
     }
 }
 
-    private boolean startPreference(String fragment, Bundle args, String key) {
-        if (getSupportFragmentManager().isStateSaved()) {
-            // Sometimes onClick can come after onPause because of being posted on the handler.
-            // Skip starting new preferences in that case.
-            return false;
-        }
-        final FragmentManager fm = getSupportFragmentManager();
-        final Fragment f = fm.getFragmentFactory().instantiate(getClassLoader(), fragment);
-        if (f instanceof DialogFragment) {
-            f.setArguments(args);
-            ((DialogFragment) f).show(fm, key);
-        } else {
-            startActivity(new Intent(this, SettingsAppDrawer.class)
-                    .putExtra(EXTRA_FRAGMENT_ARGS, args));
-        }
-        return true;
-    }
-
-    @Override
-    public boolean onPreferenceStartFragment(
-            PreferenceFragmentCompat preferenceFragment, Preference pref) {
-        return startPreference(pref.getFragment(), pref.getExtras(), pref.getKey());
-    }
-
-    @Override
-    public boolean onPreferenceStartScreen(PreferenceFragmentCompat caller, PreferenceScreen pref) {
-        Bundle args = new Bundle();
-        args.putString(ARG_PREFERENCE_ROOT, pref.getKey());
-        return startPreference(caller.getClass().getName(), args, pref.getKey());
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == android.R.id.home) {
-            onBackPressed();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
     /**
      * This fragment shows the launcher preferences.
      */
-    public static class AppDrawerSettingsFragment extends SettingsBasePreferenceFragment implements
+    public static class AppDrawerSettingsFragment extends ComposePreferenceFragment implements
             SettingsCache.OnChangeListener,
             SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -205,10 +144,6 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
         private static final int REQUEST_READ_SCREENSHOTS = 44;
 
         private boolean mRestartOnResume = false;
-
-        private String mHighLightKey;
-
-        private boolean mPreferenceHighlighted = false;
 
         private static final String KEY_SEARCH_PLACEMENT = "pref_allapps_search_placement";
         private static final String KEY_OPEN_KEYBOARD = "pref_drawer_open_keyboard";
@@ -225,12 +160,6 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
-            final Bundle args = getArguments();
-            mHighLightKey = args == null ? null : args.getString(EXTRA_FRAGMENT_HIGHLIGHT_KEY);
-
-            if (savedInstanceState != null) {
-                mPreferenceHighlighted = savedInstanceState.getBoolean(SAVE_HIGHLIGHTED_KEY);
-            }
 
             getPreferenceManager().setSharedPreferencesName(LauncherFiles.SHARED_PREFERENCES_KEY);
             setPreferencesFromResource(R.xml.launcher_app_drawer_preferences, rootKey);
@@ -253,22 +182,6 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
                     startActivity(intent);
                     return true;
                 });
-            }
-
-            // If the target preference is not in the current preference screen, find the parent
-            // preference screen that contains the target preference and set it as the preference
-            // screen.
-            if (mHighLightKey != null
-                    && !isKeyInPreferenceGroup(mHighLightKey, screen)) {
-                final PreferenceScreen parentPreferenceScreen =
-                        findParentPreference(screen, mHighLightKey);
-                if (parentPreferenceScreen != null && getActivity() != null) {
-                    if (!TextUtils.isEmpty(parentPreferenceScreen.getTitle())) {
-                        getActivity().setTitle(parentPreferenceScreen.getTitle());
-                    }
-                    setPreferenceScreen(parentPreferenceScreen);
-                    return;
-                }
             }
 
             if (getActivity() != null && !TextUtils.isEmpty(getPreferenceScreen().getTitle())) {
@@ -359,83 +272,10 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             }
         }
 
-        private boolean isKeyInPreferenceGroup(String targetKey, PreferenceGroup parent) {
-            for (int i = 0; i < parent.getPreferenceCount(); i++) {
-                Preference pref = parent.getPreference(i);
-                if (pref.getKey() != null && pref.getKey().equals(targetKey)) {
-                    return true;
-                }
-                if (pref instanceof PreferenceGroup && !(pref instanceof PreferenceScreen)
-                        && isKeyInPreferenceGroup(targetKey, (PreferenceGroup) pref)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /**
-         * Finds the parent preference screen for the given target key.
-         *
-         * @param parent the parent preference screen
-         * @param targetKey the key of the preference to find
-         * @return the parent preference screen that contains the target preference
-         */
-        @Nullable
-        private PreferenceScreen findParentPreference(PreferenceScreen parent, String targetKey) {
-            if (isKeyInPreferenceGroup(targetKey, parent)) {
-                return parent;
-            }
-            for (int i = 0; i < parent.getPreferenceCount(); i++) {
-                Preference pref = parent.getPreference(i);
-                if (pref instanceof PreferenceScreen) {
-                    PreferenceScreen foundKey = findParentPreference((PreferenceScreen) pref,
-                            targetKey);
-                    if (foundKey != null) {
-                        return foundKey;
-                    }
-                } else if (pref.getKey() != null && pref.getKey().equals(targetKey)) {
-                    return parent;
-                }
-            }
-            return null;
-        }
-
-        @Override
-        public void onViewCreated(View view, Bundle savedInstanceState) {
-            super.onViewCreated(view, savedInstanceState);
-            View listView = getListView();
-            final int bottomPadding = listView.getPaddingBottom();
-            listView.setOnApplyWindowInsetsListener((v, insets) -> {
-                v.setPadding(
-                        v.getPaddingLeft(),
-                        v.getPaddingTop(),
-                        v.getPaddingRight(),
-                        bottomPadding + insets.getSystemWindowInsetBottom());
-                return insets.consumeSystemWindowInsets();
-            });
-
-            // Overriding Text Direction in the Androidx preference library to support RTL
-            view.setTextDirection(View.TEXT_DIRECTION_LOCALE);
-        }
-
-        @Override
-        public void onSaveInstanceState(Bundle outState) {
-            super.onSaveInstanceState(outState);
-            outState.putBoolean(SAVE_HIGHLIGHTED_KEY, mPreferenceHighlighted);
-        }
-
         @Override
         public void onResume() {
             super.onResume();
             wireSearchPreferences(getPreferenceScreen());
-
-            if (isAdded() && !mPreferenceHighlighted) {
-                PreferenceHighlighter highlighter = createHighlighter();
-                if (highlighter != null) {
-                    getView().postDelayed(highlighter, DELAY_HIGHLIGHT_DURATION_MILLIS);
-                    mPreferenceHighlighted = true;
-                }
-            }
 
             if (mRestartOnResume) {
                 recreateActivityNow();
@@ -500,22 +340,5 @@ public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, Strin
             }
         }
 
-        private PreferenceHighlighter createHighlighter() {
-            if (TextUtils.isEmpty(mHighLightKey)) {
-                return null;
-            }
-
-            PreferenceScreen screen = getPreferenceScreen();
-            if (screen == null) {
-                return null;
-            }
-
-            RecyclerView list = getListView();
-            PreferencePositionCallback callback = (PreferencePositionCallback) list.getAdapter();
-            int position = callback.getPreferenceAdapterPosition(mHighLightKey);
-            return position >= 0 ? new PreferenceHighlighter(
-                    list, position, screen.findPreference(mHighLightKey))
-                    : null;
-        }
     }
 }
