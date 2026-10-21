@@ -227,10 +227,6 @@ public class BaseDepthController {
             return;
         }
         mWallpaperZoomSuppressed = suppressed;
-        if (suppressed) {
-            cancelWallpaperZoomHandoff();
-            return;
-        }
         animateWallpaperZoomHandoff();
     }
 
