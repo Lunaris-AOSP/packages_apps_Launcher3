@@ -72,7 +72,6 @@ import com.android.launcher3.Workspace;
 import com.android.launcher3.allapps.ActivityAllAppsContainerView;
 import com.android.launcher3.celllayout.CellLayoutLayoutParams;
 import com.android.launcher3.dot.FolderDotInfo;
-import com.android.launcher3.dot.NotificationBadgeCounter;
 import com.android.launcher3.dragndrop.BaseItemDragListener;
 import com.android.launcher3.dragndrop.DragLayer;
 import com.android.launcher3.dragndrop.DragView;
@@ -158,8 +157,6 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     @ViewDebug.ExportedProperty(category = "launcher", deepExport = true)
     private final FolderDotInfo mDotInfo = new FolderDotInfo();
     private DotRenderer mDotRenderer;
-    private final NotificationBadgeCounter mNotificationBadgeCounter;
-    private final int mDotColor;
     @ViewDebug.ExportedProperty(category = "launcher", deepExport = true)
     private final DotRenderer.DrawParams mDotParams;
     private float mDotScale;
@@ -293,10 +290,8 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         mPreviewLayoutRule = new ClippedFolderIconLayoutRule();
         mPreviewItemManager = new PreviewItemManager(this);
         mDotParams = new DotRenderer.DrawParams();
-        mDotColor = Themes.getAttrColor(context, R.attr.notificationDotColor);
-        mDotParams.setDotColor(mDotColor);
+        mDotParams.setDotColor(Themes.getAttrColor(context, R.attr.notificationDotColor));
         mDotParams.shapeInfo = ThemeManager.INSTANCE.get(context).getIconState().getIconShapeInfo();
-        mNotificationBadgeCounter = new NotificationBadgeCounter();
     }
 
     public static <T extends Context & ActivityContext> FolderIcon inflateFolderAndIcon(int resId,
@@ -1233,18 +1228,9 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
             // If we are animating to the accepting state, animate the dot out.
             mDotParams.scale = Math.max(0, mDotScale - mBackground.getAcceptScaleProgress());
-            if (shouldShowNotificationCount()) {
-                mNotificationBadgeCounter.draw(canvas, mDotParams, mDotColor,
-                        mDotInfo.getNotificationCount());
-            } else {
-                mDotRenderer.draw(canvas, mDotParams);
-            }
+            // Keep folder previews unobstructed; numeric counts are shown on individual app icons.
+            mDotRenderer.draw(canvas, mDotParams);
         }
-    }
-
-    private boolean shouldShowNotificationCount() {
-        return mDotInfo != null && mDotInfo.hasDot()
-                && LauncherPrefs.NOTIFICATION_BADGE_COUNT.get(getContext());
     }
 
     @Override
