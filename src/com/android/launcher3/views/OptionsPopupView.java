@@ -223,7 +223,6 @@ public class OptionsPopupView<T extends Context & ActivityContext> extends Arrow
         popup.setShouldAddArrow(shouldAddArrow);
         final View wallpaperContainer = popup.findViewById(R.id.wallpaper_container);
         if (wallpaperContainer != null) {
-            popup.removeView(wallpaperContainer);
             wallpaperContainer.getLayoutParams().width = width;
         }
 
@@ -239,10 +238,6 @@ public class OptionsPopupView<T extends Context & ActivityContext> extends Arrow
             view.setOnClickListener(popup);
             view.setOnLongClickListener(popup);
             popup.mItemMap.put(view, item);
-            if (wallpaperContainer != null
-                    && item.labelRes == R.string.styles_wallpaper_button_text) {
-                popup.addView(wallpaperContainer);
-            }
         }
 
         popup.show();
