@@ -19,7 +19,7 @@ package com.android.quickstep.util;
 
 public final class OosAppCloseAnimation {
 
-    public static final float DURATION_SCALE = 1.3f;
+    public static final float DURATION_SCALE = 1.8f;
 
     public static final long WORKSPACE_REVEAL_DURATION_MS = (long) (500 * DURATION_SCALE);
 

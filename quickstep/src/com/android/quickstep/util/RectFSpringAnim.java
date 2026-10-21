@@ -545,9 +545,9 @@ public class RectFSpringAnim extends ReleaseCheck {
             stiffnessX = 700f * stiffnessScale;
             stiffnessY = 900f * stiffnessScale;
             rectStiffness = 900f * stiffnessScale;
-            dampingX = 0.85f;
-            dampingY = 0.85f;
-            rectDamping = 0.85f;
+            dampingX = 0.9f;
+            dampingY = 0.9f;
+            rectDamping = 0.9f;
         }
     }
 
