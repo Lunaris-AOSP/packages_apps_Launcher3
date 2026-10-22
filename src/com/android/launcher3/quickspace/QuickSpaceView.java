@@ -17,6 +17,7 @@ package com.android.launcher3.quickspace;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils.TruncateAt;
 import android.util.AttributeSet;
@@ -381,6 +382,15 @@ public class QuickSpaceView extends FrameLayout implements OnDataListener {
             mNowPlayingText = findViewById(R.id.now_playing_text);
             mDateWeatherRow = findViewById(R.id.date_weather_row);
             mContextualInfoRow = findViewById(R.id.contextual_info_row);
+            if (LauncherPrefs.QUICKSPACE_CLOCK_SYSTEM_FONT.get(getContext())) {
+                mQuickspaceDayOfWeek.setTypeface(Typeface.create(Typeface.DEFAULT, 500, false));
+                mQuickspaceClockHour.setTypeface(Typeface.DEFAULT_BOLD);
+                mQuickspaceClockMinute.setTypeface(Typeface.DEFAULT_BOLD);
+                mQuickspaceDate.setTypeface(Typeface.DEFAULT);
+                mWeatherTempSub.setTypeface(Typeface.DEFAULT);
+                mPSAMessage.setTypeface(Typeface.DEFAULT);
+                mNowPlayingText.setTypeface(Typeface.DEFAULT);
+            }
         }
         
         // Fallback for backward compatibility

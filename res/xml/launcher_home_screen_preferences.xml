@@ -226,6 +226,15 @@
             launcher:iconSpaceReserved="false" />
 
         <SwitchPreferenceCompat
+            android:key="pref_quickspace_clock_system_font"
+            android:title="@string/quickspace_clock_system_font_title"
+            android:summary="@string/quickspace_clock_system_font_summary"
+            android:dependency="pref_quickspace"
+            android:defaultValue="false"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
             android:key="pref_quickspace_clock_custom_color"
             android:title="@string/quickspace_clock_custom_color_title"
             android:summary="@string/quickspace_clock_custom_color_summary"

@@ -367,6 +367,9 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val SHOW_QUICKSPACE_ALT = backedUpItem("pref_quickspace_alt", false)
         @JvmField val QUICKSPACE_UI_STYLE = backedUpItem("pref_quickspace_style", "0")
         @JvmField
+        val QUICKSPACE_CLOCK_SYSTEM_FONT =
+            backedUpItem("pref_quickspace_clock_system_font", false)
+        @JvmField
         val QUICKSPACE_CLOCK_CUSTOM_COLOR =
             backedUpItem("pref_quickspace_clock_custom_color", false)
         @JvmField

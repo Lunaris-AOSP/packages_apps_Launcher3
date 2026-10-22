@@ -127,6 +127,7 @@ public class SettingsHomescreen extends ComposeSettingsActivity
                 LauncherPrefs.SHOW_QUICKSPACE.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SHOW_QUICKSPACE_ALT.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.QUICKSPACE_UI_STYLE.getSharedPrefKey().equals(key) ||
+                LauncherPrefs.QUICKSPACE_CLOCK_SYSTEM_FONT.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SHOW_QUICKSPACE_PSONALITY.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SHOW_QUICKSPACE_NOWPLAYING.getSharedPrefKey().equals(key) ||
                 LauncherPrefs.SHOW_QUICKSPACE_WEATHER.getSharedPrefKey().equals(key) ||
@@ -339,6 +340,8 @@ public class SettingsHomescreen extends ComposeSettingsActivity
                         ? 1 : 0;
             }
             boolean isOosClock = style == 2 && !smartspace;
+            setQuickspacePrefVisible(
+                    LauncherPrefs.QUICKSPACE_CLOCK_SYSTEM_FONT.getSharedPrefKey(), isOosClock);
             setQuickspacePrefVisible(
                     LauncherPrefs.QUICKSPACE_CLOCK_CUSTOM_COLOR.getSharedPrefKey(), isOosClock);
             setQuickspacePrefVisible(

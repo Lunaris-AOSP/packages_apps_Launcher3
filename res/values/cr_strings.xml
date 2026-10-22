@@ -265,6 +265,9 @@
         <item>2</item>
     </string-array>
 
+    <string name="quickspace_clock_system_font_title">Use system font</string>
+    <string name="quickspace_clock_system_font_summary">Use the system font for the OOS clock and its accompanying text</string>
+
     <!-- Quickspace OOS clock color -->
     <string name="quickspace_clock_custom_color_title">Custom clock color</string>
     <string name="quickspace_clock_custom_color_summary">Use your own color for the hour digits</string>
