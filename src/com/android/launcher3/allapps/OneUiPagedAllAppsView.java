@@ -95,6 +95,23 @@ public class OneUiPagedAllAppsView extends PagedView<PageIndicatorDots> {
         if (mPageIndicator != null) {
             mPageIndicator.setMarkersCount(getChildCount());
             mPageIndicator.setActiveMarker(getNextPage());
+            mPageIndicator.stopAllAnimations();
+        }
+    }
+
+    @Override
+    public void setCurrentPage(int currentPage, int overridePrevPage) {
+        super.setCurrentPage(currentPage, overridePrevPage);
+        if (mPageIndicator != null) {
+            mPageIndicator.stopAllAnimations();
+        }
+    }
+
+    @Override
+    protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+        super.onScrollChanged(l, t, oldl, oldt);
+        if (mPageIndicator != null && mMaxScroll > 0) {
+            mPageIndicator.setScroll(l, mMaxScroll);
         }
     }
 

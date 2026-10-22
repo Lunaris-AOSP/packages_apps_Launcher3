@@ -532,6 +532,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
      * @param clearScrim Whether to clear the all apps scrim.
      */
     public void reset(boolean animate, boolean exitSearch, boolean clearScrim) {
+        if (mOneUiPagedView != null) {
+            mOneUiPagedView.setCurrentPage(0);
+        }
         // Scroll Main and Work RV to top. Search RV is done in `resetSearch`.
         for (int i = 0; i < mAH.size(); i++) {
             if (i != SEARCH && mAH.get(i).mRecyclerView != null) {
