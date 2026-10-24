@@ -4,8 +4,8 @@
     <string name="show_at_a_glance_title">Show At a Glance</string>
     <string name="show_at_a_glance_summary">Show Quickspace or Smartspace on the home screen</string>
     <string name="use_smartspace_title">Use Smartspace</string>
-    <string name="use_smartspace_on">Smartspace</string>
-    <string name="use_smartspace_off">Quickspace (default)</string>
+    <string name="use_smartspace_on">Smartspace (default)</string>
+    <string name="use_smartspace_off">Quickspace</string>
     <string name="smartspace_events_title">Smartspace events</string>
     <string name="smartspace_events_summary">Choose which cards appear. Weather uses the configured weather service. Travel, reminders and other provider events appear when supplied by the system Smartspace service.</string>
     <string name="smartspace_weather">Weather</string>
