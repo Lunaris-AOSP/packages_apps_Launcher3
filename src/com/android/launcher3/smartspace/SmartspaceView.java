@@ -42,10 +42,16 @@ import java.util.function.Consumer;
 
 final class SmartspaceView extends LinearLayout {
     private static final String HOME_PAGE = "date_weather";
+    private static final long WEATHER_RESUME_TIMEOUT_MS = 2000;
     private final SmartspaceController mController;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mApplyCards = this::applyPendingCards;
     private final Runnable mTickClock = this::tickClock;
+    private final Runnable mClearResumingWeather = () -> {
+        mResumingWeather = false;
+        bindWeather(null);
+        updateVisiblePage();
+    };
     private final SmartspacePager mPager;
     private final PageIndicatorDots mDots;
     private final View mHomePage;
@@ -61,6 +67,8 @@ final class SmartspaceView extends LinearLayout {
     private String mSelectedKey = HOME_PAGE;
     private boolean mActive;
     private boolean mUpdatingPages;
+    private boolean mResumingWeather;
+    private boolean mWeatherIconLoaded;
     private int mWeatherGeneration;
 
     SmartspaceView(Context context) {
@@ -102,12 +110,17 @@ final class SmartspaceView extends LinearLayout {
         if (active) {
             mResumingEvents.clear();
             mResumingEvents.addAll(mKnownEvents);
+            mResumingWeather = isWeatherCurrent();
+            if (mResumingWeather) {
+                mHandler.postDelayed(mClearResumingWeather, WEATHER_RESUME_TIMEOUT_MS);
+            }
         } else {
             if (mDisplayed != null) {
                 mController.notifyEvent(mDisplayed, SmartspaceTargetEvent.EVENT_TARGET_HIDDEN);
             }
             mDisplayed = null;
             mPendingCards = null;
+            mResumingWeather = false;
             mWeatherGeneration++;
             mPager.stopScrolling();
             mDots.skipAnimationsToEnd();
@@ -210,15 +223,26 @@ final class SmartspaceView extends LinearLayout {
         updateVisiblePage();
     }
 
+    private boolean isWeatherCurrent() {
+        return mWeatherCard != null && SmartspaceEvent.WEATHER.isEnabled(getContext())
+                && (mWeatherCard.expiresAt <= 0
+                        || mWeatherCard.expiresAt > System.currentTimeMillis());
+    }
+
     private void bindWeather(SmartspaceCard card) {
         DateFormat format = DateFormat.getInstanceForSkeleton("EEEMMMd");
         format.setContext(DisplayContext.CAPITALIZATION_FOR_STANDALONE);
         mDate.setText(format.format(System.currentTimeMillis()));
-        if (mWeatherCard == card && mWeather.getVisibility() == (card == null ? GONE : VISIBLE)) {
+        if (card == null && mResumingWeather && isWeatherCurrent()) return;
+        mResumingWeather = false;
+        mHandler.removeCallbacks(mClearResumingWeather);
+        if (mWeatherCard == card && mWeatherIconLoaded
+                && mWeather.getVisibility() == (card == null ? GONE : VISIBLE)) {
             return;
         }
+        boolean reuseIcon = mWeatherIconLoaded && card != null && mWeatherCard != null
+                && mWeatherCard.icon == card.icon && mWeatherCard.drawable == card.drawable;
         mWeatherCard = card;
-        int generation = ++mWeatherGeneration;
         CharSequence weather = card == null ? null : card.title;
         if (card != null && !TextUtils.isEmpty(card.subtitle)
                 && !TextUtils.equals(card.title, card.subtitle)) {
@@ -228,10 +252,15 @@ final class SmartspaceView extends LinearLayout {
         mWeather.setText(weather);
         mWeather.setVisibility(card == null ? GONE : VISIBLE);
         bindAction(mWeather, card);
-        mWeather.setCompoundDrawablesRelative(null, null, null, null);
-        if (card != null) {
+        if (reuseIcon) return;
+        int generation = ++mWeatherGeneration;
+        mWeatherIconLoaded = card == null;
+        if (card == null) {
+            mWeather.setCompoundDrawablesRelative(null, null, null, null);
+        } else {
             loadIcon(card, drawable -> {
                 if (generation != mWeatherGeneration) return;
+                mWeatherIconLoaded = true;
                 if (drawable != null) drawable.setBounds(0, 0, dp(22), dp(22));
                 mWeather.setCompoundDrawablesRelative(drawable, null, null, null);
             });
