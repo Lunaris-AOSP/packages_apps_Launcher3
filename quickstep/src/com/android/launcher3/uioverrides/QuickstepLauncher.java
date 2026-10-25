@@ -213,6 +213,7 @@ import com.android.launcher3.util.TouchController;
 import com.android.launcher3.util.WindowBlurState;
 import com.android.launcher3.views.FloatingIconView;
 import com.android.quickstep.BaseContainerInterface;
+import com.android.quickstep.HomeUnlockRevealController;
 import com.android.quickstep.LauncherActivityInterface;
 import com.android.quickstep.OverviewCommandHelper;
 import com.android.quickstep.OverviewComponentObserver;
@@ -292,6 +293,7 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
     private PredictedContainerInfo mAllAppsPredictions;
     private HotseatPredictionController mHotseatPredictionController;
     private DepthController mDepthController;
+    private HomeUnlockRevealController mUnlockAnimationController;
     private final Runnable mSystemUiStateChangeListener = this::updateWallpaperZoomForSystemUi;
     private QuickstepTransitionManager mAppTransitionManager;
 
@@ -527,6 +529,9 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
+        if (mUnlockAnimationController != null) {
+            mUnlockAnimationController.cancel();
+        }
         super.onConfigurationChanged(newConfig);
         onStateOrResumeChanging(false /* inTransition */);
     }
@@ -762,6 +767,10 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
 
     @Override
     public void onDestroy() {
+        if (mUnlockAnimationController != null) {
+            mUnlockAnimationController.destroy();
+            mUnlockAnimationController = null;
+        }
         if (mDepthController != null) {
             SystemUiProxy.INSTANCE.get(this)
                     .removeOnSystemUiStateChangeListener(mSystemUiStateChangeListener);
@@ -811,6 +820,14 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         boolean wallpaperOwnedBySystemUi = SystemUiFlagUtils.isLocked(stateFlags)
                 || (stateFlags & SYSUI_STATE_DEVICE_DOZING) != 0;
         mDepthController.setWallpaperZoomSuppressed(wallpaperOwnedBySystemUi);
+    }
+
+    @Override
+    public void onStateSetStart(LauncherState state) {
+        if (mUnlockAnimationController != null && state != NORMAL) {
+            mUnlockAnimationController.cancel();
+        }
+        super.onStateSetStart(state);
     }
 
     @Override
@@ -953,6 +970,7 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
                 .addOverviewChangeListener(mOverviewChangeListener);
 
         AppDatabase.INSTANCE.get(this).checkpointSync();
+        mUnlockAnimationController = new HomeUnlockRevealController(this);
     }
 
     @Override
@@ -1065,6 +1083,9 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
 
     @Override
     protected void onPause() {
+        if (mUnlockAnimationController != null) {
+            mUnlockAnimationController.cancel();
+        }
         if (mLauncherUnfoldAnimationController != null) {
             mLauncherUnfoldAnimationController.onPause();
         }
@@ -1088,6 +1109,9 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
 
     @Override
     protected void onStop() {
+        if (mUnlockAnimationController != null) {
+            mUnlockAnimationController.cancel();
+        }
         super.onStop();
         if (mTaskbarInteractor != null && FeatureFlags.enableHomeTransitionListener()) {
             mTaskbarInteractor.onLauncherStop();
@@ -1632,7 +1656,18 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
     }
 
     @Override
+    public void startBinding() {
+        if (mUnlockAnimationController != null) {
+            mUnlockAnimationController.cancel();
+        }
+        super.startBinding();
+    }
+
+    @Override
     public void dispatchDeviceProfileChanged() {
+        if (mUnlockAnimationController != null) {
+            mUnlockAnimationController.cancel();
+        }
         super.dispatchDeviceProfileChanged();
         Trace.instantForTrack(TRACE_TAG_APP, "QuickstepLauncher#DeviceProfileChanged",
                 getDeviceProfile().toSmallString());

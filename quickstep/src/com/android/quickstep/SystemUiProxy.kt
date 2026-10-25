@@ -1121,14 +1121,25 @@ class SystemUiProxy @Inject constructor(
         activityClass: String?,
         controller: ILauncherUnlockAnimationController?,
     ) {
-        executeWithErrorLog({ "Failed call setLauncherUnlockAnimationController" }) {
-            sysuiUnlockAnimationController?.apply {
-                setLauncherUnlockController(activityClass, controller)
-                controller?.dispatchSmartspaceStateToSysui()
+        if (activityClass != null && controller != null) {
+            executeWithErrorLog({ "Failed call setLauncherUnlockAnimationController" }) {
+                sysuiUnlockAnimationController?.apply {
+                    setLauncherUnlockController(activityClass, controller)
+                    controller.dispatchSmartspaceStateToSysui()
+                }
             }
         }
         launcherActivityClass = activityClass
         launcherUnlockAnimationController = controller
+    }
+
+    fun clearLauncherUnlockAnimationController(controller: ILauncherUnlockAnimationController) {
+        if (launcherUnlockAnimationController !== controller) return
+        executeWithErrorLog({ "Failed call clearLauncherUnlockAnimationController" }) {
+            sysuiUnlockAnimationController?.setLauncherUnlockController("", controller)
+        }
+        launcherActivityClass = null
+        launcherUnlockAnimationController = null
     }
 
     /**

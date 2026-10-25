@@ -126,6 +126,14 @@
             launcher:iconSpaceReserved="false" />
 
         <SwitchPreferenceCompat
+            android:key="pref_workspace_unlock_animation"
+            android:title="@string/workspace_unlock_animation_title"
+            android:summary="@string/workspace_unlock_animation_summary"
+            android:defaultValue="true"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
             android:key="pref_app_launch_blur"
             android:title="@string/pref_app_launch_blur_title"
             android:summary="@string/pref_app_launch_blur_summary"
