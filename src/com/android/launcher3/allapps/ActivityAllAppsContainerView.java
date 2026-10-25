@@ -1570,12 +1570,13 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-        if (child == getAppsRecyclerViewContainer()
+        if ((child == getAppsRecyclerViewContainer() || child == getSearchRecyclerView())
                 && mSearchContainer != null
-                && mSearchContainer.getVisibility() == VISIBLE) {
+                && mSearchContainer.getVisibility() == VISIBLE
+                && !isSearchBarFloating()) {
 
             String searchPlacement = getSearchBarPlacement();
-            if ("bottom".equals(searchPlacement) && !isSearchBarFloating()) {
+            if ("bottom".equals(searchPlacement)) {
                 float searchTop = mSearchContainer.getTop() + mSearchContainer.getTranslationY();
                 if (searchTop > child.getTop()) {
                     int saveCount = canvas.save();
@@ -1584,6 +1585,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                     canvas.restoreToCount(saveCount);
                     return result;
                 }
+            } else if ("top".equals(searchPlacement)) {
+                // Spring overscroll translates the RecyclerView and its own clip bounds.
+                // Keep the search bar and header padding protected in parent coordinates.
+                int clipTop = Math.max(child.getTop(), mHeader.getTop() + mHeader.getClipTop());
+                int saveCount = canvas.save();
+                canvas.clipRect(child.getLeft(), clipTop, child.getRight(), Integer.MAX_VALUE);
+                boolean result = super.drawChild(canvas, child, drawingTime);
+                canvas.restoreToCount(saveCount);
+                return result;
             }
         }
         return super.drawChild(canvas, child, drawingTime);
