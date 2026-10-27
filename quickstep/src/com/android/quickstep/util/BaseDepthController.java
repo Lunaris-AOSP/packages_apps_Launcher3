@@ -34,6 +34,7 @@ import android.util.Log;
 import android.view.CrossWindowBlurListeners;
 import android.view.SurfaceControl;
 import android.view.View;
+import android.view.animation.Interpolator;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -106,6 +107,10 @@ public class BaseDepthController {
     private boolean mWallpaperZoomSuppressed;
     @Nullable private ValueAnimator mWallpaperZoomHandoffAnimator;
     private float mWallpaperZoomHandoffTarget;
+    private float mAppAnimationBlur = -1f;
+    private float mAppWallpaperDepth = Float.NaN;
+    @Nullable private ValueAnimator mAppWallpaperAnimator;
+    private final boolean mCosWallpaperMotion;
 
     private final LauncherPrefChangeListener mPreferenceChangeListener =
             this::onPreferenceChanged;
@@ -154,6 +159,7 @@ public class BaseDepthController {
         mActivity = activity;
         mContainer = activity;
         mLauncher = activity instanceof QuickstepLauncher launcher ? launcher : null;
+        mCosWallpaperMotion = mLauncher != null && LauncherPrefs.COS_APP_ANIMATIONS.get(activity);
         if (Flags.allAppsBlur() || enableOverviewBackgroundWallpaperBlur()) {
             mCrossWindowBlursEnabled =
                     CrossWindowBlurListeners.getInstance().isCrossWindowBlurEnabled();
@@ -213,6 +219,46 @@ public class BaseDepthController {
         applyDepthAndBlur();
     }
 
+    public void setAppAnimationBlur(float radius) {
+        mAppAnimationBlur = radius;
+        if (radius < 0f && mLauncher != null) mLauncher.getWorkspace().setRenderEffect(null);
+        blurWorkspaceDepthTargets();
+    }
+
+    public Animator animateAppWallpaperDepth(float from, float to, long duration,
+            Interpolator interpolator) {
+        float startDepth = Float.isNaN(mAppWallpaperDepth) ? from : mAppWallpaperDepth;
+        ValueAnimator animator = ValueAnimator.ofFloat(startDepth, to);
+        animator.setDuration(duration);
+        animator.setInterpolator(interpolator);
+        animator.addUpdateListener(value -> {
+            if (mAppWallpaperAnimator != animator) return;
+            mAppWallpaperDepth = (Float) value.getAnimatedValue();
+            applyWallpaperZoom(false);
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                if (mAppWallpaperAnimator != null && mAppWallpaperAnimator != animator) {
+                    mAppWallpaperAnimator.cancel();
+                }
+                mAppWallpaperAnimator = animator;
+                mAppWallpaperDepth = startDepth;
+                applyWallpaperZoom(false);
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (mAppWallpaperAnimator == animation) {
+                    mAppWallpaperAnimator = null;
+                    mAppWallpaperDepth = Float.NaN;
+                    applyWallpaperZoom(false);
+                }
+            }
+        });
+        return animator;
+    }
+
     protected void onInvalidSurface() { }
 
     private void onPreferenceChanged(String key) {
@@ -265,10 +311,15 @@ public class BaseDepthController {
     }
 
     private float getWallpaperZoom() {
+        float depth = Float.isNaN(mAppWallpaperDepth) ? mDepth : mAppWallpaperDepth;
+        if (mCosWallpaperMotion) {
+            depth = Utilities.boundToRange(depth / Math.max(0.01f,
+                    LauncherState.BACKGROUND_APP.getDepth(mLauncher)), 0f, 1f);
+        }
         return mWallpaperZoomSuppressed
                 ? 0f
                 : mapDepthToWallpaperZoom(
-                        mDepth,
+                        depth,
                         LauncherPrefs.ALLOW_WALLPAPER_ZOOMING.get(mActivity),
                         LauncherPrefs.ALTERNATIVE_WALLPAPER_ZOOMING.get(mActivity));
     }
@@ -287,6 +338,7 @@ public class BaseDepthController {
         }
 
         if (force || windowToken != mWallpaperWindowToken
+                || (!Float.isNaN(mAppWallpaperDepth) && mLastWallpaperZoom != zoom)
                 || Math.abs(mLastWallpaperZoom - zoom) >= 0.015f
                 || (zoom == 0f && mLastWallpaperZoom != 0f)
                 || (zoom == 1f && mLastWallpaperZoom != 1f)) {
@@ -298,6 +350,7 @@ public class BaseDepthController {
     }
 
     protected void onWallpaperWindowDetached() {
+        if (mAppWallpaperAnimator != null) mAppWallpaperAnimator.cancel();
         cancelWallpaperZoomHandoff();
         mWallpaperWindowToken = null;
         mLastWallpaperZoom = -1f;
@@ -469,6 +522,13 @@ public class BaseDepthController {
     /** @return {@code true} if the workspace should be blurred. */
     @VisibleForTesting
     public boolean blurWorkspaceDepthTargets() {
+        if (mLauncher != null && mAppAnimationBlur >= 0f) {
+            RenderEffect effect = mCrossWindowBlursEnabled && mAppAnimationBlur > 0f
+                    ? RenderEffect.createBlurEffect(mAppAnimationBlur, mAppAnimationBlur,
+                            Shader.TileMode.CLAMP) : null;
+            mLauncher.getWorkspace().setRenderEffect(effect);
+            return effect != null;
+        }
         if (mLauncher == null || !Flags.allAppsBlur()) {
             return false;
         }

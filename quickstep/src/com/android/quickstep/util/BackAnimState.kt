@@ -33,16 +33,32 @@ interface BackAnimState {
     fun applyToAnimationResult(result: AnimationResult, c: Context)
 
     fun start(stateManager: StateManager<LauncherState, Launcher>)
+
+    fun cancel() {}
 }
 
-class AnimatorBackState(private val springAnim: RectFSpringAnim?, private val anim: AnimatorSet?) :
+class AnimatorBackState @JvmOverloads constructor(
+    private val springAnim: RectFSpringAnim?,
+    private val anim: AnimatorSet?,
+    private val registerStateAnimation: Boolean = true,
+) :
     BackAnimState {
 
     override fun addOnAnimCompleteCallback(r: Runnable) {
         val animWait = RunnableList()
-        springAnim?.addAnimatorListener(forEndCallback(animWait::executeAllAndDestroy))
-            ?: anim?.addListener(forEndCallback(animWait::executeAllAndDestroy))
-            ?: animWait.executeAllAndDestroy()
+        if (!registerStateAnimation && springAnim != null && anim != null) {
+            var remaining = 2
+            val onEnd = Runnable {
+                remaining--
+                if (remaining == 0) animWait.executeAllAndDestroy()
+            }
+            springAnim.addAnimatorListener(forEndCallback(onEnd))
+            anim.addListener(forEndCallback(onEnd))
+        } else {
+            springAnim?.addAnimatorListener(forEndCallback(animWait::executeAllAndDestroy))
+                ?: anim?.addListener(forEndCallback(animWait::executeAllAndDestroy))
+                ?: animWait.executeAllAndDestroy()
+        }
         animWait.add(r)
     }
 
@@ -51,10 +67,16 @@ class AnimatorBackState(private val springAnim: RectFSpringAnim?, private val an
     }
 
     override fun start(stateManager: StateManager<LauncherState, Launcher>) {
-        if (anim != null) {
+        if (anim != null && registerStateAnimation) {
             stateManager.setCurrentAnimation(anim)
         }
         anim?.start()
+    }
+
+    override fun cancel() {
+        if (registerStateAnimation) return
+        if (springAnim?.isCos == true) springAnim.detachWindow() else springAnim?.cancel()
+        anim?.cancel()
     }
 }
 

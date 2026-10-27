@@ -65,6 +65,7 @@ import com.android.launcher3.model.data.ItemInfoWithIcon;
 import com.android.launcher3.popup.SystemShortcut;
 import com.android.launcher3.shortcuts.DeepShortcutView;
 import com.android.launcher3.util.AsyncView;
+import com.android.launcher3.util.RunnableList;
 
 import java.util.function.Supplier;
 
@@ -91,6 +92,9 @@ public class FloatingIconView extends FrameLayout implements
     private final boolean mIsRtl;
 
     private boolean mIsOpening;
+    private boolean mAllowParallelAnimation;
+    private final Runnable mParallelAnimationCleanup = this::fastFinish;
+    private RunnableList mDeferredCompanionCleanup = new RunnableList();
 
     private IconLoadResult mIconLoadResult;
 
@@ -524,6 +528,20 @@ public class FloatingIconView extends FrameLayout implements
         mFastFinishRunnable = runnable;
     }
 
+    /** Keep the icon renderer alive on touch, while allowing explicit cancellation. */
+    public void setFinishOnTouchDown(boolean finishOnTouchDown) {
+        mListenerView.setCloseOnTouchDown(finishOnTouchDown);
+    }
+
+    public void setAllowParallelAnimation(boolean allow) {
+        if (!allow || mIsOpening || mAllowParallelAnimation) return;
+        mAllowParallelAnimation = true;
+        mClipIconView.setAllowScaleDown(true);
+        setFinishOnTouchDown(false);
+        mLauncher.getDragLayer().removeView(mListenerView);
+        mLauncher.addEventCallback(mLauncher.EVENT_DESTROYED, mParallelAnimationCleanup);
+    }
+
     @Override
     public void fastFinish() {
         if (mFastFinishRunnable != null) {
@@ -713,7 +731,25 @@ public class FloatingIconView extends FrameLayout implements
         view.mEndRunnable = () -> {
             view.mEndRunnable = null;
 
-            if (view.mFadeOutView != null) {
+            FloatingIconView parallel = view.findParallelAnimation();
+            if (parallel != null) {
+                AsyncView fadeOutViewToRestore = view.mFadeOutView;
+                AsyncView visibilityViewToRestore = view.mMatchVisibilityView;
+                RunnableList deferred = view.mDeferredCompanionCleanup;
+                parallel.mDeferredCompanionCleanup.add(() -> {
+                    if (fadeOutViewToRestore != null) {
+                        fadeOutViewToRestore.postAlpha(1f);
+                        fadeOutViewToRestore.postForceHideDotRingAsFloatingIconViewCompanion(false);
+                    }
+                    if (visibilityViewToRestore != null) {
+                        visibilityViewToRestore.postVisibilityAsFloatingIconViewCompanion(true);
+                    }
+                    deferred.executeAllAndDestroy();
+                });
+            } else {
+                view.mDeferredCompanionCleanup.executeAllAndDestroy();
+            }
+            if (view.mFadeOutView != null && parallel == null) {
                 view.mFadeOutView.postAlpha(1f);
                 view.mFadeOutView.postForceHideDotRingAsFloatingIconViewCompanion(false);
             }
@@ -736,7 +772,21 @@ public class FloatingIconView extends FrameLayout implements
         return view;
     }
 
+    private FloatingIconView findParallelAnimation() {
+        if (getParent() instanceof ViewGroup parent) {
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                if (parent.getChildAt(i) instanceof FloatingIconView other && other != this
+                        && other.mOriginalIcon == mOriginalIcon && other.mEndRunnable != null
+                        && (mAllowParallelAnimation || other.mAllowParallelAnimation)) {
+                    return other;
+                }
+            }
+        }
+        return null;
+    }
+
     private void updateViewsVisibility(boolean isVisible) {
+        if (isVisible && findParallelAnimation() != null) return;
         if (mOriginalIcon != null) {
             setPropertiesVisible(mOriginalIcon, isVisible);
         }
@@ -753,6 +803,22 @@ public class FloatingIconView extends FrameLayout implements
     }
 
     private void recycle() {
+        mDeferredCompanionCleanup = new RunnableList();
+        boolean wasParallelAnimation = mAllowParallelAnimation;
+        if (!wasParallelAnimation
+                && mLauncher.getDragLayer().getParent() instanceof ViewGroup parent) {
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                if (parent.getChildAt(i) instanceof FloatingIconView other
+                        && other.mAllowParallelAnimation) {
+                    wasParallelAnimation = true;
+                    break;
+                }
+            }
+        }
+        if (mAllowParallelAnimation) {
+            mLauncher.removeEventCallback(mLauncher.EVENT_DESTROYED, mParallelAnimationCleanup);
+            mAllowParallelAnimation = false;
+        }
         setTranslationX(0);
         setTranslationY(0);
         setScaleX(1);
@@ -767,10 +833,11 @@ public class FloatingIconView extends FrameLayout implements
         mIsOpening = false;
         mPositionOut = null;
         mListenerView.setListener(null);
+        mListenerView.setCloseOnTouchDown(true);
         mOriginalIcon = null;
         mOnTargetChangeRunnable = null;
         mBadge = null;
-        sRecycledFetchIconId = sFetchIconId;
+        if (!wasParallelAnimation) sRecycledFetchIconId = sFetchIconId;
         mIconLoadResult = null;
         mClipIconView.recycle();
         mBtvDrawable.setBackground(null);

@@ -21,6 +21,7 @@ import static com.android.launcher3.PagedView.INVALID_PAGE;
 
 import android.animation.Animator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.Matrix.ScaleToFit;
 import android.graphics.Rect;
@@ -46,6 +47,9 @@ import com.android.quickstep.util.AnimatorControllerWithResistance;
 import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.RectFSpringAnim.DefaultSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.IconSpringConfig;
+import com.android.quickstep.util.RectFSpringAnim.CosSpringConfig;
+import com.android.quickstep.cos.CosAppAnimation;
+import com.android.quickstep.cos.CosHomeSnapshot;
 import com.android.quickstep.util.RectFSpringAnim.TaskbarHotseatSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.WidgetSpringConfig;
 import com.android.quickstep.util.SurfaceTransaction.SurfaceProperties;
@@ -86,6 +90,8 @@ public abstract class SwipeUpAnimationLogic implements
     protected float mDragLengthFactor = 1;
 
     protected boolean mIsSwipeForSplit;
+    @Nullable
+    protected SpringAnimationRunner mCosHomeAnimationRunner;
 
     public SwipeUpAnimationLogic(Context context, GestureState gestureState,
             RotationTouchHelper rotationTouchHelper) {
@@ -186,6 +192,10 @@ public abstract class SwipeUpAnimationLogic implements
         }
 
         public boolean isWidget() {
+            return false;
+        }
+
+        public boolean shouldUseCosCloseAnimation() {
             return false;
         }
 
@@ -330,6 +340,7 @@ public abstract class SwipeUpAnimationLogic implements
         // TODO(b/195473584) compute separate end targets for different staged split
         final RectF targetRect = homeAnimationFactory.getWindowTargetRect();
         RectFSpringAnim[] out = new RectFSpringAnim[mRemoteTargetHandles.length];
+        mCosHomeAnimationRunner = null;
         Matrix[] homeToWindowPositionMap = new Matrix[mRemoteTargetHandles.length];
         RectF[] startRects = updateProgressForStartRect(homeToWindowPositionMap, startProgress);
         for (int i = 0, mRemoteTargetHandlesLength = mRemoteTargetHandles.length;
@@ -387,7 +398,11 @@ public abstract class SwipeUpAnimationLogic implements
 
         boolean useTaskbarHotseatParams = mDp.isTaskbarPresent
                 && homeAnimationFactory.isInHotseat();
-        RectFSpringAnim anim = homeAnimationFactory.shouldUseIconCloseAnimation()
+        boolean cos = CosAppAnimation.isEnabled(mContext)
+                && homeAnimationFactory.shouldUseCosCloseAnimation();
+        RectFSpringAnim anim = cos
+                ? new RectFSpringAnim(new CosSpringConfig(mContext, mDp, startRect, targetRect))
+                : homeAnimationFactory.shouldUseIconCloseAnimation()
                 ? new RectFSpringAnim(new IconSpringConfig(mContext, mDp, startRect, targetRect))
                 : new RectFSpringAnim(useTaskbarHotseatParams
                         ? new TaskbarHotseatSpringConfig(mContext, startRect, targetRect)
@@ -405,6 +420,7 @@ public abstract class SwipeUpAnimationLogic implements
                 invariantStartRect);
         anim.addAnimatorListener(runner);
         anim.addOnUpdateListener(runner);
+        if (cos) mCosHomeAnimationRunner = runner;
         return anim;
     }
 
@@ -417,6 +433,10 @@ public abstract class SwipeUpAnimationLogic implements
         final Matrix mMatrix = new Matrix();
 
         final RectF mWindowCurrentRect = new RectF();
+        private final RectF mHomeCurrentRect = new RectF();
+        private float mSnapshotRadius;
+        @Nullable
+        private CosHomeSnapshot mSnapshot;
         private final RectF mWidgetCropRectF = new RectF();
         final Matrix mHomeToWindowPositionMap;
         private final TransformParams mLocalTransformParams;
@@ -481,8 +501,13 @@ public abstract class SwipeUpAnimationLogic implements
         public void onUpdate(RectF currentRect, float progress) {
             float cornerRadius = Utilities.mapRange(progress, mStartRadius, mEndRadius);
             float alpha = mAnimationFactory.getWindowAlpha(progress);
+            mHomeCurrentRect.set(currentRect);
+            mSnapshotRadius = cornerRadius;
+            if (mSnapshot != null) mSnapshot.update(currentRect, cornerRadius, alpha);
 
-            mHomeAnim.setPlayFraction(progress);
+            if (!mLocalTransformParams.isDetachedForParallelAnimation()) {
+                mHomeAnim.setPlayFraction(progress);
+            }
             if (mTargetTaskView == null) {
                 mHomeToWindowPositionMap.mapRect(mWindowCurrentRect, currentRect);
                 if (mAnimationFactory.isWidget()) {
@@ -511,8 +536,10 @@ public abstract class SwipeUpAnimationLogic implements
                 mLocalTransformParams.setCornerRadius(mStartRadius);
             }
 
-            mLocalTransformParams.applySurfaceParams(
-                    mLocalTransformParams.createSurfaceParams(this));
+            if (!mLocalTransformParams.isDetachedForParallelAnimation()) {
+                mLocalTransformParams.applySurfaceParams(
+                        mLocalTransformParams.createSurfaceParams(this));
+            }
 
             if (!mAnimationFactory.isWidget() || mTargetTaskView != null) {
                 mAnimationFactory.update(
@@ -563,6 +590,18 @@ public abstract class SwipeUpAnimationLogic implements
                     currentRect.centerX() - mThumbnailStartBounds.centerX());
             mTargetTaskView.setTranslationY(
                     currentRect.centerY() - mThumbnailStartBounds.centerY());
+        }
+
+        @Nullable
+        public CosHomeSnapshot createSnapshot(Bitmap bitmap, Rect taskBounds) {
+            if (mSnapshot != null || mTargetTaskView != null || mAnimationFactory.isWidget()
+                    || mCropRectF.isEmpty() || mHomeCurrentRect.isEmpty() || taskBounds.isEmpty()) {
+                return null;
+            }
+            mSnapshot = new CosHomeSnapshot(mContext, bitmap, mCropRectF, taskBounds);
+            mSnapshot.update(mHomeCurrentRect, mSnapshotRadius,
+                    mLocalTransformParams.getTargetAlpha());
+            return mSnapshot;
         }
 
         @Override
@@ -619,6 +658,10 @@ public abstract class SwipeUpAnimationLogic implements
         }
 
         private void cleanUp() {
+            if (mSnapshot != null) {
+                mSnapshot.remove();
+                mSnapshot = null;
+            }
             if (mTargetTaskView == null) {
                 return;
             }
@@ -640,7 +683,9 @@ public abstract class SwipeUpAnimationLogic implements
         @Override
         public void onAnimationSuccess(Animator animator) {
             cleanUp();
-            mHomeAnim.getAnimationPlayer().end();
+            if (!mLocalTransformParams.isDetachedForParallelAnimation()) {
+                mHomeAnim.getAnimationPlayer().end();
+            }
         }
     }
 

@@ -101,6 +101,7 @@ import com.android.launcher3.BubbleTextView.RunningAppState;
 import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.Flags;
 import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.Launcher;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
@@ -1652,6 +1653,56 @@ public class TaskbarActivityContext extends BaseTaskbarContext {
     }
 
     protected void onTaskbarIconClicked(View view) {
+        Object tag = view.getTag();
+        RecentsView recents = mControllers.uiController.getRecentsView();
+        if (isPrimaryDisplay()
+                && com.android.quickstep.cos.CosAppAnimation.isEnabled(this)
+                && !isInDesktopMode() && !isTaskbarShowingDesktopTasks()
+                && (recents == null || !recents.isSplitSelectionActive())
+                && tag instanceof ItemInfo item
+                && item.itemType == Favorites.ITEM_TYPE_APPLICATION
+                && (!(item instanceof WorkspaceItemInfo workspaceItem)
+                        || (!workspaceItem.isDisabled() && !workspaceItem.isPromise()))) {
+            Runnable fallback = () -> getMainThreadHandler().post(() -> {
+                if (!isDestroyed() && view.getTag() == item) {
+                    onTaskbarIconClickedAfterHomeFlight(view);
+                }
+            });
+            Executors.MAIN_EXECUTOR.execute(() -> {
+                if (!com.android.quickstep.AbsSwipeUpHandler.finishHomeFlightForLaunch(
+                        () -> launchHomeIconAfterFlight(item, fallback))) fallback.run();
+            });
+            return;
+        }
+        onTaskbarIconClickedAfterHomeFlight(view);
+    }
+
+    private void launchHomeIconAfterFlight(ItemInfo item, Runnable fallback) {
+        Launcher launcher = Launcher.ACTIVITY_TRACKER.getCreatedContext();
+        if (launcher == null || launcher.isDestroyed() || item.getIntent() == null) {
+            fallback.run();
+            return;
+        }
+        View homeIcon = launcher.getFirstHomeElementForAppClose(
+                null, item.getTargetPackage(), item.user);
+        if (homeIcon == null || !homeIcon.isAttachedToWindow()
+                || homeIcon.getWidth() <= 0 || homeIcon.getHeight() <= 0) {
+            fallback.run();
+            return;
+        }
+        launcher.closeOpenViews();
+        launcher.startActivitySafely(homeIcon, new Intent(item.getIntent()), item);
+        getMainThreadHandler().post(() -> {
+            if (isDestroyed()) return;
+            mControllers.uiController.onTaskbarIconLaunched(item);
+            mControllers.taskbarStashController.updateAndAnimateTransientTaskbar(true);
+            mControllers.keyboardQuickSwitchController.closeQuickSwitchView(false);
+            mControllers.taskbarPopupController.maybeCloseMultiInstanceMenu();
+            AbstractFloatingView.closeAllOpenViews(this);
+        });
+    }
+
+    private void onTaskbarIconClickedAfterHomeFlight(View view) {
         TaskbarUIController taskbarUIController = mControllers.uiController;
         RecentsView recents = taskbarUIController.getRecentsView();
         boolean shouldCloseAllOpenViews = true;

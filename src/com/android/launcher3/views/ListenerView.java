@@ -29,6 +29,7 @@ import com.android.launcher3.AbstractFloatingView;
 public class ListenerView extends AbstractFloatingView {
 
     private Runnable mCloseListener;
+    private boolean mCloseOnTouchDown = true;
 
     public ListenerView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -37,6 +38,11 @@ public class ListenerView extends AbstractFloatingView {
 
     public void setListener(Runnable listener) {
         mCloseListener = listener;
+    }
+
+    /** Allows an icon animation to continue while a touch launches another app. */
+    public void setCloseOnTouchDown(boolean closeOnTouchDown) {
+        mCloseOnTouchDown = closeOnTouchDown;
     }
 
     @Override
@@ -72,7 +78,7 @@ public class ListenerView extends AbstractFloatingView {
 
     @Override
     public boolean onControllerInterceptTouchEvent(MotionEvent ev) {
-        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+        if (mCloseOnTouchDown && ev.getAction() == MotionEvent.ACTION_DOWN) {
             handleClose(false);
         }
         // We want other views to be able to intercept the touch so we return false here.

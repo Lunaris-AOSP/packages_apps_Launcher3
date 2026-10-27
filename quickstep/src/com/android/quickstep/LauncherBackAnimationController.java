@@ -69,6 +69,7 @@ import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.DisplayController;
 import com.android.launcher3.util.NavigationMode;
 import com.android.launcher3.widget.LauncherAppWidgetHostView;
+import com.android.quickstep.cos.CosAppAnimation;
 import com.android.quickstep.util.BackAnimState;
 import com.android.quickstep.util.ScalingWorkspaceRevealAnim;
 import com.android.systemui.shared.system.QuickStepContract;
@@ -122,6 +123,7 @@ public class LauncherBackAnimationController {
     private boolean mWaitStartTransition = false;
     private OnBackInvokedCallbackStub mBackCallback;
     private IRemoteAnimationFinishedCallback mAnimationFinishedCallback;
+    private BackAnimState mBackAnimState;
     private final BackProgressAnimator mProgressAnimator = new BackProgressAnimator();
     private SurfaceControl mScrimLayer;
     private ValueAnimator mScrimAlphaAnimator;
@@ -294,7 +296,15 @@ public class LauncherBackAnimationController {
         }
 
         @Override
-        public void onAnimationCancelled() {}
+        public void onAnimationCancelled() {
+            Runnable cancel = () -> {
+                LauncherBackAnimationController controller = mControllerRef.get();
+                if (controller != null && CosAppAnimation.isEnabled(controller.mLauncher)) {
+                    controller.cancelTransitionAnimation();
+                }
+            };
+            if (mHandler != null) mHandler.post(cancel); else cancel.run();
+        }
     }
 
     private void onCancelFinished() {
@@ -309,6 +319,7 @@ public class LauncherBackAnimationController {
     /** Unregisters the back to launcher callback in shell. */
     public void unregisterBackCallbacks() {
         if (!mBackRegistered) return;
+        if (CosAppAnimation.isEnabled(mLauncher)) cancelTransitionAnimation();
         if (mBackCallback != null) {
             SystemUiProxy.INSTANCE.get(mLauncher).clearBackToLauncherCallback(mBackCallback);
         }
@@ -519,6 +530,7 @@ public class LauncherBackAnimationController {
         }
 
         setLauncherTargetViewVisible(true);
+        if (CosAppAnimation.isEnabled(mLauncher)) mLauncherTargetView = null;
 
         // Explicitly close opened floating views (which is typically called from
         // Launcher#onResumed, but in the predictive back flow launcher is not resumed until
@@ -542,6 +554,7 @@ public class LauncherBackAnimationController {
     }
 
     private void finishAnimation() {
+        mBackAnimState = null;
         mLauncher.setPredictiveBackToHomeInProgress(false);
         if (mBackTarget != null && mBackTarget.leash.isValid()) {
             mBackTarget.leash.release();
@@ -585,7 +598,10 @@ public class LauncherBackAnimationController {
     }
 
     private void startTransitionAnimations(BackAnimState backAnim) {
-        backAnim.addOnAnimCompleteCallback(this::finishAnimation);
+        mBackAnimState = backAnim;
+        backAnim.addOnAnimCompleteCallback(() -> {
+            if (mBackAnimState == backAnim) finishAnimation();
+        });
         if (mScrimLayer == null) {
             // Scrim hasn't been attached yet. Let's attach it.
             addScrimLayer();
@@ -609,6 +625,25 @@ public class LauncherBackAnimationController {
         mLauncher.clearForceInvisibleFlag(INVISIBLE_ALL);
         customizeStatusBarAppearance(true);
         backAnim.start(mLauncher.getStateManager());
+    }
+
+    private void cancelTransitionAnimation() {
+        BackAnimState state = mBackAnimState;
+        mBackAnimState = null;
+        if (state != null) state.cancel();
+        mWaitStartTransition = false;
+        mProgressAnimator.removeOnBackCancelledFinishCallback();
+        mProgressAnimator.reset();
+        if (state == null && mBackInProgress) {
+            customizeStatusBarAppearance(false);
+            if (!mLauncher.getWorkspace().isOverlayShown()
+                    && !mLauncher.isInState(LauncherState.ALL_APPS)) {
+                setLauncherScale(ScalingWorkspaceRevealAnim.MAX_SIZE);
+                mLauncher.getDepthController().stateDepth.setValue(
+                        mLauncher.getStateManager().getState().getDepth(mLauncher));
+            }
+        }
+        finishAnimation();
     }
 
     private void loadResources() {

@@ -51,6 +51,8 @@ import com.android.launcher3.views.FloatingView;
 import com.android.launcher3.widget.LauncherAppWidgetHostView;
 import com.android.quickstep.util.ActiveGestureLog;
 import com.android.quickstep.util.OosAppCloseAnimation;
+import com.android.quickstep.cos.CosAppAnimation;
+import com.android.quickstep.cos.CosWorkspaceRevealAnim;
 import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.ScalingWorkspaceRevealAnim;
 import com.android.quickstep.util.TaskViewSimulator;
@@ -189,6 +191,7 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                 super.setAnimation(anim);
                 mSiblingAnimation = anim;
                 mSiblingAnimation.addAnimatorListener(floatingIconView);
+                floatingIconView.setAllowParallelAnimation(anim.isCos());
                 floatingIconView.setOnTargetChangeListener(
                         mSiblingAnimation::onTargetPositionChanged);
                 floatingIconView.setFastFinishRunnable(mSiblingAnimation::end);
@@ -207,7 +210,17 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
             }
 
             @Override
+            public boolean shouldUseCosCloseAnimation() {
+                return isAnimatingIntoIcon() && !isTargetTranslucent
+                        && targetTaskView == null && !mIsSwipeForSplit && !mIsSwipingPipToHome
+                        && mRemoteTargetHandles.length == 1;
+            }
+
+            @Override
             protected float getWindowAlpha(float progress) {
+                if (mSiblingAnimation != null && mSiblingAnimation.isCos()) {
+                    return 1f - mSiblingAnimation.getCosFadeProgress();
+                }
                 return shouldUseIconCloseAnimation()
                         ? OosAppCloseAnimation.getWindowAlpha(progress)
                         : super.getWindowAlpha(progress);
@@ -223,10 +236,11 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                 // seen morphing into the icon shape. But before the threshold, we want to limit
                 // the alpha to reduce the blur effect behind the window.
                 boolean useIconCloseAnimation = shouldUseIconCloseAnimation();
-                float iconAlpha = useIconCloseAnimation
+                boolean cos = mSiblingAnimation != null && mSiblingAnimation.isCos();
+                float iconAlpha = cos ? mSiblingAnimation.getCosFadeProgress() : useIconCloseAnimation
                         ? OosAppCloseAnimation.getIconAlpha(progress)
                         : Interpolators.clampToProgress(progress, 0f, windowAlphaThreshold);
-                float shapeProgressStart = useIconCloseAnimation
+                float shapeProgressStart = cos ? 0f : useIconCloseAnimation
                         ? OosAppCloseAnimation.SHAPE_PROGRESS_START : windowAlphaThreshold;
                 floatingIconView.update(iconAlpha, currentRect, progress, shapeProgressStart,
                         radius, false, overlayAlpha);
@@ -396,6 +410,11 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
         @Override
         protected void playScalingRevealAnimation() {
             if (mContainer != null) {
+                if (CosAppAnimation.isEnabled(mContainer)) {
+                    new CosWorkspaceRevealAnim(mContainer, mSiblingAnimation,
+                            getWindowTargetRect(), true, true).start();
+                    return;
+                }
                 new ScalingWorkspaceRevealAnim(mContainer, mSiblingAnimation,
                         getWindowTargetRect(), true /* playAlphaReveal */,
                         true /* playBlur */).start();
@@ -440,6 +459,10 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
          */
         protected void playScalingRevealAnimation() {
             if (mContainer != null) {
+                if (CosAppAnimation.isEnabled(mContainer)) {
+                    new CosWorkspaceRevealAnim(mContainer, null, null, true, true).start();
+                    return;
+                }
                 new ScalingWorkspaceRevealAnim(
                         mContainer, null /* siblingAnimation */, null /* windowTargetRect */,
                         true /* playAlphaReveal */, true /* playBlur */).start();

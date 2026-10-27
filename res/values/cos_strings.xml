@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cos_app_animations_title">ColorOS app animations</string>
+    <string name="cos_app_animations_summary">Spring app opening and closing, with parallel launches while returning home</string>
+</resources>

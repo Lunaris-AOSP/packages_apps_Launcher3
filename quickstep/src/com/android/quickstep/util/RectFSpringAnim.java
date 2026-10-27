@@ -19,10 +19,12 @@ package com.android.quickstep.util;
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 import android.animation.Animator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.SystemClock;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
@@ -36,6 +38,7 @@ import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.util.DynamicResource;
 import com.android.quickstep.RemoteAnimationTargets.ReleaseCheck;
+import com.android.quickstep.cos.CosAppAnimation;
 import com.android.systemui.plugins.ResourceProvider;
 
 import java.lang.annotation.Retention;
@@ -146,6 +149,11 @@ public class RectFSpringAnim extends ReleaseCheck {
     private final float mRectDamping;
     private final boolean mUseIconSpringConfig;
     private final boolean mUseConfiguredSpring;
+    private final boolean mCos;
+    private long mCosStartTime;
+    private float mCosDurationScale;
+    private boolean mEnding;
+    private boolean mWindowDetached;
 
     public RectFSpringAnim(SpringConfig config) {
         mStartRect = config.startRect;
@@ -162,7 +170,8 @@ public class RectFSpringAnim extends ReleaseCheck {
         mRectStiffness = config.rectStiffness;
         mRectDamping = config.rectDamping;
         mUseIconSpringConfig = config instanceof IconSpringConfig;
-        mUseConfiguredSpring = mUseIconSpringConfig || config instanceof WidgetSpringConfig;
+        mCos = config instanceof CosSpringConfig;
+        mUseConfiguredSpring = mUseIconSpringConfig || mCos || config instanceof WidgetSpringConfig;
 
         mCurrentY = getTrackedYFromRect(mStartRect);
     }
@@ -173,6 +182,32 @@ public class RectFSpringAnim extends ReleaseCheck {
 
     public boolean isIconCloseAnimation() {
         return mUseIconSpringConfig;
+    }
+
+    public boolean isCos() {
+        return mCos;
+    }
+
+    public boolean isRunning() {
+        return mAnimsStarted && !isEnded();
+    }
+
+    public void detachWindow() {
+        if (mCos) {
+            mWindowDetached = true;
+            setCanRelease(true);
+        }
+    }
+
+    public boolean isWindowDetached() {
+        return mWindowDetached;
+    }
+
+    public float getCosFadeProgress() {
+        if (mCosStartTime == 0) return 0f;
+        if (mCosDurationScale <= 0 || isEnded() || mEnding) return 1f;
+        return CosAppAnimation.iconFade(
+                (SystemClock.uptimeMillis() - mCosStartTime) / mCosDurationScale);
     }
 
     private float getTrackedYFromRect(RectF rect) {
@@ -271,12 +306,20 @@ public class RectFSpringAnim extends ReleaseCheck {
                 xVelocityPxPerS, sCachedMinVelocityXPxPerS, sCachedMaxVelocityXPxPerS,
                 sCachedFallOffFactor);
         yVelocityPxPerS = adjustVelocity(
-                yVelocityPxPerS, sCachedMinVelocityYPxPerS, sCachedMaxVelocityYPxPerS,
+                yVelocityPxPerS, mCos ? 500 : sCachedMinVelocityYPxPerS,
+                mCos ? 2500 : sCachedMaxVelocityYPxPerS,
                 sCachedFallOffFactor);
 
         float durationScale = mUseIconSpringConfig ? OosAppCloseAnimation.DURATION_SCALE : 1f;
         xVelocityPxPerS /= durationScale;
         yVelocityPxPerS /= durationScale;
+
+        if (mCos) {
+            if ((endX - startX) * xVelocityPxPerS < 0) xVelocityPxPerS *= 0.25f;
+            if ((endY - startY) * yVelocityPxPerS < 0) yVelocityPxPerS *= 0.25f;
+            mCosStartTime = SystemClock.uptimeMillis();
+            mCosDurationScale = ValueAnimator.getDurationScale();
+        }
 
         mRectXSpring =
                 new SpringAnimation(this, RECT_CENTER_X)
@@ -311,8 +354,10 @@ public class RectFSpringAnim extends ReleaseCheck {
                                                 ? mRectStiffness : sCachedStiffnessZ)
                                         .setDampingRatio(mUseConfiguredSpring
                                                 ? mRectDamping : sCachedDampingZ))
-                        .setStartVelocity(velocityPxPerMs.y * minVisibleChange / durationScale)
-                        .setMaxValue(1f)
+                        .setStartVelocity(mCos ? Utilities.boundToRange(
+                                -velocityPxPerMs.y * 1000 / Math.max(1f, mStartRect.height()), 0f, 8f)
+                                : velocityPxPerMs.y * minVisibleChange / durationScale)
+                        .setMaxValue(mCos ? 1.25f : 1f)
                         .setMinimumVisibleChange(minVisibleChange)
                         .addEndListener((animation, canceled, value, velocity) -> {
                             mRectScaleAnimEnded = true;
@@ -329,9 +374,11 @@ public class RectFSpringAnim extends ReleaseCheck {
         for (Animator.AnimatorListener animatorListener : mAnimatorListeners) {
             animatorListener.onAnimationStart(null);
         }
+        if (mCos && !ValueAnimator.areAnimatorsEnabled()) end();
     }
 
     public void end() {
+        mEnding = true;
         if (mAnimsStarted) {
             if (mRectXSpring.canSkipToEnd()) {
                 mRectXSpring.skipToEnd();
@@ -343,7 +390,7 @@ public class RectFSpringAnim extends ReleaseCheck {
                 mRectScaleAnim.skipToEnd();
             }
             mCurrentScaleProgress = mRectScaleAnim.getSpring().getFinalPosition();
-            if (mUseIconSpringConfig) {
+            if (mUseIconSpringConfig || mCos) {
                 mCurrentCenterX = mTargetRect.centerX();
                 mCurrentY = getTrackedYFromRect(mTargetRect);
             }
@@ -377,6 +424,12 @@ public class RectFSpringAnim extends ReleaseCheck {
             float startHeight = mStartRect.height();
             float currentWidth = startWidth + mCurrentScaleProgress * (mTargetRect.width() - startWidth);
             float currentHeight = startHeight + mCurrentScaleProgress * (mTargetRect.height() - startHeight);
+            if (mCos && startWidth > 0 && mTargetRect.width() > 0) {
+                currentWidth = Math.max(mTargetRect.width() * 0.95f, currentWidth);
+                currentHeight = currentWidth * Utilities.mapRange(
+                        Utilities.boundToRange(mCurrentScaleProgress, 0f, 1f),
+                        startHeight / startWidth, mTargetRect.height() / mTargetRect.width());
+            }
             float halfWidth = currentWidth / 2;
             switch (mTracking) {
                 case TRACKING_TOP:
@@ -399,7 +452,9 @@ public class RectFSpringAnim extends ReleaseCheck {
                     break;
             }
             for (OnUpdateListener onUpdateListener : mOnUpdateListeners) {
-                onUpdateListener.onUpdate(mCurrentRect, mCurrentScaleProgress);
+                onUpdateListener.onUpdate(mCurrentRect, mCos
+                        ? Utilities.boundToRange(mCurrentScaleProgress, 0f, 1f)
+                        : mCurrentScaleProgress);
             }
         }
     }
@@ -548,6 +603,23 @@ public class RectFSpringAnim extends ReleaseCheck {
             dampingX = rp.getFloat(R.dimen.swipe_up_rect_x_damping_ratio);
             dampingY = rp.getFloat(R.dimen.swipe_up_rect_y_damping_ratio);
             rectDamping = rp.getFloat(R.dimen.swipe_up_rect_scale_damping_ratio_v2);
+        }
+    }
+
+    public static final class CosSpringConfig extends DefaultSpringConfig {
+        public CosSpringConfig(Context context, DeviceProfile deviceProfile,
+                RectF startRect, RectF targetRect) {
+            super(context, deviceProfile, startRect, targetRect);
+            tracking = TRACKING_CENTER;
+            stiffnessX = 330f;
+            stiffnessY = 250f;
+            rectStiffness = 330f;
+            dampingX = 1f;
+            dampingY = CosAppAnimation.bounceDamping(
+                    6f * context.getResources().getDisplayMetrics().density,
+                    Math.abs(targetRect.centerY() - startRect.centerY()));
+            rectDamping = CosAppAnimation.bounceDamping(
+                    0.05f * targetRect.width(), startRect.width() - targetRect.width());
         }
     }
 

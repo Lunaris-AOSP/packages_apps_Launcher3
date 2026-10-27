@@ -269,6 +269,7 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val ALTERNATIVE_WALLPAPER_ZOOMING = backedUpItem("pref_alternative_wallpaper_zooming", true)
         @JvmField val APP_DRAWER_CUSTOM_COLOR_ENABLED = backedUpItem("pref_app_drawer_custom_color_enabled", false)
         @JvmField val APP_LAUNCH_BLUR_ENABLED = backedUpItem("pref_app_launch_blur", false)
+        @JvmField val COS_APP_ANIMATIONS = backedUpItem("pref_cos_app_animations", false)
         @JvmField val WORKSPACE_UNLOCK_ANIMATION = backedUpItem("pref_workspace_unlock_animation", true)
         @JvmField val APP_DRAWER_CUSTOM_COLOR_LIGHT = backedUpItem("pref_app_drawer_custom_color_light", -1)
         @JvmField val OVERSCROLL_STIFFNESS = backedUpItem("pref_overscroll_stiffness", 200)

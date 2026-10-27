@@ -63,6 +63,7 @@ public class TransformParams {
     private float mTargetAlpha;
     private float mCornerRadius;
     private RemoteAnimationTargets mTargetSet;
+    private boolean mDetachedForParallelAnimation;
     private TransitionInfo mTransitionInfo;
     private boolean mCornerRadiusIsOverridden;
     private SurfaceTransactionApplier mSyncTransactionApplier;
@@ -119,7 +120,17 @@ public class TransformParams {
      */
     public TransformParams setTargetSet(RemoteAnimationTargets targetSet) {
         mTargetSet = targetSet;
+        mDetachedForParallelAnimation = false;
         return this;
+    }
+
+    public void detachForParallelAnimation() {
+        mTargetSet = null;
+        mDetachedForParallelAnimation = true;
+    }
+
+    public boolean isDetachedForParallelAnimation() {
+        return mDetachedForParallelAnimation;
     }
 
     /**

@@ -129,6 +129,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
+import com.android.internal.util.lunaris.Luminous;
 import com.android.app.animation.Animations;
 import com.android.app.animation.Interpolators;
 import com.android.internal.jank.Cuj;
@@ -163,6 +164,8 @@ import com.android.quickstep.util.BackAnimState;
 import com.android.quickstep.util.CrossDisplayMoveTransition;
 import com.android.quickstep.util.MultiValueUpdateListener;
 import com.android.quickstep.util.OosAppCloseAnimation;
+import com.android.quickstep.cos.CosAppAnimation;
+import com.android.quickstep.cos.CosWorkspaceRevealAnim;
 import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.util.RectFSpringAnim.DefaultSpringConfig;
 import com.android.quickstep.util.RectFSpringAnim.IconSpringConfig;
@@ -344,6 +347,200 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     private LinkedHashMap<Integer, Pair<Integer, Integer>> mTaskStartParams;
 
     private final Interpolator mOpeningInterpolator;
+    private LaunchPreview mImmediatePreview;
+
+    /** Give icon taps their first frame without waiting for WM's opening app surface. */
+    public void beginImmediateAppLaunch(View source, ItemInfo item) {
+        if (mImmediatePreview != null && mImmediatePreview.source == source
+                && mImmediatePreview.item == item && !mImmediatePreview.handedOff) return;
+        cancelImmediateAppLaunch();
+        if (!mCosAppAnimations || !(source instanceof BubbleTextView icon) || item == null
+                || item.itemType != LauncherSettings.Favorites.ITEM_TYPE_APPLICATION
+                || item.shouldUseBackgroundAnimation() || icon.getIcon() == null
+                || !ValueAnimator.areAnimatorsEnabled()
+                || !source.isAttachedToWindow() || mLauncher.isInMultiWindowMode()
+                || mLauncher.shouldShowHomeBehindDesktop()
+                || !mLauncher.getSystemService(android.os.PowerManager.class).isInteractive()) {
+            return;
+        }
+        android.view.ViewGroup root = (android.view.ViewGroup) mDragLayer.getParent();
+        if (root == null || !root.isAttachedToWindow()
+                || root.getWidth() == 0 || root.getHeight() == 0) return;
+        mImmediatePreview = new LaunchPreview(root, icon, item);
+        mImmediatePreview.start();
+    }
+
+    public void cancelImmediateAppLaunch() {
+        if (mImmediatePreview != null) mImmediatePreview.remove();
+    }
+
+    public void cancelImmediateAppLaunch(View source) {
+        if (mImmediatePreview != null && mImmediatePreview.source == source) {
+            mImmediatePreview.remove();
+        }
+    }
+
+    /** A noninteractive overlay, using the same crop/scale path as the real opening window. */
+    private final class LaunchPreview extends View implements Runnable {
+        final BubbleTextView source;
+        final ItemInfo item;
+        final android.view.ViewGroup root;
+        final RectF iconBounds = new RectF();
+        final RectF frame = new RectF();
+        final Rect drawableBounds = new Rect();
+        final Rect predictedScreenBounds = new Rect();
+        final float endRadius = getWindowCornerRadius(mLauncher);
+        final android.graphics.Paint fill = new android.graphics.Paint(
+                android.graphics.Paint.ANTI_ALIAS_FLAG);
+        final android.graphics.drawable.Drawable logo;
+        final AnimOpenProperties properties;
+        final float originalAlpha;
+        final float durationScale = ValueAnimator.getDurationScale();
+        boolean sourceRestored;
+        final long started = android.os.SystemClock.uptimeMillis();
+        final Runnable timeout = this::remove;
+        boolean removed;
+        boolean handedOff;
+
+        LaunchPreview(android.view.ViewGroup root, BubbleTextView source, ItemInfo item) {
+            super(mLauncher);
+            this.root = root;
+            this.source = source;
+            this.item = item;
+            originalAlpha = source.getAlpha();
+            Rect local = new Rect();
+            source.getIconBounds(local);
+            Utilities.getBoundsForViewInDragLayer(mDragLayer, source, local,
+                    false, null, iconBounds);
+            int[] dragLocation = new int[2];
+            int[] rootLocation = new int[2];
+            mDragLayer.getLocationOnScreen(dragLocation);
+            root.getLocationOnScreen(rootLocation);
+            iconBounds.offset(dragLocation[0] - rootLocation[0],
+                    dragLocation[1] - rootLocation[1]);
+            Rect target = new Rect(0, 0, root.getWidth(), root.getHeight());
+            if (enableDynamicInsetsForAppLaunch() && mDeviceProfile.isTaskbarPresent
+                    && mDeviceProfile.isTaskbarPresentInApps
+                    && !isTransientTaskbar()) {
+                int bottom = mSystemUiProxy.getHomeVisibilityState().getNavbarInsetPosition()
+                        - rootLocation[1];
+                if (bottom > 0) target.bottom = Math.min(target.bottom, bottom);
+            }
+            predictedScreenBounds.set(target);
+            predictedScreenBounds.offset(rootLocation[0], rootLocation[1]);
+            properties = new AnimOpenProperties(getResources(), mDeviceProfile, target, iconBounds,
+                    source, 0, 0, false, false);
+            android.graphics.drawable.Drawable.ConstantState state =
+                    source.getIcon().getConstantState();
+            logo = state == null ? source.getIcon() : state.newDrawable(getResources()).mutate();
+            android.util.TypedValue color = new android.util.TypedValue();
+            mLauncher.getTheme().resolveAttribute(android.R.attr.colorBackground, color, true);
+            fill.setColor(color.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT
+                    && color.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT
+                    ? color.data : 0xff121212);
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            setClickable(false);
+        }
+
+        void start() {
+            layout(0, 0, root.getWidth(), root.getHeight());
+            root.getOverlay().add(this);
+            source.setAlpha(0f);
+            postDelayed(timeout, 5000);
+            invalidate();
+            postOnAnimation(this);
+        }
+
+        long elapsed() {
+            return (long) (Math.max(0, android.os.SystemClock.uptimeMillis() - started)
+                    / Math.max(0.01f, durationScale));
+        }
+
+        @Override
+        public void run() {
+            if (removed) return;
+            if (mLauncher.isDestroyed() || !root.isAttachedToWindow()) {
+                remove();
+                return;
+            }
+            invalidate();
+            if (elapsed() < CosAppAnimation.LAUNCH_DURATION) postOnAnimation(this);
+        }
+
+        @Override
+        protected void onDraw(android.graphics.Canvas canvas) {
+            if (removed) return;
+            float progress = Utilities.boundToRange(
+                    (float) elapsed() / CosAppAnimation.LAUNCH_DURATION, 0, 1);
+            float t = mOpeningInterpolator.getInterpolation(progress);
+            float iconScale = Utilities.mapRange(t, properties.initialAppIconScale,
+                    properties.finalAppIconScale);
+            float cropWidth = Utilities.mapRange(t, properties.cropWidthStart,
+                    properties.cropWidthEnd);
+            float cropHeight = Utilities.mapRange(t, properties.cropHeightStart,
+                    properties.cropHeightEnd);
+            float scale = Math.min(1f, Math.max(iconBounds.width() * iconScale / cropWidth,
+                    iconBounds.height() * iconScale / cropHeight));
+            float cx = iconBounds.centerX() + properties.dX * t;
+            float cy = iconBounds.centerY() + properties.dY * t;
+            float width = cropWidth * scale;
+            float height = cropHeight * scale;
+            frame.set(cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2);
+            float startRadius = supportsRoundedCornersOnWindows(getResources())
+                    ? properties.cropWidthStart / 2f : 0f;
+            float radius = Utilities.mapRange(t, startRadius, endRadius) * scale;
+            fill.setAlpha(Math.round(255 * Math.min(1f, progress * 8f)));
+            canvas.drawRoundRect(frame, radius, radius, fill);
+            float size = Math.min(Math.min(width, height), properties.cropWidthStart * scale);
+            drawableBounds.set(logo.getBounds());
+            logo.setBounds(Math.round(cx - size / 2), Math.round(cy - size / 2),
+                    Math.round(cx + size / 2), Math.round(cy + size / 2));
+            logo.draw(canvas);
+            logo.setBounds(drawableBounds);
+        }
+
+        boolean matchesWindow(RemoteAnimationTarget[] targets) {
+            Rect actual = getWindowTargetBounds(targets, 0);
+            for (RemoteAnimationTarget target : targets) {
+                if (target.mode != MODE_OPENING) continue;
+                if (shouldCropToInset(target)) {
+                    actual.bottom = Math.min(actual.bottom,
+                            mSystemUiProxy.getHomeVisibilityState().getNavbarInsetPosition());
+                }
+                return actual.equals(predictedScreenBounds);
+            }
+            return false;
+        }
+
+        void handOff() {
+            if (removed || handedOff) return;
+            handedOff = true;
+            removeCallbacks(timeout);
+            postOnAnimation(() -> {
+                if (!removed) animate().alpha(0f).setDuration(64).withEndAction(this::remove).start();
+            });
+        }
+
+        void restoreSource() {
+            if (!sourceRestored) {
+                sourceRestored = true;
+                source.setAlpha(originalAlpha);
+            }
+        }
+
+        void remove() {
+            if (removed) return;
+            removed = true;
+            removeCallbacks(this);
+            removeCallbacks(timeout);
+            animate().cancel();
+            root.getOverlay().remove(this);
+            restoreSource();
+            if (mImmediatePreview == this) mImmediatePreview = null;
+        }
+    }
+
+    private final boolean mCosAppAnimations;
 
     private final SystemUiProxy mSystemUiProxy;
 
@@ -374,7 +571,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             mSystemUiProxy.setStartingWindowListener(mStartingWindowListener);
         }
 
-        mOpeningInterpolator = APP_LAUNCH_INTERPOLATOR;
+        mCosAppAnimations = CosAppAnimation.isEnabled(launcher);
+        mOpeningInterpolator = mCosAppAnimations ? CosAppAnimation.OPEN : APP_LAUNCH_INTERPOLATOR;
         mCoordinateTransfer = new RemoteAnimationCoordinateTransfer(mLauncher);
         mLatencyTracker = LatencyTracker.getInstance(launcher);
 
@@ -384,6 +582,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     @Override
     public void onDeviceProfileChanged(DeviceProfile dp) {
+        cancelImmediateAppLaunch();
         mDeviceProfile = dp;
     }
 
@@ -414,6 +613,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     public ActivityOptionsWrapper getActivityLaunchOptions(View v, ItemInfo itemInfo) {
         boolean fromRecents = isLaunchingFromRecents(v, null /* targets */);
         RunnableList onEndCallback = new RunnableList();
+        LaunchPreview preview = mImmediatePreview != null && mImmediatePreview.source == v
+                ? mImmediatePreview : null;
+        if (preview != null) onEndCallback.add(preview::remove);
 
         // Handle the case where an already visible task is launched which results in no transition
         TaskRestartedDuringLaunchListener restartedListener =
@@ -437,7 +639,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         // recents launch or not for sure until we know the opening app targets.
         long duration = fromRecents
                 ? RECENTS_LAUNCH_DURATION
-                : APP_LAUNCH_DURATION;
+                : mCosAppAnimations ? CosAppAnimation.LAUNCH_DURATION : APP_LAUNCH_DURATION;
 
         long statusBarTransitionDelay = duration - STATUS_BAR_TRANSITION_DURATION
                 - STATUS_BAR_TRANSITION_PRE_DELAY;
@@ -587,7 +789,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         mLauncher.getStateManager().setCurrentAnimation(anim);
 
         // Note: the targetBounds are relative to the launcher
-        int startDelay = getSingleFrameMs(mLauncher);
+        int startDelay = mCosAppAnimations ? 0 : getSingleFrameMs(mLauncher);
         Animator windowAnimator = getOpeningWindowAnimators(
                 v, appTargets, wallpaperTargets, nonAppTargets, launcherClosing);
         windowAnimator.setStartDelay(startDelay);
@@ -616,6 +818,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         mLauncher.getStateManager().setCurrentAnimation(anim);
         anim.play(getOpeningWindowAnimatorsForWidget(
                 v, appTargets, wallpaperTargets, nonAppTargets, launcherClosing));
+        if (mCosAppAnimations && launcherClosing && !areAllTargetsTranslucent(appTargets)) {
+            Pair<AnimatorSet, Runnable> content = getLauncherContentAnimator(true, 0, false);
+            anim.play(content.first);
+            anim.addListener(AnimatorListeners.forEndCallback(content.second));
+        }
     }
 
     private void boostInteraction(int durationMs) {
@@ -746,10 +953,15 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 viewsToAnimate.add(hotseat);
             }
 
-            final float pushbackScale = isAppOpening ? WORKSPACE_PUSHBACK_SCALE : 1f;
-            final float pushbackAlpha = isAppOpening ? WORKSPACE_PUSHBACK_ALPHA : 1f;
+            final float pushbackScale = isAppOpening
+                    ? (mCosAppAnimations ? CosAppAnimation.HOME_SCALE : WORKSPACE_PUSHBACK_SCALE) : 1f;
+            final float pushbackAlpha = isAppOpening
+                    ? (mCosAppAnimations ? 0f : WORKSPACE_PUSHBACK_ALPHA) : 1f;
 
             viewsToAnimate.forEach(view -> {
+                if (mCosAppAnimations) {
+                    Luminous.cancel(view, Luminous.ALPHA);
+                }
                 // Start the animation from the current value, instead of assuming the views are
                 // in their resting state, so interrupted animations merge seamlessly.
                 // TODO(b/367591368): ideally these animations would be refactored to be
@@ -758,24 +970,28 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 float[] scale = new float[]{view.getScaleX(), pushbackScale};
                 float[] alpha = new float[]{view.getAlpha(), pushbackAlpha};
 
-                // Cancel any ongoing animations. This is necessary to avoid a conflict between
-                // e.g. the unfinished animation triggered when closing an app back to Home and
-                // this animation caused by a launch.
-                Animations.Companion.cancelOngoingAnimation(view);
-                // Cancellation restores the old hardware layer; cache only after that cleanup.
-                view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                // Make sure to cache the current animation, so it can be properly interrupted.
-                Animations.Companion.setOngoingAnimation(view, launcherAnimator);
-
                 ObjectAnimator scaleAnim = ObjectAnimator.ofFloat(view, SCALE_PROPERTY, scale)
-                        .setDuration(WORKSPACE_PUSHBACK_DURATION);
-                scaleAnim.setInterpolator(WORKSPACE_PUSHBACK_INTERPOLATOR);
+                        .setDuration(mCosAppAnimations
+                                ? CosAppAnimation.LAUNCH_DURATION : WORKSPACE_PUSHBACK_DURATION);
+                scaleAnim.setInterpolator(mCosAppAnimations
+                        ? CosAppAnimation.OPEN : WORKSPACE_PUSHBACK_INTERPOLATOR);
                 launcherAnimator.play(scaleAnim);
 
                 ObjectAnimator alphaAnim = ObjectAnimator.ofFloat(view, View.ALPHA, alpha)
-                        .setDuration(WORKSPACE_PUSHBACK_DURATION);
-                alphaAnim.setInterpolator(WORKSPACE_PUSHBACK_ALPHA_INTERPOLATOR);
+                        .setDuration(mCosAppAnimations
+                                ? CosAppAnimation.LAUNCH_DURATION : WORKSPACE_PUSHBACK_DURATION);
+                alphaAnim.setInterpolator(mCosAppAnimations
+                        ? CosAppAnimation.OPEN : WORKSPACE_PUSHBACK_ALPHA_INTERPOLATOR);
                 launcherAnimator.play(alphaAnim);
+            });
+
+            // Capture all starting values before cancelling: a shared reveal animation resets
+            // both the workspace and hotseat when either view interrupts it.
+            viewsToAnimate.forEach(Animations.Companion::cancelOngoingAnimation);
+            viewsToAnimate.forEach(view -> {
+                // Cancellation restores the old hardware layer; cache only after that cleanup.
+                view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                Animations.Companion.setOngoingAnimation(view, launcherAnimator);
             });
 
             endListener = () -> {
@@ -792,6 +1008,13 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         }
 
         launcherAnimator.setStartDelay(startDelay);
+        if (mCosAppAnimations) {
+            RunnableList cleanup = new RunnableList();
+            cleanup.add(endListener);
+            launcherAnimator.addListener(
+                    AnimatorListeners.forEndCallback(cleanup::executeAllAndDestroy));
+            return new Pair<>(launcherAnimator, cleanup::executeAllAndDestroy);
+        }
         return new Pair<>(launcherAnimator, endListener);
     }
 
@@ -842,6 +1065,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             RemoteAnimationTarget[] wallpaperTargets,
             RemoteAnimationTarget[] nonAppTargets,
             boolean launcherClosing) {
+        final long launchDuration = mCosAppAnimations
+                ? CosAppAnimation.LAUNCH_DURATION : APP_LAUNCH_DURATION;
         RemoteAnimationTargets openingTargets = new RemoteAnimationTargets(appTargets,
                 wallpaperTargets, nonAppTargets, MODE_OPENING);
         int rotationChange = getRotationChange(appTargets);
@@ -867,6 +1092,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                         : mLauncher.getTaskbarInteractor().findMatchingAsyncView(v),
                 null /* fadeOutView */, !appTargetsAreTranslucent, launcherIconBounds,
                 true /* isOpening */);
+        floatingView.setFinishOnTouchDown(!mCosAppAnimations);
         Rect crop = new Rect();
         Matrix matrix = new Matrix();
         Rect closingTargetCrop = new Rect();
@@ -914,7 +1140,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         AnimatorSet animatorSet = new AnimatorSet();
         ValueAnimator appAnimator = ValueAnimator.ofFloat(0, 1);
-        appAnimator.setDuration(APP_LAUNCH_DURATION);
+        appAnimator.setDuration(launchDuration);
         appAnimator.setInterpolator(LINEAR);
         appAnimator.addListener(floatingView);
         appAnimator.addListener(new AnimatorListenerAdapter() {
@@ -976,12 +1202,15 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             FloatProp mIconScaleToFitScreen = new FloatProp(prop.initialAppIconScale,
                     prop.finalAppIconScale, mOpeningInterpolator);
             FloatProp mIconAlpha = new FloatProp(prop.iconAlphaStart, 0f,
-                    clampToDuration(LINEAR, APP_LAUNCH_ALPHA_START_DELAY, APP_LAUNCH_ALPHA_DURATION,
-                            APP_LAUNCH_DURATION));
+                    clampToDuration(LINEAR, mCosAppAnimations ? 0 : APP_LAUNCH_ALPHA_START_DELAY,
+                            mCosAppAnimations ? CosAppAnimation.ICON_FADE_DURATION
+                                    : APP_LAUNCH_ALPHA_DURATION,
+                            launchDuration));
 
             final Interpolator cornerInterpolator = new PathInterpolator(0.2f, 0f, 0.2f, 1f);
             FloatProp mWindowRadius = new FloatProp(initialWindowRadius,
-                    getWindowCornerRadius(mLauncher), cornerInterpolator);
+                    getWindowCornerRadius(mLauncher),
+                    mCosAppAnimations ? CosAppAnimation.OPEN : cornerInterpolator);
             FloatProp mShadowRadius = new FloatProp(0, finalShadowRadius,
                     mOpeningInterpolator);
 
@@ -996,15 +1225,17 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
             FloatProp mNavFadeOut = new FloatProp(1f, 0f, clampToDuration(
                     NAV_FADE_OUT_INTERPOLATOR, 20, ANIMATION_NAV_FADE_OUT_DURATION,
-                    APP_LAUNCH_DURATION));
+                    launchDuration));
             FloatProp mNavFadeIn = new FloatProp(0f, 1f, clampToDuration(
-                    NAV_FADE_IN_INTERPOLATOR, ANIMATION_DELAY_NAV_FADE_IN,
-                    ANIMATION_NAV_FADE_IN_DURATION, APP_LAUNCH_DURATION));
+                    NAV_FADE_IN_INTERPOLATOR, mCosAppAnimations
+                            ? launchDuration - ANIMATION_NAV_FADE_IN_DURATION
+                            : ANIMATION_DELAY_NAV_FADE_IN,
+                    ANIMATION_NAV_FADE_IN_DURATION, launchDuration));
 
             FloatProp mBlurRadius = new FloatProp(0f, mMaxBlurRadius,
-                    APP_LAUNCH_BLUR_INTERPOLATOR);
+                    mCosAppAnimations ? CosAppAnimation.OPEN : APP_LAUNCH_BLUR_INTERPOLATOR);
             FloatProp mBlurScrimAlpha = new FloatProp(0f, scrimAlpha,
-                    APP_LAUNCH_SCRIM_INTERPOLATOR);
+                    mCosAppAnimations ? CosAppAnimation.OPEN : APP_LAUNCH_SCRIM_INTERPOLATOR);
 
             int mLastBlurRadius = -1;
 
@@ -1196,6 +1427,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             RemoteAnimationTarget[] appTargets,
             RemoteAnimationTarget[] wallpaperTargets,
             RemoteAnimationTarget[] nonAppTargets, boolean launcherClosing) {
+        final long launchDuration = mCosAppAnimations
+                ? CosAppAnimation.LAUNCH_DURATION : APP_LAUNCH_DURATION;
         Rect windowTargetBounds = getWindowTargetBounds(appTargets, getRotationChange(appTargets));
         boolean appTargetsAreTranslucent = areAllTargetsTranslucent(appTargets);
 
@@ -1235,7 +1468,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         AnimatorSet animatorSet = new AnimatorSet();
         ValueAnimator appAnimator = ValueAnimator.ofFloat(0, 1);
-        appAnimator.setDuration(APP_LAUNCH_DURATION);
+        appAnimator.setDuration(launchDuration);
         appAnimator.setInterpolator(LINEAR);
         appAnimator.addListener(floatingView);
         appAnimator.addListener(new AnimatorListenerAdapter() {
@@ -1250,18 +1483,18 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         appAnimator.addUpdateListener(new MultiValueUpdateListener() {
             float mAppWindowScale = 1;
             final FloatProp mWidgetForegroundAlpha = new FloatProp(1, 0, clampToDuration(
-                    DECELERATE_1_5, 0, WIDGET_CROSSFADE_DURATION_MILLIS / 2, APP_LAUNCH_DURATION));
+                    DECELERATE_1_5, 0, WIDGET_CROSSFADE_DURATION_MILLIS / 2, launchDuration));
 
             final FloatProp mWidgetFallbackBackgroundAlpha = new FloatProp(0, 1,
-                    clampToDuration(LINEAR, 0, 75, APP_LAUNCH_DURATION));
+                    clampToDuration(LINEAR, 0, 75, launchDuration));
             final FloatProp mPreviewAlpha = new FloatProp(0, 1, clampToDuration(
                     LINEAR,
                     WIDGET_CROSSFADE_DURATION_MILLIS / 2 /* delay */,
                     WIDGET_CROSSFADE_DURATION_MILLIS / 2 /* duration */,
-                    APP_LAUNCH_DURATION));
+                    launchDuration));
             final Interpolator cornerInterpolator = new PathInterpolator(0.2f, 0f, 0.2f, 1f);
             final FloatProp mWindowRadius = new FloatProp(initialWindowRadius, finalWindowRadius,
-                    cornerInterpolator);
+                    mCosAppAnimations ? CosAppAnimation.OPEN : cornerInterpolator);
             final FloatProp mCornerRadiusProgress = new FloatProp(0, 1, mOpeningInterpolator);
 
             // Window & widget background positioning bounds
@@ -1276,15 +1509,17 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
             final FloatProp mNavFadeOut = new FloatProp(1f, 0f, clampToDuration(
                     NAV_FADE_OUT_INTERPOLATOR, 0, ANIMATION_NAV_FADE_OUT_DURATION,
-                    APP_LAUNCH_DURATION));
+                    launchDuration));
             final FloatProp mNavFadeIn = new FloatProp(0f, 1f, clampToDuration(
-                    NAV_FADE_IN_INTERPOLATOR, ANIMATION_DELAY_NAV_FADE_IN,
-                    ANIMATION_NAV_FADE_IN_DURATION, APP_LAUNCH_DURATION));
+                    NAV_FADE_IN_INTERPOLATOR, mCosAppAnimations
+                            ? launchDuration - ANIMATION_NAV_FADE_IN_DURATION
+                            : ANIMATION_DELAY_NAV_FADE_IN,
+                    ANIMATION_NAV_FADE_IN_DURATION, launchDuration));
 
             final FloatProp mBlurRadius = new FloatProp(0f, mMaxBlurRadius,
-                    APP_LAUNCH_BLUR_INTERPOLATOR);
+                    mCosAppAnimations ? CosAppAnimation.OPEN : APP_LAUNCH_BLUR_INTERPOLATOR);
             final FloatProp mBlurScrimAlpha = new FloatProp(0f, scrimAlpha,
-                    APP_LAUNCH_SCRIM_INTERPOLATOR);
+                    mCosAppAnimations ? CosAppAnimation.OPEN : APP_LAUNCH_SCRIM_INTERPOLATOR);
 
             int mLastBlurRadius = -1;
 
@@ -1428,6 +1663,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     /** Returns animator that controls depth/blur of the background during app/widget opening. */
     private Animator getBackgroundAnimator(boolean scrimHandlesBlur) {
+        if (mCosAppAnimations) {
+            return getCosBackgroundAnimator(scrimHandlesBlur);
+        }
         boolean skipLauncherBlur = Flags.allAppsBlur() && !scrimHandlesBlur;
         boolean appLaunchBlurEnabled = isAppLaunchBlurEnabled();
 
@@ -1488,6 +1726,41 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         }
 
         return backgroundRadiusAnim;
+    }
+
+    private Animator getCosBackgroundAnimator(boolean scrimHandlesBlur) {
+        DepthController depth = mLauncher.getDepthController();
+        ObjectAnimator state = ObjectAnimator.ofFloat(depth.stateDepth, MULTI_PROPERTY_VALUE,
+                BACKGROUND_APP.getDepth(mLauncher));
+        state.setDuration(CosAppAnimation.LAUNCH_DURATION);
+        state.setInterpolator(CosAppAnimation.OPEN);
+        AnimatorSet result = new AnimatorSet();
+        result.playTogether(state, depth.animateAppWallpaperDepth(depth.stateDepth.getValue(),
+                BACKGROUND_APP.getDepth(mLauncher), CosAppAnimation.WALLPAPER_OPEN_DURATION,
+                CosAppAnimation.WALLPAPER_OPEN));
+        boolean contentBlur = !scrimHandlesBlur && isAppLaunchBlurEnabled()
+                && !mLauncher.isInState(OVERVIEW);
+        if (contentBlur) {
+            ValueAnimator blur = ValueAnimator.ofFloat(0f, mMaxBlurRadius);
+            blur.setDuration(CosAppAnimation.LAUNCH_DURATION);
+            blur.setInterpolator(CosAppAnimation.OPEN);
+            blur.addUpdateListener(value ->
+                    depth.setAppAnimationBlur((Float) value.getAnimatedValue()));
+            result.play(blur);
+        }
+        result.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                depth.pauseBlursOnWindows(true);
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                depth.setAppAnimationBlur(-1f);
+                depth.pauseBlursOnWindows(false);
+            }
+        });
+        return result;
     }
 
     /**
@@ -1588,6 +1861,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     }
 
     public void onActivityDestroyed() {
+        cancelImmediateAppLaunch();
         unregisterRemoteAnimations();
         unregisterRemoteTransitions();
         mLauncher.removeOnDeviceProfileChangeListener(this);
@@ -1804,7 +2078,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 && !isTransluscent
                 && !mDeviceProfile.getDeviceProperties().isTablet()
                 && !mDeviceProfile.isTaskbarPresent;
-        RectFSpringAnim anim = new RectFSpringAnim(useTaskbarHotseatParams
+        final boolean useCosSpring = mCosAppAnimations && floatingIconView != null && !isTransluscent;
+        RectFSpringAnim anim = new RectFSpringAnim(useCosSpring
+                ? new RectFSpringAnim.CosSpringConfig(mLauncher, mDeviceProfile,
+                        closingWindowStartRectF, targetRect)
+                : useTaskbarHotseatParams
                 ? new TaskbarHotseatSpringConfig(mLauncher, closingWindowStartRectF, targetRect)
                 : useIconSpring
                         ? new IconSpringConfig(mLauncher, mDeviceProfile, closingWindowStartRectF,
@@ -1823,13 +2101,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 new Rect(0, 0, mDeviceProfile.getDeviceProperties().getWidthPx(), mDeviceProfile.getDeviceProperties().getHeightPx());
         if (floatingIconView != null) {
             anim.addAnimatorListener(floatingIconView);
+            floatingIconView.setAllowParallelAnimation(useCosSpring);
             floatingIconView.setOnTargetChangeListener(anim::onTargetPositionChanged);
             floatingIconView.setFastFinishRunnable(anim::end);
             FloatingIconView finalFloatingIconView = floatingIconView;
 
             // We want the window alpha to be 0 once this threshold is met, so that the
             // FloatingIconView can be seen morphing into the icon shape.
-            final float windowAlphaThreshold = useIconSpring
+            final float windowAlphaThreshold = useCosSpring ? 0f : useIconSpring
                     ? OosAppCloseAnimation.SHAPE_PROGRESS_START : 1f - SHAPE_PROGRESS_DURATION;
 
             final float customEndRadius =
@@ -1840,6 +2119,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     closingWindowStartRect, closingWindowOriginalRect, startWindowCornerRadius) {
                 @Override
                 protected float getWindowAlpha(float progress) {
+                    if (useCosSpring) return 1f - anim.getCosFadeProgress();
                     return useIconSpring ? OosAppCloseAnimation.getWindowAlpha(progress)
                             : super.getWindowAlpha(progress);
                 }
@@ -1858,13 +2138,13 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     // We want the icon alpha to be 1 once this threshold is met, so that it can be
                     // seen morphing into the icon shape. But before the threshold, we want to limit
                     // the alpha to reduce the blur effect behind the window.
-                    float iconAlpha = useIconSpring
+                    float iconAlpha = useCosSpring ? anim.getCosFadeProgress() : useIconSpring
                             ? OosAppCloseAnimation.getIconAlpha(progress)
                             : Interpolators.clampToProgress(progress, 0f, windowAlphaThreshold);
                     finalFloatingIconView.update(iconAlpha, currentRectF, progress,
                             windowAlphaThreshold, getCornerRadius(progress), false);
 
-                    super.onUpdate(currentRectF, progress);
+                    if (!anim.isWindowDetached()) super.onUpdate(currentRectF, progress);
                 }
             };
             anim.addOnUpdateListener(runner);
@@ -1935,7 +2215,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
             @Override
             public void onAnimationCancel(Animator animation) {
-                if (useIconSpring) anim.cancel();
+                if (useCosSpring) anim.detachWindow();
+                else if (useIconSpring) anim.cancel();
             }
         });
         return anim;
@@ -2154,8 +2435,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 // layout bounds.
                 skipAllAppsScale = true;
             } else {
-                anim.play(
-                        new ScalingWorkspaceRevealAnim(mLauncher, rectFSpringAnim,
+                anim.play(mCosAppAnimations
+                        ? new CosWorkspaceRevealAnim(mLauncher, rectFSpringAnim,
+                                rectFSpringAnim.getTargetRect(), !fromPredictiveBack, true)
+                                .getAnimators()
+                        : new ScalingWorkspaceRevealAnim(mLauncher, rectFSpringAnim,
                                 rectFSpringAnim.getTargetRect(),
                                 !fromPredictiveBack /* playAlphaReveal */,
                                 true /* playBlur */).getAnimators());
@@ -2208,7 +2492,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             }
 
             // Only register the content animation for cancellation when state changes
-            mLauncher.getStateManager().setCurrentAnimation(anim);
+            if (!mCosAppAnimations) mLauncher.getStateManager().setCurrentAnimation(anim);
 
             if (mLauncher.isInState(LauncherState.ALL_APPS)) {
                 Pair<AnimatorSet, Runnable> contentAnimator =
@@ -2222,11 +2506,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     }
                 });
             } else if (playWorkspaceReveal) {
-                anim.play(new WorkspaceRevealAnim(mLauncher, false).getAnimators());
+                anim.play(mCosAppAnimations
+                        ? new CosWorkspaceRevealAnim(mLauncher, null, null, true, true)
+                                .getAnimators()
+                        : new WorkspaceRevealAnim(mLauncher, false).getAnimators());
             }
         }
 
-        return new AnimatorBackState(rectFSpringAnim, anim);
+        return new AnimatorBackState(rectFSpringAnim, anim, !mCosAppAnimations);
     }
 
     /** Get animation duration for taskbar for going to home. */
@@ -2256,16 +2543,19 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      */
     protected class WallpaperOpenLauncherAnimationRunner implements RemoteAnimationFactory {
 
+        private BackAnimState mBackAnimState;
+
         @Override
         public void onAnimationStart(int transit,
                 RemoteAnimationTarget[] appTargets,
                 RemoteAnimationTarget[] wallpaperTargets,
                 RemoteAnimationTarget[] nonAppTargets,
                 LauncherAnimationRunner.AnimationResult result) {
+            onAnimationCancelled();
             if (mLauncher.isDestroyed()) {
                 AnimatorSet anim = new AnimatorSet();
                 anim.play(getFallbackClosingWindowAnimators(appTargets));
-                result.setAnimation(anim, mLauncher.getApplicationContext());
+                applyAnimation(new AnimatorBackState(null, anim, !mCosAppAnimations), result);
                 return;
             }
 
@@ -2286,14 +2576,32 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 }
             }
 
-            BackAnimState bankAnimState = createWallpaperOpenAnimations(
+            BackAnimState backAnimState = createWallpaperOpenAnimations(
                     appTargets, wallpaperTargets, nonAppTargets, resolveRectF,
                     QuickStepContract.getWindowCornerRadius(mLauncher),
                     false /* fromPredictiveBack */);
 
             TaskViewUtils.createSplitAuxiliarySurfacesAnimator(nonAppTargets, false, null);
             mLauncher.clearForceInvisibleFlag(INVISIBLE_ALL);
-            bankAnimState.applyToAnimationResult(result, mLauncher);
+            applyAnimation(backAnimState, result);
+        }
+
+        private void applyAnimation(BackAnimState state,
+                LauncherAnimationRunner.AnimationResult result) {
+            if (mCosAppAnimations) {
+                mBackAnimState = state;
+                state.addOnAnimCompleteCallback(() -> {
+                    if (mBackAnimState == state) mBackAnimState = null;
+                });
+            }
+            state.applyToAnimationResult(result, mLauncher);
+        }
+
+        @Override
+        public void onAnimationCancelled() {
+            BackAnimState state = mBackAnimState;
+            mBackAnimState = null;
+            if (state != null) state.cancel();
         }
     }
 
@@ -2304,10 +2612,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         private final View mV;
         private final RunnableList mOnEndCallback;
+        private AnimatorSet mCosAnimation;
+        private final LaunchPreview mPreview;
 
         AppLaunchAnimationRunner(View v, RunnableList onEndCallback) {
             mV = v;
             mOnEndCallback = onEndCallback;
+            mPreview = mImmediatePreview != null && mImmediatePreview.source == v
+                    ? mImmediatePreview : null;
         }
 
         @Override
@@ -2316,13 +2628,32 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 RemoteAnimationTarget[] wallpaperTargets,
                 RemoteAnimationTarget[] nonAppTargets,
                 LauncherAnimationRunner.AnimationResult result) {
+            if (mCosAnimation != null) mCosAnimation.cancel();
             AnimatorSet anim = new AnimatorSet();
+            if (mCosAppAnimations) {
+                mCosAnimation = anim;
+                anim.addListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (mCosAnimation == anim) mCosAnimation = null;
+                    }
+                });
+            }
             boolean launcherClosing =
                     launcherIsATargetWithMode(appTargets, MODE_CLOSING);
 
             final boolean launchingFromWidget = mV instanceof LauncherAppWidgetHostView;
             final boolean launchingFromRecents = isLaunchingFromRecents(mV, appTargets);
             final boolean skipFirstFrame;
+            boolean continuePreview = mPreview != null && !mPreview.removed
+                    && !launchingFromWidget && !launchingFromRecents
+                    && getRotationChange(appTargets) == 0
+                    && !areAllTargetsTranslucent(appTargets)
+                    && mPreview.matchesWindow(appTargets);
+            if (mPreview != null) {
+                if (!continuePreview) mPreview.remove();
+                else mPreview.restoreSource();
+            }
             if (launchingFromWidget) {
                 composeWidgetLaunchAnimator(anim, (LauncherAppWidgetHostView) mV, appTargets,
                         wallpaperTargets, nonAppTargets, launcherClosing);
@@ -2338,7 +2669,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 composeIconLaunchAnimator(anim, mV, appTargets, wallpaperTargets, nonAppTargets,
                         launcherClosing);
                 addCujInstrumentation(anim, Cuj.CUJ_LAUNCHER_APP_LAUNCH_FROM_ICON);
-                skipFirstFrame = false;
+                skipFirstFrame = mCosAppAnimations;
             }
 
             if (launcherClosing) {
@@ -2359,10 +2690,16 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
             result.setAnimation(anim, mLauncher, mOnEndCallback::executeAllAndDestroy,
                     skipFirstFrame);
+            if (continuePreview && anim.isStarted()) {
+                anim.setCurrentPlayTime(Math.min(mPreview.elapsed(),
+                        Math.max(0, anim.getTotalDuration() - 1)));
+                mPreview.handOff();
+            }
         }
 
         @Override
         public void onAnimationCancelled() {
+            if (mCosAnimation != null) mCosAnimation.cancel();
             mOnEndCallback.executeAllAndDestroy();
         }
     }

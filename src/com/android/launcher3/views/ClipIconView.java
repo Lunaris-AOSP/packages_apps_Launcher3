@@ -73,6 +73,7 @@ public class ClipIconView extends View implements ClipPathView {
     private boolean mIsAdaptiveIcon = false;
     private boolean mIsFolderIcon = false;
     private boolean mIsMultiSpanSuperIcon = false;
+    private boolean mAllowScaleDown;
     private int mOriginalWidth = 0;
     private int mOriginalHeight = 0;
     private int mSuperIconSpanX = 1;
@@ -126,6 +127,10 @@ public class ClipIconView extends View implements ClipPathView {
         invalidate();
     }
 
+    public void setAllowScaleDown(boolean allow) {
+        mAllowScaleDown = allow;
+    }
+
     /**
      * Update the icon UI to match the provided parameters during an animation frame
      */
@@ -150,15 +155,16 @@ public class ClipIconView extends View implements ClipPathView {
         container.setTranslationY(dY);
 
         float minSize = Math.min(lp.width, lp.height);
+        float minScale = mAllowScaleDown && !isOpening ? 0.9f : 1f;
         final float scale;
         if (mIsMultiSpanSuperIcon && mOriginalWidth > 0 && mOriginalHeight > 0) {
             float scaleX = rect.width() / (float) mOriginalWidth;
             float scaleY = rect.height() / (float) mOriginalHeight;
-            scale = Math.max(1f, Math.min(scaleX, scaleY));
+            scale = Math.max(minScale, Math.min(scaleX, scaleY));
         } else {
             float scaleX = rect.width() / minSize;
             float scaleY = rect.height() / minSize;
-            scale = Math.max(1f, Math.min(scaleX, scaleY));
+            scale = Math.max(minScale, Math.min(scaleX, scaleY));
         }
         if (mTaskViewArtist != null) {
             mTaskViewArtist.taskViewDrawWidth = lp.width;
@@ -461,6 +467,7 @@ public class ClipIconView extends View implements ClipPathView {
     }
 
     void recycle() {
+        mAllowScaleDown = false;
         setBackground(null);
         mIsAdaptiveIcon = false;
         mIsFolderIcon = false;
