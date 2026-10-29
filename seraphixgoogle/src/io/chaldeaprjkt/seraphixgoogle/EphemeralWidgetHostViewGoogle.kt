@@ -37,9 +37,13 @@ class EphemeralWidgetHostViewGoogle(context: Context?) : AppWidgetHostView(conte
         val tempTv = textViews.firstOrNull { tv ->
             val t = tv.text.toString()
             t.contains("°") || t.contains("℃") || t.contains("℉")
-        } ?: textViews.lastOrNull()
+        }
+        if (tempTv == null) {
+            listener?.onDataUpdated(weather)
+            return
+        }
 
-        weather.text = tempTv?.text?.toString()
+        weather.text = tempTv.text.toString()
 
         val iconIv = imageViews.firstOrNull { iv ->
             val n = try { resources.getResourceEntryName(iv.id) } catch (_: Exception) { "" }
