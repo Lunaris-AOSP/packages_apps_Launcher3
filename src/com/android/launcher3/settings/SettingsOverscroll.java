@@ -15,15 +15,12 @@
  */
 package com.android.launcher3.settings;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.MenuItem;
 
 import androidx.fragment.app.FragmentManager;
 
-import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
-import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 
 public class SettingsOverscroll extends ComposeSettingsActivity {
@@ -50,32 +47,12 @@ public class SettingsOverscroll extends ComposeSettingsActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    public static class OverscrollSettingsFragment extends ComposePreferenceFragment
-            implements SharedPreferences.OnSharedPreferenceChangeListener {
+    public static class OverscrollSettingsFragment extends ComposePreferenceFragment {
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             getPreferenceManager().setSharedPreferencesName(LauncherFiles.SHARED_PREFERENCES_KEY);
             setPreferencesFromResource(R.xml.launcher_overscroll_preferences, rootKey);
-            getPreferenceManager().getSharedPreferences()
-                    .registerOnSharedPreferenceChangeListener(this);
-        }
-
-        @Override
-        public void onDestroy() {
-            super.onDestroy();
-            getPreferenceManager().getSharedPreferences()
-                    .unregisterOnSharedPreferenceChangeListener(this);
-        }
-
-        @Override
-        public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
-            if (LauncherPrefs.OVERSCROLL_STIFFNESS.getSharedPrefKey().equals(key)
-                    || LauncherPrefs.OVERSCROLL_DAMPING_RATIO.getSharedPrefKey().equals(key)
-                    || LauncherPrefs.OVERSCROLL_MAX_STRETCH.getSharedPrefKey().equals(key)
-                    || LauncherPrefs.OVERSCROLL_VELOCITY_SCALE.getSharedPrefKey().equals(key)) {
-                LauncherAppState.INSTANCE.executeIfCreated(app -> app.setNeedsRestart());
-            }
         }
     }
 }

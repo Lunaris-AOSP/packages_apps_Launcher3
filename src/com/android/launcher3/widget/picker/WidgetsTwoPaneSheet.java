@@ -40,9 +40,9 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.core.widget.NestedScrollView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.Px;
@@ -80,7 +80,7 @@ public class WidgetsTwoPaneSheet extends WidgetsFullSheet {
     private View mPrimaryWidgetListView;
     private LinearLayout mRightPane;
 
-    private ScrollView mRightPaneScrollView;
+    private NestedScrollView mRightPaneScrollView;
     private WidgetsListTableViewHolderBinder mWidgetsListTableViewHolderBinder;
 
     private boolean mOldIsSwipeToDismissInProgress;
@@ -154,7 +154,7 @@ public class WidgetsTwoPaneSheet extends WidgetsFullSheet {
 
         mRightPane = mContent.findViewById(R.id.right_pane);
         mRightPaneScrollView = mContent.findViewById(R.id.right_pane_scroll_view);
-        mRightPaneScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        mRightPaneScrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
 
         mPrimaryWidgetListView = findViewById(R.id.primary_widgets_list_view);
         mPrimaryWidgetListView.setOutlineProvider(mViewOutlineProvider);
@@ -638,7 +638,7 @@ public class WidgetsTwoPaneSheet extends WidgetsFullSheet {
     @Override
     protected void scrollCellContainerByY(WidgetCell wc, int scrollByY) {
         for (ViewParent parent = wc.getParent(); parent != null; parent = parent.getParent()) {
-            if (parent instanceof ScrollView scrollView) {
+            if (parent instanceof NestedScrollView scrollView) {
                 scrollView.smoothScrollBy(0, scrollByY);
                 return;
             } else if (parent == this) {

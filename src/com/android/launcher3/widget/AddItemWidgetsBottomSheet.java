@@ -26,8 +26,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowInsets;
-import android.widget.ScrollView;
 
+import androidx.core.widget.NestedScrollView;
 import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.R;
 import com.android.launcher3.dragndrop.AddItemActivity;
@@ -42,7 +42,7 @@ public class AddItemWidgetsBottomSheet extends AbstractSlideInView<AddItemActivi
     private static final int DEFAULT_CLOSE_DURATION = 200;
 
     private final Rect mInsets;
-    private ScrollView mWidgetPreviewScrollView;
+    private NestedScrollView mWidgetPreviewScrollView;
 
     private int mContentHorizontalMarginInPx;
 

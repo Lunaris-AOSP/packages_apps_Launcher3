@@ -100,7 +100,7 @@
                     android:gravity="end"
                     android:layout_gravity="end"
                     android:orientation="horizontal">
-                    <ScrollView
+                    <com.android.launcher3.views.SpringScrollView
                         android:id="@+id/right_pane_scroll_view"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
@@ -140,7 +140,7 @@
                                 <include layout="@layout/widget_recommendations" />
                             </LinearLayout>
                         </LinearLayout>
-                    </ScrollView>
+                    </com.android.launcher3.views.SpringScrollView>
                 </FrameLayout>
             </FrameLayout>
         </LinearLayout>

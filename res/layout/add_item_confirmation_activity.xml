@@ -67,7 +67,7 @@
                 android:textColor="?android:attr/textColorSecondary"
                 android:alpha="0.7"/>
 
-            <ScrollView
+            <com.android.launcher3.views.SpringScrollView
                 android:id="@+id/widget_preview_scroll_view"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -81,7 +81,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginHorizontal="@dimen/widget_list_horizontal_margin" />
-            </ScrollView>
+            </com.android.launcher3.views.SpringScrollView>
 
             <LinearLayout
                 android:id="@+id/actions_container"

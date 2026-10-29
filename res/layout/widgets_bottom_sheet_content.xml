@@ -37,7 +37,7 @@
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="24sp"/>
 
-        <ScrollView
+        <com.android.launcher3.views.SpringScrollView
             android:id="@+id/widgets_table_scroll_view"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -53,6 +53,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="@dimen/widget_list_horizontal_margin"
                 android:layout_gravity="center_horizontal" />
-        </ScrollView>
+        </com.android.launcher3.views.SpringScrollView>
     </LinearLayout>
 </merge>

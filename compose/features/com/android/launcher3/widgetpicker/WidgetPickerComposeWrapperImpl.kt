@@ -33,6 +33,7 @@ import com.android.launcher3.compose.core.widgetpicker.WidgetPickerComposeWrappe
 import com.android.launcher3.concurrent.annotations.BackgroundContext
 import com.android.launcher3.dagger.ApplicationContext
 import com.android.launcher3.util.ApiWrapper
+import com.android.launcher3.util.setLauncherContent
 import com.android.launcher3.widgetpicker.WidgetPickerConfig.Companion.EXTRA_IS_PENDING_WIDGET_DRAG
 import com.android.launcher3.widgetpicker.data.repository.WidgetAppIconsRepository
 import com.android.launcher3.widgetpicker.data.repository.WidgetUsersRepository
@@ -83,7 +84,7 @@ constructor(
         val composeView = ComposeFacade.initComposeView(activity.asContext()) as ComposeView
 
         composeView.apply {
-            setContent {
+            setLauncherContent {
                 val scope = rememberCoroutineScope()
                 val view = LocalView.current
 

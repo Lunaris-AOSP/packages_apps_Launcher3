@@ -30,10 +30,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.animation.Interpolator;
-import android.widget.ScrollView;
 import android.widget.TableLayout;
 import android.widget.TextView;
 
+import androidx.core.widget.NestedScrollView;
 import androidx.annotation.Px;
 
 import com.android.launcher3.R;
@@ -107,7 +107,7 @@ public class WidgetsBottomSheet extends BaseWidgetSheet {
 
         setTranslationShift(mTranslationShift);
 
-        ScrollView widgetsTableScrollView = findViewById(R.id.widgets_table_scroll_view);
+        NestedScrollView widgetsTableScrollView = findViewById(R.id.widgets_table_scroll_view);
         TableLayout widgetsTable = findViewById(R.id.widgets_table);
         if (widgetsTable.getMeasuredHeight() > widgetsTableScrollView.getMeasuredHeight()) {
             findViewById(R.id.collapse_handle).setVisibility(VISIBLE);
@@ -156,7 +156,7 @@ public class WidgetsBottomSheet extends BaseWidgetSheet {
     public boolean onControllerInterceptTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
             mNoIntercept = false;
-            ScrollView scrollView = findViewById(R.id.widgets_table_scroll_view);
+            NestedScrollView scrollView = findViewById(R.id.widgets_table_scroll_view);
             if (getPopupContainer().isEventOverView(scrollView, ev)
                     && scrollView.getScrollY() > 0) {
                 mNoIntercept = true;
@@ -241,7 +241,7 @@ public class WidgetsBottomSheet extends BaseWidgetSheet {
     @Override
     protected void scrollCellContainerByY(WidgetCell wc, int scrollByY) {
         for (ViewParent parent = wc.getParent(); parent != null; parent = parent.getParent()) {
-            if (parent instanceof ScrollView scrollView) {
+            if (parent instanceof NestedScrollView scrollView) {
                 scrollView.smoothScrollBy(0, scrollByY);
                 return;
             } else if (parent == this) {

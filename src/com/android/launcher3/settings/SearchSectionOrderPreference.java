@@ -21,6 +21,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.search.universal.UniversalSearchResults;
+import com.android.launcher3.util.SpringEdgeEffectFactory;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -36,6 +37,7 @@ public class SearchSectionOrderPreference extends Preference {
         Context context = getContext();
         List<Integer> order = UniversalSearchResults.sectionOrder(context);
         RecyclerView list = new RecyclerView(context);
+        list.setEdgeEffectFactory(new SpringEdgeEffectFactory());
         list.setLayoutManager(new LinearLayoutManager(context));
         ItemTouchHelper[] helper = new ItemTouchHelper[1];
         list.setAdapter(new SectionAdapter(order, holder -> helper[0].startDrag(holder)));

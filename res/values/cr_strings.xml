@@ -662,7 +662,7 @@
 
     <!-- Overscroll settings -->
     <string name="overscroll_settings_title">Overscroll physics</string>
-    <string name="overscroll_settings_summary">Tune fling, damping, and stiffness for list overscroll</string>
+    <string name="overscroll_settings_summary">Tune bounce in the app drawer, widgets, pickers, and settings</string>
     <string name="overscroll_stiffness_title">Stiffness</string>
     <string name="overscroll_stiffness_summary">Higher values make the overscroll spring snap back faster</string>
     <string name="overscroll_damping_title">Damping</string>

@@ -116,7 +116,7 @@ public class InfoBottomSheet extends WidgetsBottomSheet {
         public RecyclerView onCreateRecyclerView(LayoutInflater inflater, ViewGroup parent,
                                                  Bundle savedInstanceState) {
             RecyclerView view = super.onCreateRecyclerView(inflater, parent, savedInstanceState);
-            view.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            view.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
             return view;
         }
 

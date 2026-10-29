@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 Lunaris AOSP
+ * Copyright (C) 2024-2026 Lunaris AOSP
  * Copyright (C) 2025 AxionOS Project
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.unit.dp
+import com.android.launcher3.util.LauncherOverscroll
 
 @Composable
 fun HomeSettingsTheme(content: @Composable () -> Unit) {
@@ -118,7 +119,7 @@ fun HomeSettingsTheme(content: @Composable () -> Unit) {
                 large = RoundedCornerShape(28.dp),
                 extraLarge = RoundedCornerShape(32.dp),
             ),
-        content = content,
+        content = { LauncherOverscroll(content) },
     )
 }
 

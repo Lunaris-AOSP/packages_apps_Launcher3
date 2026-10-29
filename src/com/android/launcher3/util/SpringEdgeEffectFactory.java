@@ -14,109 +14,255 @@
 
 package com.android.launcher3.util;
 
-import android.content.Context;
+import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
 import android.graphics.Canvas;
-import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
+import android.view.View;
 import android.widget.EdgeEffect;
 
 import androidx.annotation.NonNull;
+import androidx.core.widget.NestedScrollView;
 import androidx.dynamicanimation.animation.DynamicAnimation;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.R;
+
+import java.util.Objects;
 
 public class SpringEdgeEffectFactory extends RecyclerView.EdgeEffectFactory {
-
     @NonNull
     @Override
-    protected EdgeEffect createEdgeEffect(@NonNull RecyclerView recyclerView, int direction) {
-        return new SpringEdgeEffect(recyclerView, direction);
+    protected EdgeEffect createEdgeEffect(@NonNull RecyclerView view, int direction) {
+        return createSpringEdgeEffect(view, direction);
     }
 
-    public static EdgeEffect createSpringEdgeEffect(RecyclerView recyclerView, int direction) {
-        return new SpringEdgeEffect(recyclerView, direction);
+    public static EdgeEffect createSpringEdgeEffect(RecyclerView view, int direction) {
+        boolean vertical = direction == DIRECTION_TOP || direction == DIRECTION_BOTTOM;
+        float sign = direction == DIRECTION_TOP || direction == DIRECTION_LEFT ? 1f : -1f;
+        return new SpringEdgeEffect(offsetFor(view, vertical), sign);
     }
 
-    private static class SpringEdgeEffect extends EdgeEffect {
+    @SuppressLint({"RestrictedApi", "VisibleForTests"})
+    public static void install(NestedScrollView view) {
+        if (!(view.mEdgeGlowTop instanceof SpringEdgeEffect)) {
+            SpringOffset offset = offsetFor(view, true);
+            view.mEdgeGlowTop = new SpringEdgeEffect(offset, 1f);
+            view.mEdgeGlowBottom = new SpringEdgeEffect(offset, -1f);
+        }
+    }
 
-        private final RecyclerView mRecyclerView;
-        private final SpringAnimation mSpringAnimation;
-        private final boolean mIsVertical;
-        private final float mMaxStretchFraction;
-        private final float mVelocityScale;
-        private final float mSign;
-        private float mPullDistance = 0f;
+    private static SpringOffset offsetFor(View view, boolean vertical) {
+        int key = vertical ? R.id.launcher_spring_vertical : R.id.launcher_spring_horizontal;
+        Object existing = view.getTag(key);
+        if (existing instanceof SpringOffset) return (SpringOffset) existing;
+        SpringOffset offset = new SpringOffset(view, vertical);
+        view.setTag(key, offset);
+        return offset;
+    }
 
-        SpringEdgeEffect(RecyclerView recyclerView, int direction) {
-            super(recyclerView.getContext());
-            mRecyclerView = recyclerView;
-            mIsVertical = direction == DIRECTION_TOP || direction == DIRECTION_BOTTOM;
-            mSign = (direction == DIRECTION_TOP || direction == DIRECTION_LEFT) ? 1f : -1f;
+    static final class SpringOffset implements View.OnAttachStateChangeListener {
+        final View view;
+        final boolean vertical;
+        final SpringAnimation animation;
+        SpringScrollPhysics physics;
+        float activeSign;
+        boolean returning;
+        boolean returnHeld;
 
-            Context context = recyclerView.getContext();
-            float stiffness = LauncherPrefs.OVERSCROLL_STIFFNESS.get(context);
-            float dampingRatio = LauncherPrefs.OVERSCROLL_DAMPING_RATIO.get(context) / 100f;
-            mMaxStretchFraction = LauncherPrefs.OVERSCROLL_MAX_STRETCH.get(context) / 100f;
-            mVelocityScale = LauncherPrefs.OVERSCROLL_VELOCITY_SCALE.get(context) / 100f;
+        SpringOffset(View view, boolean vertical) {
+            this.view = view;
+            this.vertical = vertical;
+            physics = LauncherScrollPreferences.get(view.getContext());
+            animation = new SpringAnimation(view,
+                    vertical ? DynamicAnimation.TRANSLATION_Y : DynamicAnimation.TRANSLATION_X);
+            animation.setSpring(new SpringForce(0f));
+            animation.addEndListener((spring, canceled, value, velocity) -> {
+                if (!canceled) returning = false;
+            });
+            if (view instanceof RecyclerView) {
+                RecyclerView list = (RecyclerView) view;
+                list.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+                    @Override
+                    public boolean onInterceptTouchEvent(RecyclerView recyclerView, MotionEvent event) {
+                        switch (event.getActionMasked()) {
+                            case MotionEvent.ACTION_DOWN:
+                                holdReturn();
+                                break;
+                            case MotionEvent.ACTION_UP:
+                            case MotionEvent.ACTION_CANCEL:
+                                resumeReturn();
+                                break;
+                        }
+                        return false;
+                    }
 
-            DynamicAnimation.ViewProperty property =
-                    mIsVertical ? DynamicAnimation.TRANSLATION_Y : DynamicAnimation.TRANSLATION_X;
+                    @Override
+                    public void onRequestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+                        if (disallowIntercept) resumeReturn();
+                    }
+                });
+                list.addOnScrollListener(new RecyclerView.OnScrollListener() {
+                    @Override
+                    public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+                        if (newState == RecyclerView.SCROLL_STATE_DRAGGING) beginDrag();
+                    }
+                });
+            }
+            configure();
+            view.addOnAttachStateChangeListener(this);
+        }
 
-            mSpringAnimation = new SpringAnimation(recyclerView, property, 0f);
-            mSpringAnimation.setSpring(new SpringForce(0f)
-                    .setStiffness(stiffness)
-                    .setDampingRatio(dampingRatio));
+        void configure() {
+            Objects.requireNonNull(animation.getSpring()).setStiffness(physics.stiffness)
+                    .setDampingRatio(physics.dampingRatio);
+        }
+
+        boolean enabled() {
+            SpringScrollPhysics latest = LauncherScrollPreferences.get(view.getContext());
+            if (physics != latest) {
+                reset();
+                physics = latest;
+                configure();
+            }
+            if (!physics.enabled || !ValueAnimator.areAnimatorsEnabled()) {
+                reset();
+                return false;
+            }
+            return true;
+        }
+
+        float extent() { return vertical ? view.getHeight() : view.getWidth(); }
+        float value() { return vertical ? view.getTranslationY() : view.getTranslationX(); }
+
+        void setValue(float value) {
+            if (vertical) view.setTranslationY(value);
+            else view.setTranslationX(value);
+        }
+
+        void holdReturn() {
+            if (!returning) return;
+            returnHeld = true;
+            animation.cancel();
+        }
+
+        void resumeReturn() {
+            if (!returnHeld) return;
+            returnHeld = false;
+            if (returning) release(0f);
+        }
+
+        void beginDrag() {
+            returning = false;
+            returnHeld = false;
+            animation.cancel();
+        }
+
+        void release(float velocity) {
+            returning = true;
+            returnHeld = false;
+            animation.setStartVelocity(physics.springVelocity(velocity, extent(), value()));
+            animation.animateToFinalPosition(0f);
+        }
+
+        void reset() {
+            animation.cancel();
+            setValue(0f);
+            activeSign = 0f;
+            returning = false;
+            returnHeld = false;
         }
 
         @Override
-        public void onPull(float deltaDistance) {
-            onPull(deltaDistance, 0.5f);
+        public void onViewAttachedToWindow(View view) {}
+
+        @Override
+        public void onViewDetachedFromWindow(View view) { reset(); }
+    }
+
+    static final class SpringEdgeEffect extends EdgeEffect {
+        private final SpringOffset mOffset;
+        private final float mSign;
+
+        SpringEdgeEffect(SpringOffset offset, float sign) {
+            super(offset.view.getContext());
+            mOffset = offset;
+            mSign = sign;
         }
+
+        @Override
+        public void onPull(float deltaDistance) { onPullDistance(deltaDistance, 0.5f); }
 
         @Override
         public void onPull(float deltaDistance, float displacement) {
-            if (mSpringAnimation.isRunning()) {
-                mSpringAnimation.cancel();
-            }
-            mPullDistance += deltaDistance;
-            float size = mIsVertical ? mRecyclerView.getHeight() : mRecyclerView.getWidth();
-            float maxStretch = size * mMaxStretchFraction;
-            float translation = Math.max(-maxStretch,
-                    Math.min(maxStretch, mSign * mPullDistance * size));
+            onPullDistance(deltaDistance, displacement);
+        }
 
-            if (mIsVertical) {
-                mRecyclerView.setTranslationY(translation);
-            } else {
-                mRecyclerView.setTranslationX(translation);
+        @Override
+        public float onPullDistance(float deltaDistance, float displacement) {
+            if (!mOffset.enabled() || mOffset.extent() <= 0f) return 0f;
+            if (mOffset.returning && deltaDistance == 0f) return 0f;
+            if (deltaDistance != 0f) mOffset.beginDrag();
+            if (deltaDistance == 0f && mOffset.activeSign == mSign) {
+                mOffset.animation.cancel();
+                return 0f;
             }
+            float oldDistance = getDistance();
+            if (oldDistance == 0f && deltaDistance <= 0f) return 0f;
+            mOffset.animation.cancel();
+            mOffset.activeSign = mSign;
+            float newDistance = Math.max(0f, Math.min(4f, oldDistance + deltaDistance));
+            mOffset.setValue(mSign * mOffset.physics.offset(
+                    newDistance * mOffset.extent(), mOffset.extent()));
+            return deltaDistance > 0f ? deltaDistance : newDistance - oldDistance;
+        }
+
+        @Override
+        public float getDistance() {
+            if (mOffset.returning || mOffset.activeSign != mSign
+                    || mOffset.extent() <= 0f) return 0f;
+            return Math.max(0f, mSign * mOffset.physics.distance(
+                    mOffset.value(), mOffset.extent()) / mOffset.extent());
         }
 
         @Override
         public void onRelease() {
-            if (mPullDistance != 0f) {
-                mPullDistance = 0f;
-                mRecyclerView.performHapticFeedback(HapticFeedbackConstants.CONFIRM);
-                mSpringAnimation.animateToFinalPosition(0f);
+            if (mOffset.enabled() && mOffset.activeSign == mSign
+                    && !mOffset.returning && !mOffset.animation.isRunning()
+                    && mOffset.value() != 0f) {
+                if (mSign * mOffset.value() > 0.5f) {
+                    ScrollEdgeHaptics.perform(mOffset.view.getContext(), 0f);
+                }
+                mOffset.release(0f);
             }
         }
 
         @Override
         public void onAbsorb(int velocity) {
-            mRecyclerView.performHapticFeedback(HapticFeedbackConstants.CONFIRM);
-            mSpringAnimation.setStartVelocity(mSign * velocity * mVelocityScale);
-            mSpringAnimation.animateToFinalPosition(0f);
-        }
-
-        @Override
-        public boolean draw(Canvas canvas) {
-            return false;
+            if (!mOffset.enabled()) return;
+            boolean rebounding = mOffset.activeSign == mSign && mOffset.returning;
+            mOffset.animation.cancel();
+            mOffset.activeSign = mSign;
+            if (!rebounding && velocity > 1 && mOffset.extent() > 0f) {
+                ScrollEdgeHaptics.perform(mOffset.view.getContext(), velocity);
+            }
+            mOffset.release(mSign * velocity);
         }
 
         @Override
         public boolean isFinished() {
-            return !mSpringAnimation.isRunning();
+            return mOffset.activeSign != mSign
+                    || (!mOffset.animation.isRunning() && mOffset.value() == 0f);
         }
+
+        @Override
+        public void finish() {
+            if (mOffset.activeSign == mSign) mOffset.reset();
+        }
+
+        @Override
+        public boolean draw(Canvas canvas) { return false; }
     }
 }
