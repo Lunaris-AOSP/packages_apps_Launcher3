@@ -452,6 +452,13 @@ class SystemUiProxy @Inject constructor(
         }
     }
 
+    fun getLunarisBarTarget(packageName: String, userId: Int, displayId: Int, rotation: Int): Rect? =
+        try {
+            systemUiProxy?.getLunarisBarTarget(packageName, userId, displayId, rotation)
+        } catch (e: RemoteException) {
+            null
+        }
+
     fun onStatusBarTrackpadEvent(event: MotionEvent) =
         executeWithErrorLog({ "Failed call onStatusBarTrackpadEvent with arg: $event" }) {
             systemUiProxy?.onStatusBarTrackpadEvent(event)

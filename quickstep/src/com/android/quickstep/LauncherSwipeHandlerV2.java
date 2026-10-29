@@ -50,6 +50,7 @@ import com.android.launcher3.views.FloatingIconView;
 import com.android.launcher3.views.FloatingView;
 import com.android.launcher3.widget.LauncherAppWidgetHostView;
 import com.android.quickstep.util.ActiveGestureLog;
+import com.android.quickstep.util.LunarisBarAnimation;
 import com.android.quickstep.util.OosAppCloseAnimation;
 import com.android.quickstep.cos.CosAppAnimation;
 import com.android.quickstep.cos.CosWorkspaceRevealAnim;
@@ -61,6 +62,7 @@ import com.android.quickstep.views.RecentsView;
 import com.android.quickstep.views.TaskView;
 import com.android.systemui.shared.recents.model.Task;
 import com.android.systemui.shared.system.InputConsumerController;
+import com.android.systemui.shared.system.QuickStepContract;
 
 import java.util.Collections;
 import java.util.List;
@@ -120,6 +122,35 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                         .isInDesktopModeAndNotInOverview(mContainer.getDisplayId());
 
         mContainer.getRootView().setForceHideBackArrow(true);
+
+        RectF islandTarget = !mHandOffAnimationToHome && !appCanEnterPip && !mIsSwipeForSplit
+                && !mIsSwipingPipToHome && targetTaskView == null
+                && mRemoteTargetHandles.length == 1
+                ? LunarisBarAnimation.getTarget(mContainer, runningTaskTarget) : null;
+        if (islandTarget != null) {
+            return new LauncherHomeAnimationFactory() {
+                @Override
+                public RectF getWindowTargetRect() {
+                    return islandTarget;
+                }
+
+                @Override
+                public boolean isWidget() {
+                    return true;
+                }
+
+                @Override
+                protected float getWindowCornerRadius(float progress) {
+                    float startRadius = QuickStepContract.getWindowCornerRadius(mContainer);
+                    return startRadius + progress * (islandTarget.height() / 2f - startRadius);
+                }
+
+                @Override
+                protected float getWindowAlpha(float progress) {
+                    return LunarisBarAnimation.getWindowAlpha(progress);
+                }
+            };
+        }
 
         if (mHandOffAnimationToHome || !canUseWorkspaceView || appCanEnterPip || mIsSwipeForSplit) {
             return new LauncherHomeAnimationFactory() {

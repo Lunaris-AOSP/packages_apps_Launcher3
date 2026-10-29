@@ -157,6 +157,7 @@ import com.android.launcher3.widget.LauncherAppWidgetHostView;
 import com.android.quickstep.LauncherBackAnimationController;
 import com.android.quickstep.RemoteAnimationTargets;
 import com.android.quickstep.SystemUiProxy;
+import com.android.quickstep.util.LunarisBarAnimation;
 import com.android.quickstep.TaskViewUtils;
 import com.android.quickstep.util.AlreadyStartedBackAnimState;
 import com.android.quickstep.util.AnimatorBackState;
@@ -2038,6 +2039,14 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     protected RectFSpringAnim getClosingWindowAnimators(AnimatorSet animation,
             RemoteAnimationTarget[] targets, View launcherView, PointF velocityPxPerS,
             RectF closingWindowStartRectF, float startWindowCornerRadius) {
+        return getClosingWindowAnimators(animation, targets, launcherView, velocityPxPerS,
+                closingWindowStartRectF, startWindowCornerRadius, null);
+    }
+
+    private RectFSpringAnim getClosingWindowAnimators(AnimatorSet animation,
+            RemoteAnimationTarget[] targets, View launcherView, PointF velocityPxPerS,
+            RectF closingWindowStartRectF, float startWindowCornerRadius,
+            @Nullable RectF islandTarget) {
         FloatingIconView floatingIconView = null;
         FloatingWidgetView floatingWidget = null;
         RectF targetRect = new RectF();
@@ -2054,7 +2063,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         // Get floating view and target rect.
         boolean isInHotseat = false;
-        if (launcherView instanceof LauncherAppWidgetHostView) {
+        if (islandTarget != null) {
+            targetRect.set(islandTarget);
+        } else if (launcherView instanceof LauncherAppWidgetHostView) {
             Size windowSize = new Size(mDeviceProfile.getDeviceProperties().getWidthPx(),
                     mDeviceProfile.getDeviceProperties().getHeightPx());
             int fallbackBackgroundColor =
@@ -2195,6 +2206,25 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 }
             };
             anim.addOnUpdateListener(runner);
+        } else if (islandTarget != null) {
+            anim.addOnUpdateListener(new SpringAnimRunner(targets, targetRect,
+                    closingWindowStartRect, closingWindowOriginalRect, startWindowCornerRadius) {
+                @Override
+                protected boolean isWidget() {
+                    return true;
+                }
+
+                @Override
+                protected float getWindowAlpha(float progress) {
+                    return LunarisBarAnimation.getWindowAlpha(progress);
+                }
+
+                @Override
+                public float getCornerRadius(float progress) {
+                    return startWindowCornerRadius
+                            + progress * (islandTarget.height() / 2f - startWindowCornerRadius);
+                }
+            });
         } else {
             // If no floating icon or widget is present, animate the to the default window
             // target rect.
@@ -2216,7 +2246,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             @Override
             public void onAnimationCancel(Animator animation) {
                 if (useCosSpring) anim.detachWindow();
-                else if (useIconSpring) anim.cancel();
+                else if (useIconSpring || islandTarget != null) anim.cancel();
             }
         });
         return anim;
@@ -2384,8 +2414,18 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             RectF startRect,
             float startWindowCornerRadius,
             boolean fromPredictiveBack) {
+        RectF islandTarget = null;
+        if (!fromPredictiveBack && !shouldPlayFallbackClosingAnimation(appTargets)
+                && getRotationChange(appTargets) == 0) {
+            for (RemoteAnimationTarget target : appTargets) {
+                if (target.mode == MODE_CLOSING) {
+                    islandTarget = LunarisBarAnimation.getTarget(mLauncher, target);
+                    break;
+                }
+            }
+        }
         View launcherView = findLauncherView(appTargets);
-        if (launcherView != null
+        if (islandTarget == null && launcherView != null
                 && launcherView.getTag() instanceof ItemInfo info
                 && info.shouldUseBackgroundAnimation()) {
             // Try to create a return animation
@@ -2417,7 +2457,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         final boolean launcherIsForceInvisibleOrOpening = mLauncher.isForceInvisible()
                 || launcherIsATargetWithMode(appTargets, MODE_OPENING);
 
-        boolean playFallBackAnimation = (launcherView == null
+        boolean playFallBackAnimation = (islandTarget == null && launcherView == null
                 && launcherIsForceInvisibleOrOpening)
                 || mLauncher.getWorkspace().isOverlayShown()
                 || shouldPlayFallbackClosingAnimation(appTargets);
@@ -2427,9 +2467,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         if (mLauncher.isInState(OVERVIEW)) {
             playWorkspaceReveal = false;
         } else if (!playFallBackAnimation) {
-            rectFSpringAnim = getClosingWindowAnimators(
-                    anim, appTargets, launcherView, new PointF(), startRect,
-                    startWindowCornerRadius);
+            rectFSpringAnim = islandTarget == null
+                    ? getClosingWindowAnimators(anim, appTargets, launcherView, new PointF(),
+                            startRect, startWindowCornerRadius)
+                    : getClosingWindowAnimators(anim, appTargets, launcherView, new PointF(),
+                            startRect, startWindowCornerRadius, islandTarget);
             if (mLauncher.isInState(LauncherState.ALL_APPS)) {
                 // Skip scaling all apps, otherwise FloatingIconView will get wrong
                 // layout bounds.
