@@ -56,6 +56,11 @@ public class InfoBottomSheet extends WidgetsBottomSheet {
     }
 
     @Override
+    protected boolean shouldBlurContentBackground() {
+        return true;
+    }
+
+    @Override
     public void populateAndShow(ItemInfo itemInfo) {
         super.populateAndShow(itemInfo);
         TextView title = findViewById(R.id.title);

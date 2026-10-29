@@ -44,7 +44,7 @@ import javax.inject.Named
 
 /**
  * Quickstep implementation of the helper class that creates and updates the blur drawable used
- * for folders and the homescreen popup.
+ * for folders, the homescreen popup and customization bottom sheets.
  */
 @ActivityContextSingleton
 class QuickstepBackgroundBlurHelper
@@ -180,6 +180,105 @@ constructor(
 
     override fun isPopupBlurEnabled(): Boolean = isBlurEnabled() && isHomescreen()
 
+    override fun createBottomSheetBlurBackground(background: Drawable, view: View): Drawable? {
+        val dragLayer = activityContext.dragLayer
+        if (
+            !isBlurEnabled() ||
+                !dragLayer.isHardwareAccelerated ||
+                dragLayer.width == 0 ||
+                dragLayer.height == 0 ||
+                background !is GradientDrawable
+        ) {
+            return null
+        }
+        val viewRoot = dragLayer.viewRootImpl ?: return null
+        val surface =
+            background.constantState?.newDrawable()?.mutate() as? GradientDrawable ?: return null
+        val radii = getBlurCornerRadii(surface, view)
+        val blurDrawable =
+            viewRoot.createBackgroundBlurDrawable()?.apply {
+                setVisible(false, false)
+                setBlurRadius(folderBlurRadius.toInt())
+                radii.applyTo(this)
+            } ?: return null
+
+        // Like folders, blur launcher content as well as the wallpaper behind the window.
+        // Each sheet owns its snapshot so the icon picker can sit above the app info sheet.
+        val backdrop = RenderNode("bottomSheetBlur")
+        val recordingCanvas = backdrop.beginRecording(dragLayer.width, dragLayer.height)
+        try {
+            dragLayer.draw(recordingCanvas)
+        } finally {
+            backdrop.endRecording()
+        }
+        backdrop.setPosition(0, 0, dragLayer.width, dragLayer.height)
+        backdrop.setRenderEffect(
+            RenderEffect.createBlurEffect(folderBlurRadius, folderBlurRadius, Shader.TileMode.CLAMP)
+        )
+        surface.setColor(getBlurSurfaceColor())
+
+        return object : LayerDrawable(arrayOf(blurDrawable, surface)) {
+            private val clipPath = Path()
+            private val cornerRadii =
+                floatArrayOf(
+                    radii.topLeft,
+                    radii.topLeft,
+                    radii.topRight,
+                    radii.topRight,
+                    radii.bottomRight,
+                    radii.bottomRight,
+                    radii.bottomLeft,
+                    radii.bottomLeft,
+                )
+
+            override fun onBoundsChange(bounds: Rect) {
+                super.onBoundsChange(bounds)
+                background.bounds = bounds
+                clipPath.reset()
+                clipPath.addRoundRect(
+                    bounds.left.toFloat(),
+                    bounds.top.toFloat(),
+                    bounds.right.toFloat(),
+                    bounds.bottom.toFloat(),
+                    cornerRadii,
+                    Path.Direction.CW,
+                )
+            }
+
+            override fun draw(canvas: Canvas) {
+                if (!isVisible) {
+                    return
+                }
+                // Software snapshots must not disable a blur region still used on screen.
+                if (!canvas.isHardwareAccelerated) {
+                    background.draw(canvas)
+                    return
+                }
+                if (!isBlurEnabled()) {
+                    blurDrawable.setVisible(false, false)
+                    background.draw(canvas)
+                    return
+                }
+                blurDrawable.setVisible(true, false)
+                blurDrawable.bounds = bounds
+                blurDrawable.draw(canvas)
+                val saveCount = canvas.save()
+                canvas.clipPath(clipPath)
+                canvas.translate(-view.left.toFloat(), -view.top.toFloat())
+                canvas.drawRenderNode(backdrop)
+                canvas.restoreToCount(saveCount)
+                surface.draw(canvas)
+            }
+
+            override fun setVisible(visible: Boolean, restart: Boolean): Boolean {
+                if (!visible) {
+                    backdrop.discardDisplayList()
+                }
+                return super.setVisible(visible, restart)
+            }
+        }
+    }
+
     private fun isHomescreen(): Boolean {
         (activityContext as? Launcher)?.let { launcher ->
             if (launcher.isInState(LauncherState.ALL_APPS)) {
@@ -209,14 +308,14 @@ constructor(
         val surface = surfaceDrawable.mutate()
         val blurDrawable = viewRoot.createBackgroundBlurDrawable()?.apply {
             setBlurRadius(popupBlurRadius)
-            getPopupCornerRadii(surface, view).applyTo(this)
+            getBlurCornerRadii(surface, view).applyTo(this)
             setVisible(true, false)
         } ?: return
         view.background = LayerDrawable(arrayOf(blurDrawable, surface))
         view.invalidate()
     }
 
-    private data class PopupCornerRadii(
+    private data class BlurCornerRadii(
         val topLeft: Float,
         val topRight: Float,
         val bottomLeft: Float,
@@ -227,11 +326,11 @@ constructor(
         }
     }
 
-    private fun getPopupCornerRadii(drawable: Drawable, view: View): PopupCornerRadii {
+    private fun getBlurCornerRadii(drawable: Drawable, view: View): BlurCornerRadii {
         if (drawable is GradientDrawable) {
             drawable.cornerRadii?.let { radii ->
                 if (radii.size >= 8) {
-                    return PopupCornerRadii(
+                    return BlurCornerRadii(
                         maxOf(radii[0], radii[1]),
                         maxOf(radii[2], radii[3]),
                         maxOf(radii[6], radii[7]),
@@ -241,21 +340,21 @@ constructor(
             }
             val radius = drawable.cornerRadius
             if (radius > 0f) {
-                return PopupCornerRadii(radius, radius, radius, radius)
+                return BlurCornerRadii(radius, radius, radius, radius)
             }
         }
         val fallback = Themes.getDialogCornerRadius(view.context)
-        return PopupCornerRadii(fallback, fallback, fallback, fallback)
+        return BlurCornerRadii(fallback, fallback, fallback, fallback)
     }
 
     override fun getPopupBlurSurfaceColor(fallbackColor: Int): Int {
         if (!isPopupBlurEnabled() || fallbackColor == Color.TRANSPARENT) {
             return fallbackColor
         }
-        return getPopupBlurSurfaceColor()
+        return getBlurSurfaceColor()
     }
 
-    private fun getPopupBlurSurfaceColor(): Int {
+    private fun getBlurSurfaceColor(): Int {
         val color =
             try {
                 context.getColor(InternalR.color.surface_effect_0)

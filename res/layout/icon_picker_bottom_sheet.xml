@@ -30,7 +30,7 @@
             android:imeOptions="actionSearch"
             android:singleLine="true"
             android:visibility="gone"
-            android:background="@drawable/bg_rounded_corner_bottom_sheet" />
+            android:background="@drawable/round_rect_folder" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/icon_picker_recycler_view"

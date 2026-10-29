@@ -139,6 +139,7 @@ public abstract class AbstractSlideInView<T extends Context & ActivityContext>
     protected boolean mIsDismissInProgress;
     private View mViewToAnimateInSwipeToDismiss = this;
     private @Nullable Drawable mContentBackground;
+    private @Nullable Drawable mBlurredContentBackground;
     private @Nullable View mContentBackgroundParentView;
 
     protected final ViewOutlineProvider mViewOutlineProvider = new ViewOutlineProvider() {
@@ -234,10 +235,29 @@ public abstract class AbstractSlideInView<T extends Context & ActivityContext>
     protected void onOpenCloseAnimationPending(PendingAnimation animation) {}
 
     protected void attachToContainer() {
+        if (shouldBlurContentBackground() && mContentBackground != null) {
+            mBlurredContentBackground = mActivityContext.getActivityComponent()
+                    .getBlurBackgroundHelper()
+                    .createBottomSheetBlurBackground(mContentBackground, this);
+        }
         if (mColorScrim != null) {
             getPopupContainer().addView(mColorScrim);
         }
         getPopupContainer().addView(this);
+    }
+
+    /** Whether this sheet uses the shared folder blur treatment for its background. */
+    protected boolean shouldBlurContentBackground() {
+        return false;
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        if (mBlurredContentBackground != null) {
+            mBlurredContentBackground.setVisible(false, false);
+            mBlurredContentBackground = null;
+        }
+        super.onDetachedFromWindow();
     }
 
     /**
@@ -382,13 +402,15 @@ public abstract class AbstractSlideInView<T extends Context & ActivityContext>
         if (mContentBackground == null || mContentBackgroundParentView == null) {
             return;
         }
-        mContentBackground.setBounds(
+        Drawable background = mBlurredContentBackground != null
+                ? mBlurredContentBackground : mContentBackground;
+        background.setBounds(
                 mContentBackgroundParentView.getLeft(),
                 mContentBackgroundParentView.getTop() + (int) mContent.getTranslationY(),
                 mContentBackgroundParentView.getRight(),
                 mContentBackgroundParentView.getBottom()
                         + (mIsDismissInProgress ? getBottomOffsetPx() : 0));
-        mContentBackground.draw(canvas);
+        background.draw(canvas);
     }
 
     /** Return extra space revealed during predictive back animation. */

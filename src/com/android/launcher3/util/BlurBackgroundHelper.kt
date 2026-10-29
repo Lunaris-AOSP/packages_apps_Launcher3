@@ -17,6 +17,7 @@
 package com.android.launcher3.util
 
 import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.view.View
 import com.android.launcher3.dagger.ActivityContextSingleton
 import com.android.launcher3.folder.Folder
@@ -25,7 +26,7 @@ import javax.inject.Inject
 
 /**
  * Helper class that creates and updates the blur drawable used for folders and the homescreen
- * popup.
+ * popup and customization bottom sheets.
  */
 @ActivityContextSingleton
 open class BlurBackgroundHelper
@@ -45,4 +46,7 @@ constructor() {
     open fun applyPopupBlurBackground(view: View) {}
 
     open fun getPopupBlurSurfaceColor(fallbackColor: Int) = fallbackColor
+
+    /** Called before attaching a sheet so its backdrop does not include the sheet itself. */
+    open fun createBottomSheetBlurBackground(background: Drawable, view: View): Drawable? = null
 }

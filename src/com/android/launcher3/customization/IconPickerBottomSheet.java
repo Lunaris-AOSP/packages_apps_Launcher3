@@ -115,6 +115,11 @@ public class IconPickerBottomSheet extends AbstractSlideInView<BaseActivity> {
                 getContext().getDrawable(R.drawable.bg_rounded_corner_bottom_sheet), mContent);
     }
 
+    @Override
+    protected boolean shouldBlurContentBackground() {
+        return true;
+    }
+
     public void show(ComponentKey key, OnIconChosen callback) {
         mKey = key;
         mCallback = callback;
