@@ -129,6 +129,7 @@ public final class CosWorkspaceRevealAnim {
         prepare.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
+                Luminous.notifyAnimationStart(workspace);
                 mPrepared = true;
                 launcher.getStateManager().createAtomicAnimation(BACKGROUND_APP, NORMAL, setup)
                         .start();

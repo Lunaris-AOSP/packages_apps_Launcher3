@@ -366,6 +366,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         android.view.ViewGroup root = (android.view.ViewGroup) mDragLayer.getParent();
         if (root == null || !root.isAttachedToWindow()
                 || root.getWidth() == 0 || root.getHeight() == 0) return null;
+        Luminous.notifyAnimationStart(source);
         mImmediatePreview = new LaunchPreview(root, icon);
         mImmediatePreview.start();
         return mImmediatePreview::remove;
@@ -2368,6 +2369,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         return new AnimationSuccessListener() {
             @Override
             public void onAnimationStart(Animator animation) {
+                if (mCosAppAnimations) Luminous.notifyAnimationStart(mDragLayer);
                 mDragLayer.getViewTreeObserver().addOnDrawListener(
                         new ViewTreeObserver.OnDrawListener() {
                             boolean mHandled = false;
