@@ -684,8 +684,12 @@ public abstract class SwipeUpAnimationLogic implements
         public void onAnimationSuccess(Animator animator) {
             cleanUp();
             if (!mLocalTransformParams.isDetachedForParallelAnimation()) {
-                mHomeAnim.getAnimationPlayer().end();
+                finishHomeAnimation();
             }
+        }
+
+        public void finishHomeAnimation() {
+            mHomeAnim.getAnimationPlayer().end();
         }
     }
 

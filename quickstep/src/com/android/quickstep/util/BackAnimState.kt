@@ -63,6 +63,9 @@ class AnimatorBackState @JvmOverloads constructor(
     }
 
     override fun applyToAnimationResult(result: AnimationResult, c: Context) {
+        if (!registerStateAnimation && springAnim?.isCos == true) {
+            anim?.addListener(forEndCallback(Runnable { springAnim.detachWindow() }))
+        }
         result.setAnimation(anim, c)
     }
 

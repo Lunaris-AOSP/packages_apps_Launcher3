@@ -239,11 +239,13 @@ public class BaseDepthController {
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
-                if (mAppWallpaperAnimator != null && mAppWallpaperAnimator != animator) {
-                    mAppWallpaperAnimator.cancel();
-                }
+                float currentDepth = Float.isNaN(mAppWallpaperDepth)
+                        ? startDepth : mAppWallpaperDepth;
+                ValueAnimator previous = mAppWallpaperAnimator;
                 mAppWallpaperAnimator = animator;
-                mAppWallpaperDepth = startDepth;
+                mAppWallpaperDepth = currentDepth;
+                if (previous != null && previous != animator) previous.cancel();
+                animator.setFloatValues(currentDepth, to);
                 applyWallpaperZoom(false);
             }
 

@@ -546,26 +546,32 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
 
     @Override
     public RunnableList startActivitySafely(View v, Intent intent, ItemInfo item) {
-        if (mAppTransitionManager != null) {
-            mAppTransitionManager.beginImmediateAppLaunch(v, item);
-        }
         RunnableList deferred = new RunnableList();
+        if (mAppTransitionManager != null) {
+            deferred.add(mAppTransitionManager.beginImmediateAppLaunch(v, item));
+        }
         if (com.android.quickstep.AbsSwipeUpHandler.finishHomeFlightForLaunch(() -> {
             if (isDestroyed()) {
                 deferred.executeAllAndDestroy();
                 return;
             }
-            RunnableList actual = startActivitySafely(v, intent, item);
+            RunnableList actual = startActivitySafelyAfterHomeFlight(v, intent, item);
             if (actual == null) deferred.executeAllAndDestroy();
             else actual.add(deferred::executeAllAndDestroy);
-        })) return deferred;
+        }, deferred::executeAllAndDestroy)) return deferred;
+        RunnableList result = startActivitySafelyAfterHomeFlight(v, intent, item);
+        if (result == null) deferred.executeAllAndDestroy();
+        else result.add(deferred::executeAllAndDestroy);
+        return result;
+    }
+
+    private RunnableList startActivitySafelyAfterHomeFlight(View v, Intent intent, ItemInfo item) {
         PredictionRowView<?> predictionRowView =
                 getAppsView().getFloatingHeaderView().findFixedRowByType(PredictionRowView.class);
         // Pause the prediction row updates until the transition (if it exists) ends.
         predictionRowView.setPredictionUiUpdatePaused(true);
         RunnableList result = super.startActivitySafely(v, intent, item);
         if (result == null) {
-            if (mAppTransitionManager != null) mAppTransitionManager.cancelImmediateAppLaunch(v);
             predictionRowView.setPredictionUiUpdatePaused(false);
         } else {
             result.add(() -> predictionRowView.setPredictionUiUpdatePaused(false));
