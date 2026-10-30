@@ -16,6 +16,8 @@
 
 package com.android.quickstep.util;
 
+import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
+
 import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCHER_KEYBOARD_SHORTCUT_SPLIT_LEFT_TOP;
 import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCHER_KEYBOARD_SHORTCUT_SPLIT_RIGHT_BOTTOM;
 import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
@@ -74,21 +76,33 @@ public class SplitWithKeyboardShortcutController {
 
     @BinderThread
     public void enterStageSplit(boolean leftOrTop, int displayId) {
-        if (TopTaskTracker.INSTANCE.get(mLauncher).getRunningSplitTaskIds().length == 2) {
-            // Do not enter stage split from keyboard shortcuts if the user is already in split
+        ActivityManager.RunningTaskInfo[] runningTasks =
+                ActivityManagerWrapper.getInstance().getRunningTasks(false, displayId);
+        if (runningTasks.length == 0) {
             return;
         }
-        BaseContainerInterface<?, ?> containerInterface =
-                mOverviewComponentObserver.getContainerInterface(displayId);
-        if (containerInterface == null) {
+        ActivityManager.RunningTaskInfo runningTaskInfo = runningTasks[0];
+        if (!runningTaskInfo.supportsMultiWindow
+                || runningTaskInfo.getActivityType() != ACTIVITY_TYPE_STANDARD) {
             return;
         }
-        RecentsAnimationCallbacks callbacks = new RecentsAnimationCallbacks(
-                containerInterface.getCreatedContainer());
-        SplitWithKeyboardShortcutRecentsAnimationListener listener =
-                new SplitWithKeyboardShortcutRecentsAnimationListener(leftOrTop);
 
         MAIN_EXECUTOR.execute(() -> {
+            if (mLauncher.isDestroyed() || mController.isSplitSelectActive()
+                    || mController.isBothSplitAppsConfirmed()
+                    || TopTaskTracker.INSTANCE.get(mLauncher).getRunningSplitTaskIds().length == 2) {
+                return;
+            }
+            BaseContainerInterface<?, ?> containerInterface =
+                    mOverviewComponentObserver.getContainerInterface(displayId);
+            if (containerInterface == null
+                    || containerInterface.getCreatedContainer() != mLauncher) {
+                return;
+            }
+            RecentsAnimationCallbacks callbacks = new RecentsAnimationCallbacks(mLauncher);
+            SplitWithKeyboardShortcutRecentsAnimationListener listener =
+                    new SplitWithKeyboardShortcutRecentsAnimationListener(
+                            leftOrTop, runningTaskInfo);
             callbacks.addListener(listener);
             UI_HELPER_EXECUTOR.execute(() -> {
                 // Transition from fullscreen app to enter stage split in launcher with
@@ -97,9 +111,10 @@ public class SplitWithKeyboardShortcutController {
                 options.setPendingIntentBackgroundActivityStartMode(
                         ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS);
                 options.setTransientLaunch();
+                options.setLaunchDisplayId(displayId);
                 SystemUiProxy.INSTANCE.get(mLauncher.getApplicationContext())
                         .startRecentsTransition(mOverviewComponentObserver.getOverviewIntent(),
-                                ActivityOptions.makeBasic(), callbacks,
+                                options, callbacks,
                                 false /* useSyntheticRecentsTransition */, null, displayId);
             });
         });
@@ -112,14 +127,21 @@ public class SplitWithKeyboardShortcutController {
         private final Rect mTempRect = new Rect();
         private final ActivityManager.RunningTaskInfo mRunningTaskInfo;
 
-        private SplitWithKeyboardShortcutRecentsAnimationListener(boolean leftOrTop) {
+        private SplitWithKeyboardShortcutRecentsAnimationListener(boolean leftOrTop,
+                ActivityManager.RunningTaskInfo runningTaskInfo) {
             mLeftOrTop = leftOrTop;
-            mRunningTaskInfo = ActivityManagerWrapper.getInstance().getRunningTask();
+            mRunningTaskInfo = runningTaskInfo;
         }
 
         @Override
         public void onRecentsAnimationStart(RecentsAnimationController controller,
                 RecentsAnimationTargets targets, TransitionInfo transitionInfo) {
+            if (mLauncher.isDestroyed() || targets.findTask(mRunningTaskInfo.taskId) == null
+                    || mController.isSplitSelectActive() || mController.isBothSplitAppsConfirmed()) {
+                controller.finishAnimationToApp(new ActiveGestureLog.CompoundString(
+                        "Split selection target is no longer available"));
+                return;
+            }
             mController.setInitialTaskSelect(mRunningTaskInfo,
                     mLeftOrTop ? STAGE_POSITION_TOP_OR_LEFT : STAGE_POSITION_BOTTOM_OR_RIGHT,
                     null /* itemInfo */,
