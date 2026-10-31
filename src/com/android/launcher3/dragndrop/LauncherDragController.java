@@ -27,8 +27,6 @@ import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
 import android.content.res.Resources;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.hardware.power.Boost;
-import android.os.PowerManagerInternal;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
@@ -45,9 +43,9 @@ import com.android.launcher3.R;
 import com.android.launcher3.accessibility.DragViewStateAnnouncer;
 import com.android.launcher3.dragndrop.DragOptions.PreDragCondition;
 import com.android.launcher3.model.data.ItemInfo;
+import com.android.launcher3.util.InteractionBoost;
 import com.android.launcher3.util.TouchUtil;
 import com.android.launcher3.widget.util.WidgetDragScaleUtils;
-import com.android.server.LocalServices;
 
 /**
  * Drag controller for Launcher activity
@@ -80,7 +78,7 @@ public class LauncherDragController extends DragController<Launcher> {
             float initialDragViewScale,
             float dragViewScaleOnDrop,
             DragOptions options) {
-        boostInteraction(500);
+        InteractionBoost.request(500);
         if (PROFILE_DRAWING_DURING_DRAG) {
             android.os.Debug.startMethodTracing("Launcher");
         }
@@ -217,13 +215,6 @@ public class LauncherDragController extends DragController<Launcher> {
                     accessible ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
                             : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             );
-        }
-    }
-
-    private void boostInteraction(int durationMs) {
-        PowerManagerInternal pmi = LocalServices.getService(PowerManagerInternal.class);
-        if (pmi != null) {
-            pmi.setPowerBoost(Boost.INTERACTION, durationMs);
         }
     }
 

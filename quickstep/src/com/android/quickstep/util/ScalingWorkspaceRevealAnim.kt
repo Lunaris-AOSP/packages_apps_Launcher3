@@ -50,6 +50,7 @@ import com.android.launcher3.states.StateAnimationConfig.SKIP_DEPTH_CONTROLLER
 import com.android.launcher3.states.StateAnimationConfig.SKIP_OVERVIEW
 import com.android.launcher3.states.StateAnimationConfig.SKIP_SCRIM
 import com.android.launcher3.uioverrides.QuickstepLauncher
+import com.android.launcher3.util.InteractionBoost
 import com.android.quickstep.views.RecentsView
 import com.android.systemui.shared.system.BlurUtils
 
@@ -319,6 +320,7 @@ class ScalingWorkspaceRevealAnim(
         animators.addListener(
             object : AnimatorListenerAdapter() {
                 override fun onAnimationStart(animation: Animator) {
+                    InteractionBoost.requestForAnimation(launcher.workspace)
                     Animations.setOngoingAnimation(launcher.workspace, animators)
                     Animations.setOngoingAnimation(launcher.hotseat, animators)
                 }

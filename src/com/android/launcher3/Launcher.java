@@ -133,11 +133,9 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.hardware.power.Boost;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
-import android.os.PowerManagerInternal;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.os.UserHandle;
@@ -241,6 +239,7 @@ import com.android.launcher3.util.CannedAnimationCoordinator;
 import com.android.launcher3.util.ContextTracker;
 import com.android.launcher3.util.FlashlightUtils;
 import com.android.launcher3.util.IntSet;
+import com.android.launcher3.util.InteractionBoost;
 import com.android.launcher3.util.ItemInflater;
 import com.android.launcher3.util.KeyboardShortcutsDelegate;
 import com.android.launcher3.util.LauncherBindableItemsContainer;
@@ -278,7 +277,6 @@ import com.android.launcher3.widget.model.WidgetsListBaseEntry;
 import com.android.launcher3.widget.picker.WidgetsFullSheet;
 import com.android.launcher3.widget.picker.model.WidgetPickerDataProvider;
 import com.android.launcher3.widget.util.WidgetSizeHandler;
-import com.android.server.LocalServices;
 import com.android.systemui.plugins.LauncherOverlayPlugin;
 import com.android.systemui.plugins.PluginListener;
 import com.android.systemui.plugins.shared.LauncherOverlayManager;
@@ -1239,16 +1237,9 @@ public class Launcher extends StatefulActivity<LauncherState>
         return Optional.of(LAUNCHER_ALLAPPS_EXIT);
     }
 
-    private void boostInteraction(int durationMs) {
-        PowerManagerInternal pmi = LocalServices.getService(PowerManagerInternal.class);
-        if (pmi != null) {
-            pmi.setPowerBoost(Boost.INTERACTION, durationMs);
-        }
-    }
-
     @Override
     protected void onResume() {
-        boostInteraction(500);
+        InteractionBoost.request(500);
         TraceHelper.INSTANCE.beginSection(ON_RESUME_EVT);
         super.onResume();
 
@@ -1276,7 +1267,6 @@ public class Launcher extends StatefulActivity<LauncherState>
 
     @Override
     protected void onPause() {
-        boostInteraction(10);
         // Ensure that items added to Launcher are queued until Launcher returns
         ItemInstallQueue.INSTANCE.get(this).pauseModelPush(FLAG_ACTIVITY_PAUSED);
 

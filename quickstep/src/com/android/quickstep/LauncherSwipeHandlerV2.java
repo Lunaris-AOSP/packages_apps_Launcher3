@@ -43,6 +43,7 @@ import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.statehandlers.DesktopVisibilityController;
 import com.android.launcher3.states.StateAnimationConfig;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
+import com.android.launcher3.util.InteractionBoost;
 import com.android.launcher3.util.MSDLPlayerWrapper;
 import com.android.launcher3.util.StableViewInfo;
 import com.android.launcher3.views.ClipIconView;
@@ -107,6 +108,7 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
             };
         }
 
+        InteractionBoost.requestForAnimation(mContainer.getDragLayer());
         TaskView sourceTaskView = mRecentsView == null && targetTaskView == null
                 ? null
                 : targetTaskView == null

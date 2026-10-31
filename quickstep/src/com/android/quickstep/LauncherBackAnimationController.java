@@ -67,6 +67,7 @@ import com.android.launcher3.Utilities;
 import com.android.launcher3.taskbar.TaskbarInteractor;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.DisplayController;
+import com.android.launcher3.util.InteractionBoost;
 import com.android.launcher3.util.NavigationMode;
 import com.android.launcher3.widget.LauncherAppWidgetHostView;
 import com.android.quickstep.cos.CosAppAnimation;
@@ -363,6 +364,7 @@ public class LauncherBackAnimationController {
             return;
         }
 
+        InteractionBoost.requestForAnimation(mLauncher.getDragLayer());
         mTransaction
                 .show(mBackTarget.leash)
                 .setAnimationTransaction();

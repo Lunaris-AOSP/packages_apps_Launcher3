@@ -40,6 +40,7 @@ import com.android.launcher3.statehandlers.DepthController;
 import com.android.launcher3.statemanager.StateManager.StateListener;
 import com.android.launcher3.states.StateAnimationConfig;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
+import com.android.launcher3.util.InteractionBoost;
 import com.android.launcher3.views.ScrimColorsEvaluator;
 import com.android.quickstep.util.RectFSpringAnim;
 import com.android.quickstep.views.RecentsView;
@@ -129,7 +130,7 @@ public final class CosWorkspaceRevealAnim {
         prepare.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
-                Luminous.notifyAnimationStart(workspace);
+                InteractionBoost.requestForAnimation(workspace);
                 mPrepared = true;
                 launcher.getStateManager().createAtomicAnimation(BACKGROUND_APP, NORMAL, setup)
                         .start();

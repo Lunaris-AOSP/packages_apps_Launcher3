@@ -91,12 +91,10 @@ import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
-import android.hardware.power.Boost;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IRemoteCallback;
 import android.os.Looper;
-import android.os.PowerManagerInternal;
 import android.os.RemoteException;
 import android.view.IRemoteAnimationRunner;
 import android.window.IRemoteTransitionFinishedCallback;
@@ -150,6 +148,7 @@ import com.android.launcher3.testing.shared.ResourceUtils;
 import com.android.launcher3.touch.PagedOrientationHandler;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.ActivityOptionsWrapper;
+import com.android.launcher3.util.InteractionBoost;
 import com.android.launcher3.util.RunnableList;
 import com.android.launcher3.util.StableViewInfo;
 import com.android.launcher3.views.FloatingIconView;
@@ -181,7 +180,6 @@ import com.android.quickstep.util.WidgetAnimationUtils;
 import com.android.quickstep.util.WorkspaceRevealAnim;
 import com.android.quickstep.views.FloatingWidgetView;
 import com.android.quickstep.views.RecentsView;
-import com.android.server.LocalServices;
 import com.android.systemui.animation.ActivityTransitionAnimator;
 import com.android.systemui.animation.DelegateTransitionAnimatorController;
 import com.android.systemui.animation.LaunchableView;
@@ -366,7 +364,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         android.view.ViewGroup root = (android.view.ViewGroup) mDragLayer.getParent();
         if (root == null || !root.isAttachedToWindow()
                 || root.getWidth() == 0 || root.getHeight() == 0) return null;
-        Luminous.notifyAnimationStart(source);
+        InteractionBoost.requestForAnimation(source);
         mImmediatePreview = new LaunchPreview(root, icon);
         mImmediatePreview.start();
         return mImmediatePreview::remove;
@@ -822,13 +820,6 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             Pair<AnimatorSet, Runnable> content = getLauncherContentAnimator(true, 0, false);
             anim.play(content.first);
             anim.addListener(AnimatorListeners.forEndCallback(content.second));
-        }
-    }
-
-    private void boostInteraction(int durationMs) {
-        PowerManagerInternal pmi = LocalServices.getService(PowerManagerInternal.class);
-        if (pmi != null) {
-            pmi.setPowerBoost(Boost.INTERACTION, durationMs);
         }
     }
 
@@ -2245,7 +2236,6 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             @Override
             public void onAnimationStart(Animator animation) {
                 anim.start(mLauncher, mDeviceProfile, velocityPxPerS);
-                boostInteraction(500);
             }
 
             @Override
@@ -2369,7 +2359,6 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         return new AnimationSuccessListener() {
             @Override
             public void onAnimationStart(Animator animation) {
-                if (mCosAppAnimations) Luminous.notifyAnimationStart(mDragLayer);
                 mDragLayer.getViewTreeObserver().addOnDrawListener(
                         new ViewTreeObserver.OnDrawListener() {
                             boolean mHandled = false;
@@ -2391,14 +2380,12 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                             }
                         });
                 super.onAnimationStart(animation);
-                boostInteraction(500);
             }
 
             @Override
             public void onAnimationCancel(Animator animation) {
                 super.onAnimationCancel(animation);
                 InteractionJankMonitorWrapper.cancel(cuj);
-                boostInteraction(10);
             }
 
             @Override
@@ -2420,6 +2407,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             RectF startRect,
             float startWindowCornerRadius,
             boolean fromPredictiveBack) {
+        InteractionBoost.requestForAnimation(mDragLayer);
         RectF islandTarget = null;
         if (!fromPredictiveBack && !shouldPlayFallbackClosingAnimation(appTargets)
                 && getRotationChange(appTargets) == 0) {
@@ -2683,6 +2671,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                 return;
             }
             if (mCosAnimation != null) mCosAnimation.cancel();
+            InteractionBoost.requestForAnimation(mDragLayer);
             AnimatorSet anim = new AnimatorSet();
             if (mCosAppAnimations) {
                 mCosAnimation = anim;
@@ -2798,6 +2787,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
             ActivityTransitionAnimator.Listener listener =
                     new ActivityTransitionAnimator.Listener() {
+                        @Override
+                        public void onTransitionAnimationStart() {
+                            InteractionBoost.requestForAnimation(launcher.getDragLayer());
+                        }
+
                         @Override
                         public void onTransitionAnimationEnd() {
                             onEndCallback.executeAllAndDestroy();
