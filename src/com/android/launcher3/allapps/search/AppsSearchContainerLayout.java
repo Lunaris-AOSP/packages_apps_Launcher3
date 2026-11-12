@@ -539,7 +539,15 @@ public class AppsSearchContainerLayout extends ExtendedEditText
         if (mUsePillSearchBar && canvas.isHardwareAccelerated()) {
             updateBlurState();
             if (mBackdropBlur.isEnabled()) {
-                mBackdropBlur.draw(canvas, 0, 0, getWidth(), getHeight(), getHeight() / 2f);
+                int scrollX = getScrollX();
+                int scrollY = getScrollY();
+                if ((scrollX | scrollY) == 0) {
+                    mBackdropBlur.draw(canvas, 0, 0, getWidth(), getHeight(), getHeight() / 2f);
+                } else {
+                    canvas.translate(scrollX, scrollY);
+                    mBackdropBlur.draw(canvas, 0, 0, getWidth(), getHeight(), getHeight() / 2f);
+                    canvas.translate(-scrollX, -scrollY);
+                }
             }
         }
         super.draw(canvas);
