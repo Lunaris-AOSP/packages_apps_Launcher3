@@ -225,6 +225,7 @@ import com.android.launcher3.pm.PinRequestHelper;
 import com.android.launcher3.popup.ArrowPopup;
 import com.android.launcher3.popup.PopupController;
 import com.android.launcher3.popup.SystemShortcut;
+import com.android.launcher3.search.universal.SpotlightView;
 import com.android.launcher3.smartspace.AtAGlanceView;
 import com.android.launcher3.statemanager.StateManager;
 import com.android.launcher3.statemanager.StateManager.StateHandler;
@@ -968,6 +969,9 @@ public class Launcher extends StatefulActivity<LauncherState>
     public void onActivityResult(
             final int requestCode, final int resultCode, final Intent data) {
         mPendingActivityRequestCode = -1;
+        if (SpotlightView.onActivityResult(this, requestCode, resultCode, data)) {
+            return;
+        }
         handleActivityResult(requestCode, resultCode, data);
     }
 
@@ -2206,6 +2210,9 @@ public class Launcher extends StatefulActivity<LauncherState>
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         TestLogging.recordKeyEvent(TestProtocol.SEQUENCE_MAIN, "Key event", event);
+        if (SpotlightView.handleEscape(this, event)) {
+            return true;
+        }
         return (event.getKeyCode() == KeyEvent.KEYCODE_HOME) || super.dispatchKeyEvent(event);
     }
 
