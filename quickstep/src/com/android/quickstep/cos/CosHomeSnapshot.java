@@ -16,18 +16,28 @@ import android.graphics.RectF;
 import android.view.View;
 import android.view.ViewGroup;
 
+import com.android.quickstep.util.NothingAppAnimation;
+
 /** Keeps the closing window visible after its recents transition finishes for a new launch. */
 public final class CosHomeSnapshot extends View {
     private final Bitmap mBitmap;
     private final RectF mSourceCrop;
     private final RectF mBufferBounds;
+    private final RectF mCurrentCrop = new RectF();
+    private final boolean mNothing;
     private final Matrix mMatrix = new Matrix();
     private final Path mClip = new Path();
     private final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private ViewGroup mRoot;
 
     public CosHomeSnapshot(Context context, Bitmap bitmap, RectF sourceCrop, Rect taskBounds) {
+        this(context, bitmap, sourceCrop, taskBounds, false);
+    }
+
+    public CosHomeSnapshot(Context context, Bitmap bitmap, RectF sourceCrop, Rect taskBounds,
+            boolean nothing) {
         super(context);
+        mNothing = nothing;
         mBitmap = bitmap;
         mSourceCrop = new RectF(sourceCrop);
         mBufferBounds = new RectF(0, 0, taskBounds.width(), taskBounds.height());
@@ -36,9 +46,17 @@ public final class CosHomeSnapshot extends View {
 
     /** The rect is in launcher coordinates; the radius is in the window's crop coordinates. */
     public void update(RectF rect, float radius, float alpha) {
-        mMatrix.setRectToRect(mSourceCrop, rect, Matrix.ScaleToFit.FILL);
+        mCurrentCrop.set(mSourceCrop);
+        if (mNothing) {
+            float scale = NothingAppAnimation.updateWindowCrop(mSourceCrop, rect,
+                    mMatrix, mCurrentCrop);
+            if (scale <= 0f) return;
+            radius /= scale;
+        } else {
+            mMatrix.setRectToRect(mSourceCrop, rect, Matrix.ScaleToFit.FILL);
+        }
         mClip.reset();
-        mClip.addRoundRect(mSourceCrop, Math.max(0f, radius), Math.max(0f, radius),
+        mClip.addRoundRect(mCurrentCrop, Math.max(0f, radius), Math.max(0f, radius),
                 Path.Direction.CW);
         mPaint.setAlpha(Math.round(255 * Math.max(0f, Math.min(1f, alpha))));
         invalidate();

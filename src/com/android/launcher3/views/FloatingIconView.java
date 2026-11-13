@@ -533,6 +533,10 @@ public class FloatingIconView extends FrameLayout implements
         mListenerView.setCloseOnTouchDown(finishOnTouchDown);
     }
 
+    public void setAnimationReversed() {
+        mClipIconView.setAnimationReversed(true);
+    }
+
     public void setAllowParallelAnimation(boolean allow) {
         if (!allow || mIsOpening || mAllowParallelAnimation) return;
         mAllowParallelAnimation = true;

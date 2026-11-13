@@ -159,6 +159,10 @@ public class RectFSpringAnim extends ReleaseCheck {
     private final Runnable mFrameUpdate;
     private boolean mEnding;
     private boolean mWindowDetached;
+    private boolean mReverse;
+    private boolean mInterrupted;
+    private float mReverseProgress;
+    private final RectF mReverseStartRect = new RectF();
 
     public RectFSpringAnim(SpringConfig config) {
         mStartRect = config.startRect;
@@ -200,8 +204,53 @@ public class RectFSpringAnim extends ReleaseCheck {
         return mAnimsStarted && !isEnded();
     }
 
+    public boolean isReverse() {
+        return mReverse;
+    }
+
+    public boolean isInterrupted() {
+        return mInterrupted;
+    }
+
+    public float getReverseProgress() {
+        return mReverseProgress;
+    }
+
+    public boolean reverseToOpen(RectF windowRect) {
+        if (!mNothing || !isRunning() || mReverse || mWindowDetached
+                || windowRect.isEmpty() || !Float.isFinite(windowRect.width())
+                || !Float.isFinite(windowRect.height()) || mCurrentScaleProgress <= 0f) return false;
+        mReverse = true;
+        mReverseProgress = mCurrentScaleProgress;
+        mReverseStartRect.set(mCurrentRect);
+        mStartRect.set(windowRect);
+        mRectXAnimEnded = mRectYAnimEnded = mRectScaleAnimEnded = false;
+        mRectScaleAnim.animateToFinalPosition(0f);
+        mRectXSpring.animateToFinalPosition(windowRect.centerX());
+        mRectYSpring.animateToFinalPosition(getTrackedYFromRect(windowRect));
+        return true;
+    }
+
+    public void interrupt() {
+        if (!mNothing) {
+            cancel();
+            return;
+        }
+        if (!isRunning()) return;
+        mInterrupted = true;
+        mEnding = true;
+        for (Animator.AnimatorListener listener : mAnimatorListeners) {
+            listener.onAnimationCancel(null);
+        }
+        if (mRectXSpring != null) mRectXSpring.cancel();
+        if (mRectYSpring != null) mRectYSpring.cancel();
+        if (mRectScaleAnim != null) mRectScaleAnim.cancel();
+        mRectXAnimEnded = mRectYAnimEnded = mRectScaleAnimEnded = true;
+        maybeOnEnd();
+    }
+
     public void detachWindow() {
-        if (mCos) {
+        if (mCos || mNothing) {
             mWindowDetached = true;
             setCanRelease(true);
         }
@@ -228,7 +277,7 @@ public class RectFSpringAnim extends ReleaseCheck {
     }
 
     public void onTargetPositionChanged() {
-        if (isEnded()) {
+        if (isEnded() || mReverse) {
             return;
         }
 
@@ -396,6 +445,7 @@ public class RectFSpringAnim extends ReleaseCheck {
     }
 
     public void end() {
+        if (mInterrupted) return;
         mEnding = true;
         if (mUpdatePending) {
             mChoreographer.removeCallbacks(Choreographer.CALLBACK_INSETS_ANIMATION,
@@ -414,8 +464,9 @@ public class RectFSpringAnim extends ReleaseCheck {
             }
             mCurrentScaleProgress = mRectScaleAnim.getSpring().getFinalPosition();
             if (mCos || mNothing) {
-                mCurrentCenterX = mTargetRect.centerX();
-                mCurrentY = getTrackedYFromRect(mTargetRect);
+                RectF endRect = mReverse ? mStartRect : mTargetRect;
+                mCurrentCenterX = endRect.centerX();
+                mCurrentY = getTrackedYFromRect(endRect);
             }
 
             // Ensures that we end the animation with the final values.
@@ -482,6 +533,16 @@ public class RectFSpringAnim extends ReleaseCheck {
                     ? NothingAppAnimation.getHeight(sizeProgress, startWidth, startHeight,
                             mTargetRect.width(), mTargetRect.height())
                     : startHeight + sizeProgress * (mTargetRect.height() - startHeight);
+            if (mReverse) {
+                float reverseProgress = NothingAppAnimation.getSizeProgress(mReverseProgress);
+                float openingProgress = 1f - Utilities.boundToRange(
+                        sizeProgress / reverseProgress, 0f, 1f);
+                currentWidth = Utilities.mapRange(openingProgress,
+                        mReverseStartRect.width(), mStartRect.width());
+                currentHeight = NothingAppAnimation.getHeight(openingProgress,
+                        mReverseStartRect.width(), mReverseStartRect.height(),
+                        mStartRect.width(), mStartRect.height());
+            }
             if (mCos && startWidth > 0 && mTargetRect.width() > 0) {
                 currentWidth = Math.max(mTargetRect.width() * 0.95f, currentWidth);
                 currentHeight = currentWidth * Utilities.mapRange(
