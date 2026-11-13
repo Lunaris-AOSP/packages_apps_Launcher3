@@ -96,6 +96,7 @@ public class CaddyLibrarySheet extends AbstractFloatingView implements DragContr
     private float mScrimProgress = 0f;
     private int mLastBlurRadius = 0;
     private boolean mIsClosing = false;
+    private int mMaxRecyclerHeight = 0;
 
     private static class IconTransition {
         View view;
@@ -129,7 +130,7 @@ public class CaddyLibrarySheet extends AbstractFloatingView implements DragContr
 
         mPanel = new PanelView(getContext());
         mPanel.setClipChildren(true);
-        mPanel.setClipToPadding(false);
+        mPanel.setClipToPadding(true);
         addView(mPanel, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         mHeading = new LinearLayout(getContext());
@@ -255,7 +256,7 @@ public class CaddyLibrarySheet extends AbstractFloatingView implements DragContr
         mRecycler = new RecyclerView(getContext()) {
             @Override
             protected void onMeasure(int widthSpec, int heightSpec) {
-                int maxHeight = dp(MAX_RECYCLER_HEIGHT_DP);
+                int maxHeight = mMaxRecyclerHeight > 0 ? mMaxRecyclerHeight : dp(MAX_RECYCLER_HEIGHT_DP);
                 int mode = MeasureSpec.getMode(heightSpec);
                 int size = MeasureSpec.getSize(heightSpec);
                 if (mode == MeasureSpec.UNSPECIFIED || size > maxHeight) {
@@ -264,8 +265,10 @@ public class CaddyLibrarySheet extends AbstractFloatingView implements DragContr
                 super.onMeasure(widthSpec, heightSpec);
             }
         };
-        mRecycler.setClipToPadding(false);
+        mRecycler.setClipToPadding(true);
         mRecycler.setClipChildren(true);
+        mRecycler.setVerticalScrollBarEnabled(true);
+        mRecycler.setScrollbarFadingEnabled(true);
         mRecycler.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         mRecycler.setLayoutManager(editing ? new LinearLayoutManager(getContext())
                 : new GridLayoutManager(getContext(), initialSpan));
@@ -606,8 +609,10 @@ public class CaddyLibrarySheet extends AbstractFloatingView implements DragContr
 
     private void setContentClippingEnabled(boolean enabled) {
         mPanel.setClipChildren(enabled);
+        mPanel.setClipToPadding(enabled);
         mPanel.setClipToOutline(enabled);
         mRecycler.setClipChildren(enabled);
+        mRecycler.setClipToPadding(enabled);
     }
 
     private void applyAnimationProgress(float progress) {
@@ -725,20 +730,69 @@ public class CaddyLibrarySheet extends AbstractFloatingView implements DragContr
         int availWidth = Math.max(0, MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight());
         int availHeight = Math.max(0, MeasureSpec.getSize(heightSpec) - getPaddingTop() - getPaddingBottom());
 
-        mPanel.getLayoutParams().width = Math.min(dp(MAX_PANEL_WIDTH_DP), availWidth);
+        int panelWidth = Math.min(dp(MAX_PANEL_WIDTH_DP), availWidth);
+        mPanel.getLayoutParams().width = panelWidth;
         mPanel.getLayoutParams().height = LayoutParams.WRAP_CONTENT;
 
         if (!mEditing) {
             GridLayoutManager layout = (GridLayoutManager) mRecycler.getLayoutManager();
             int count = mFilteredApps.size();
             int maxSpan = Math.max(1, Math.min(4,
-                    (mPanel.getLayoutParams().width - mPanel.getPaddingLeft()
+                    (panelWidth - mPanel.getPaddingLeft()
                             - mPanel.getPaddingRight()) / dp(80)));
             int span = Math.min(Math.max(1, count), maxSpan);
             if (layout.getSpanCount() != span) {
                 layout.setSpanCount(span);
             }
         }
+
+        int panelPaddingY = mPanel.getPaddingTop() + mPanel.getPaddingBottom();
+        int contentWidth = Math.max(0, panelWidth - mPanel.getPaddingLeft() - mPanel.getPaddingRight());
+        int childWidthSpec = MeasureSpec.makeMeasureSpec(contentWidth, MeasureSpec.EXACTLY);
+        int unspecifiedHeight = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+
+        mHeading.measure(childWidthSpec, unspecifiedHeight);
+        int overhead = panelPaddingY + mHeading.getMeasuredHeight();
+
+        if (mEditing) {
+            if (mEditingDescription != null && mEditingDescription.getVisibility() != GONE) {
+                mEditingDescription.measure(childWidthSpec, unspecifiedHeight);
+                overhead += mEditingDescription.getMeasuredHeight();
+            }
+            if (mEditingSelection != null && mEditingSelection.getVisibility() != GONE) {
+                mEditingSelection.measure(childWidthSpec, unspecifiedHeight);
+                overhead += mEditingSelection.getMeasuredHeight();
+            }
+        }
+        if (mSearch != null && mSearch.getVisibility() != GONE) {
+            LayoutParams slp = (LayoutParams) mSearch.getLayoutParams();
+            int searchHeight = slp.height > 0 ? slp.height : dp(44);
+            overhead += searchHeight + slp.topMargin + slp.bottomMargin;
+        }
+        if (mEmpty != null && mEmpty.getVisibility() != GONE) {
+            overhead += dp(60);
+        }
+
+        int maxAvailableRecycler = Math.max(0, availHeight - overhead);
+        int cellHeight = mEditing ? dp(64)
+                : Math.max(dp(88), mActivityContext.getDeviceProfile()
+                        .getAllAppsProfile().getCellHeightPx());
+
+        if (cellHeight > 0) {
+            int span = mEditing ? 1
+                    : Math.max(1, ((GridLayoutManager) mRecycler.getLayoutManager()).getSpanCount());
+            int totalRows = Math.max(1, (int) Math.ceil((double) mFilteredApps.size() / span));
+            int totalContentHeight = totalRows * cellHeight;
+            if (totalContentHeight <= maxAvailableRecycler) {
+                mMaxRecyclerHeight = totalContentHeight;
+            } else {
+                int maxRows = maxAvailableRecycler / cellHeight;
+                mMaxRecyclerHeight = maxRows >= 1 ? maxRows * cellHeight : maxAvailableRecycler;
+            }
+        } else {
+            mMaxRecyclerHeight = maxAvailableRecycler;
+        }
+
         super.onMeasure(widthSpec, heightSpec);
 
         if (mPanel.getMeasuredHeight() > availHeight) {
