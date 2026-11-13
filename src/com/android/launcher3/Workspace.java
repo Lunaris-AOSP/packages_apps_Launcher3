@@ -57,6 +57,7 @@ import android.appwidget.AppWidgetProviderInfo;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Point;
 import android.graphics.PointF;
 import android.graphics.Rect;
@@ -88,6 +89,7 @@ import com.android.app.animation.Interpolators;
 import com.android.launcher3.accessibility.AccessibleDragListenerAdapter;
 import com.android.launcher3.accessibility.WorkspaceAccessibilityHelper;
 import com.android.launcher3.anim.PendingAnimation;
+import com.android.launcher3.anim.SpringAnimationBuilder;
 import com.android.launcher3.apppairs.AppPairIcon;
 import com.android.launcher3.celllayout.CellInfo;
 import com.android.launcher3.celllayout.CellLayoutLayoutParams;
@@ -132,6 +134,7 @@ import com.android.launcher3.statemanager.StateManager.StateListener;
 import com.android.launcher3.states.StateAnimationConfig;
 import com.android.launcher3.touch.WorkspaceTouchListener;
 import com.android.launcher3.util.CellAndSpan;
+import com.android.launcher3.util.DynamicResource;
 import com.android.launcher3.util.EdgeEffectCompat;
 import com.android.launcher3.util.Executors;
 import com.android.launcher3.util.IntArray;
@@ -325,6 +328,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
     // Handles workspace state transitions
     private final WorkspaceStateTransitionAnimation mStateTransitionAnimation;
+    private final CosWorkspacePageTransition mPageTransition;
 
     private final StatsLogManager mStatsLogManager;
 
@@ -365,11 +369,13 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         mLauncher = Launcher.getLauncher(context);
         mLauncherUiState = mLauncher.getLauncherUiState();
         mStateTransitionAnimation = new WorkspaceStateTransitionAnimation(mLauncher, this);
+        mPageTransition = new CosWorkspacePageTransition(this);
         mWallpaperManager = WallpaperManager.getInstance(context);
         mAllAppsIconSize = mLauncher.getDeviceProfile().getAllAppsProfile().getIconSizePx();
         mWallpaperOffset = new WallpaperOffsetInterpolator(this);
 
         setHapticFeedbackEnabled(false);
+        setChildrenDrawingOrderEnabled(true);
         initWorkspace();
 
         // Disable multitouch across the workspace/all apps/customize tray
@@ -517,6 +523,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
     @Override
     public void onDragStart(DragObject dragObject, DragOptions options) {
+        resetPageTransition();
         if (ENFORCE_DRAG_EVENT_ORDER) {
             enforceDragParity("onDragStart", 0, 0);
         }
@@ -671,6 +678,9 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
     @Override
     public void onViewRemoved(View child) {
+        if (mPageTransition != null) {
+            mPageTransition.reset();
+        }
         super.onViewRemoved(child);
         mLauncher.updatePaginationArrowVisibilities();
     }
@@ -1330,6 +1340,8 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     }
 
     protected void onPageEndTransition() {
+        mPageTransition.reset();
+        updatePageAlphaValues();
         super.onPageEndTransition();
         updateChildrenLayersEnabled();
         getBatchEditor().refreshIcons();
@@ -1355,7 +1367,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     public void setLauncherOverlay(LauncherOverlayTouchProxy overlay) {
         final EdgeEffectCompat newEffect;
         if (overlay == null) {
-            newEffect = new EdgeEffectCompat(getContext());
+            newEffect = new CosWorkspacePageEdgeEffect(getContext(), this, !mIsRtl);
             mOverlayEdgeEffect = null;
         } else {
             newEffect = mOverlayEdgeEffect = new OverlayEdgeEffect(getContext(), overlay);
@@ -1397,9 +1409,99 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             showPageIndicatorAtCurrentScroll();
         }
 
-        updatePageAlphaValues();
         updatePageScrollValues();
+        updatePageTransition();
+        updatePageAlphaValues();
         enableHwLayersOnVisiblePages();
+    }
+
+    @Override
+    protected void initEdgeEffect() {
+        mEdgeGlowLeft = new CosWorkspacePageEdgeEffect(getContext(), this, true);
+        mEdgeGlowRight = new CosWorkspacePageEdgeEffect(getContext(), this, false);
+    }
+
+    private boolean canApplyPageTransition() {
+        return mLauncher != null && mDragController != null && !workspaceInModalState()
+                && !mIsSwitchingState && !mDragController.isDragging()
+                && mOverlayProgress == 0f && ValueAnimator.areAnimatorsEnabled()
+                && (getLayoutTransition() == null || !getLayoutTransition().isRunning());
+    }
+
+    @Override
+    protected SpringAnimationBuilder createPageSpring(int delta, int velocity) {
+        if (!canApplyPageTransition()) {
+            return null;
+        }
+        return new SpringAnimationBuilder(getContext())
+                .setStartValue(0f)
+                .setEndValue(delta)
+                .setStartVelocity(velocity)
+                .setStiffness(DynamicResource.provider(getContext()).getFloat(
+                        R.dimen.horizontal_spring_stiffness))
+                .setDampingRatio(DynamicResource.provider(getContext()).getFloat(
+                        R.dimen.horizontal_spring_damping_ratio))
+                .setMinimumVisibleChange(0.5f);
+    }
+
+    private void updatePageTransition() {
+        if (mPageTransition == null) {
+            return;
+        }
+        if (canApplyPageTransition() && isPageInTransition() && isPageScrollsInitialized()) {
+            float left = mEdgeGlowLeft instanceof CosWorkspacePageEdgeEffect
+                    ? mEdgeGlowLeft.getDistance() : 0f;
+            float right = mEdgeGlowRight instanceof CosWorkspacePageEdgeEffect
+                    ? mEdgeGlowRight.getDistance() : 0f;
+            mPageTransition.apply(((left - right) * getWidth() - getSpringOverscroll()) / 3f);
+        } else {
+            mPageTransition.reset();
+        }
+    }
+
+    private void resetPageTransition() {
+        mPageTransition.reset();
+        if (isSpringScrolling()) {
+            setCurrentPage(getNextPage());
+        }
+        if (mEdgeGlowLeft instanceof CosWorkspacePageEdgeEffect) {
+            mEdgeGlowLeft.finish();
+        }
+        if (mEdgeGlowRight instanceof CosWorkspacePageEdgeEffect) {
+            mEdgeGlowRight.finish();
+        }
+    }
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        boolean wasActive = mPageTransition.isActive();
+        updatePageTransition();
+        if (wasActive != mPageTransition.isActive()) {
+            updatePageAlphaValues();
+            enableHwLayersOnVisiblePages();
+        }
+        super.dispatchDraw(canvas);
+    }
+
+    @Override
+    protected int getChildDrawingOrder(int childCount, int drawingPosition) {
+        return mPageTransition.isActive() && !mIsRtl
+                ? childCount - drawingPosition - 1
+                : super.getChildDrawingOrder(childCount, drawingPosition);
+    }
+
+    @Override
+    public int getLayoutTransitionOffsetForPage(int index) {
+        if (mPageTransition == null || !mPageTransition.isActive()
+                || !isPageScrollsInitialized()) {
+            return super.getLayoutTransitionOffsetForPage(index);
+        }
+        View page = getPageAt(index);
+        if (page == null) {
+            return 0;
+        }
+        int baselineX = getScrollForPage(index) + (mIsRtl ? getPaddingRight() : getPaddingLeft());
+        return (int) (page.getLeft() + mPageTransition.getOriginalTranslationX(page) - baselineX);
     }
 
     public void showPageIndicatorAtCurrentScroll() {
@@ -1525,7 +1627,8 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
                     float scrollProgress = getScrollProgress(screenCenter, child, i);
                     float alpha = 1 - Math.abs(scrollProgress);
                     if (mWorkspaceFadeInAdjacentScreens) {
-                        child.getShortcutsAndWidgets().setAlpha(alpha);
+                        child.getShortcutsAndWidgets().setAlpha(
+                                mPageTransition.isActive() ? 1f : alpha);
                     } else {
                         // Pages that are off-screen aren't important for accessibility.
                         child.getShortcutsAndWidgets().setImportantForAccessibility(
@@ -1556,6 +1659,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     }
 
     protected void onDetachedFromWindow() {
+        resetPageTransition();
         super.onDetachedFromWindow();
         mWallpaperOffset.setWindowToken(null);
         mWallpaperOffset.destroy();
@@ -1565,6 +1669,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        mPageTransition.reset();
         mHasOnLayoutBeenCalled = true; // b/349929393 - is the required call to onLayout not done?
         if (mUnlockWallpaperFromDefaultPageOnLayout) {
             mWallpaperOffset.setLockToDefaultPage(false);
@@ -1575,6 +1680,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             mWallpaperOffset.jumpToFinal();
         }
         super.onLayout(changed, left, top, right, bottom);
+        updatePageTransition();
         updatePageAlphaValues();
     }
 
@@ -1666,6 +1772,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
     private void onStartStateTransition() {
         mIsSwitchingState = true;
+        resetPageTransition();
         mTransitionProgress = 0;
 
         updateChildrenLayersEnabled();
@@ -1697,6 +1804,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     @Override
     public void setStateWithAnimation(
             LauncherState toState, StateAnimationConfig config, PendingAnimation animation) {
+        resetPageTransition();
         StateTransitionListener listener = new StateTransitionListener();
         mLauncher.getStateManager().getState().onLeavingState(mLauncher, toState);
         mStateTransitionAnimation.setStateWithAnimation(toState, config, animation);

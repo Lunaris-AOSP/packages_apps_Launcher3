@@ -49,4 +49,6 @@
 
 <!-- Workspace grid visualization parameters -->
     <dimen name="grid_visualization_horizontal_cell_spacing">6dp</dimen>
+    <item name="horizontal_spring_stiffness" format="float" type="dimen">235.0</item>
+    <item name="workspace_page_back_spring_stiffness" format="float" type="dimen">80.0</item>
 </resources>

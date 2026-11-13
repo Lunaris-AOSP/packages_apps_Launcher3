@@ -47,11 +47,13 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.animation.Interpolator;
 import android.widget.OverScroller;
 import android.widget.ScrollView;
 
 import androidx.annotation.Nullable;
 
+import com.android.launcher3.anim.SpringAnimationBuilder;
 import com.android.launcher3.compat.AccessibilityManagerCompat;
 import com.android.launcher3.config.FeatureFlags;
 import com.android.launcher3.pageindicators.PageIndicator;
@@ -110,6 +112,10 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
     protected int mMaxScroll;
     protected int mMinScroll;
     protected OverScroller mScroller;
+    private Interpolator mScrollInterpolator = SCROLL;
+    private boolean mIsSpringScrolling;
+    private int mSpringOverscroll;
+    private int mPageScrollVelocity;
     private VelocityTracker mVelocityTracker;
     protected int mPageSpacing = 0;
 
@@ -179,7 +185,8 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
         setHapticFeedbackEnabled(false);
         mIsRtl = Utilities.isRtl(getResources());
 
-        mScroller = new OverScroller(context, SCROLL);
+        mScroller = new OverScroller(context,
+                progress -> mScrollInterpolator.getInterpolation(progress));
         mCurrentPage = 0;
         mCurrentScrollOverPage = 0;
 
@@ -255,6 +262,9 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
         if (0 <= mCurrentPage && mCurrentPage < getPageCount()) {
             newPosition = getScrollForPage(mCurrentPage) + mCurrentPageScrollDiff;
         }
+        mIsSpringScrolling = false;
+        mSpringOverscroll = 0;
+        mScrollInterpolator = SCROLL;
         mOrientationHandler.setPrimary(this, VIEW_SCROLL_TO, newPosition);
         mScroller.startScroll(mScroller.getCurrX(), 0, newPosition - mScroller.getCurrX(), 0);
         forceFinishScroller();
@@ -275,6 +285,9 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
 
     private void abortScrollerAnimation(boolean resetNextPage) {
         mScroller.abortAnimation();
+        mIsSpringScrolling = false;
+        mSpringOverscroll = 0;
+        mScrollInterpolator = SCROLL;
         onScrollerAnimationAborted();
         // We need to clean up the next page here to avoid computeScrollHelper from
         // updating current page on the pass.
@@ -290,6 +303,9 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
      */
     public void forceFinishScroller() {
         mScroller.forceFinished(true);
+        mIsSpringScrolling = false;
+        mSpringOverscroll = 0;
+        mScrollInterpolator = SCROLL;
         // We need to clean up the next page here to avoid computeScrollHelper from
         // updating current page on the pass.
         mNextPage = INVALID_PAGE;
@@ -440,7 +456,7 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
      */
     public void setCurrentPage(int currentPage, int overridePrevPage) {
         if (!mScroller.isFinished()) {
-            abortScrollerAnimation(true);
+            abortScrollerAnimation(!mIsSpringScrolling || getChildCount() == 0);
         }
         // don't introduce any checks like mCurrentPage == currentPage here-- if we change the
         // the default
@@ -583,11 +599,13 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
             // Don't bother scrolling if the page does not need to be moved
             int oldPos = mOrientationHandler.getPrimaryScroll(this);
             int newPos = mScroller.getCurrX();
+            mSpringOverscroll = mIsSpringScrolling
+                    ? newPos - Utilities.boundToRange(newPos, mMinScroll, mMaxScroll) : 0;
             if (oldPos != newPos) {
                 mOrientationHandler.setPrimary(this, VIEW_SCROLL_TO, mScroller.getCurrX());
             }
 
-            if (mAllowOverScroll) {
+            if (mAllowOverScroll && !mIsSpringScrolling) {
                 if (newPos < mMinScroll && oldPos >= mMinScroll) {
                     mEdgeGlowLeft.onAbsorb((int) mScroller.getCurrVelocity());
                     abortScrollerAnimation(false);
@@ -603,13 +621,21 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
             // finish the scroller to skip waiting for additional settling
             int finalPos = mOrientationHandler.getPrimaryValue(mScroller.getFinalX(),
                     mScroller.getFinalY());
-            if (newPos == finalPos && mEdgeGlowLeft.isFinished() && mEdgeGlowRight.isFinished()) {
+            if (!mIsSpringScrolling && newPos == finalPos
+                    && mEdgeGlowLeft.isFinished() && mEdgeGlowRight.isFinished()) {
                 abortScrollerAnimation(false);
+            }
+
+            if (mIsSpringScrolling && mScroller.isFinished()) {
+                return computeScrollHelper();
             }
 
             invalidate();
             return true;
         } else if (mNextPage != INVALID_PAGE) {
+            mIsSpringScrolling = false;
+            mSpringOverscroll = 0;
+            mScrollInterpolator = SCROLL;
             sendScrollAccessibilityEvent();
             int prevPage = mCurrentPage;
             mCurrentPage = validateNewPage(mNextPage);
@@ -633,6 +659,18 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
     @Override
     public void computeScroll() {
         computeScrollHelper();
+    }
+
+    protected SpringAnimationBuilder createPageSpring(int delta, int velocity) {
+        return null;
+    }
+
+    protected boolean isSpringScrolling() {
+        return mIsSpringScrolling && !mScroller.isFinished();
+    }
+
+    protected int getSpringOverscroll() {
+        return mSpringOverscroll;
     }
 
     public int getExpectedHeight() {
@@ -808,7 +846,7 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
             mFirstLayout = false;
         }
 
-        if (mScroller.isFinished() && pageScrollChanged) {
+        if (pageScrollChanged && (mScroller.isFinished() || mIsSpringScrolling)) {
             setCurrentPage(getNextPage());
         }
         onPageScrollsInitialized();
@@ -1725,6 +1763,7 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
         float distance = halfScreenSize + halfScreenSize *
                 distanceInfluenceForSnapDuration(distanceRatio);
 
+        int startVelocity = -velocity;
         velocity = Math.abs(velocity);
         velocity = Math.max(mMinSnapVelocity, velocity);
 
@@ -1733,7 +1772,12 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
         // interpolator at zero, ie. 5. We use 4 to make it a little slower.
         duration = 4 * Math.round(1000 * Math.abs(distance / velocity));
 
-        return snapToPage(whichPage, delta, duration);
+        mPageScrollVelocity = startVelocity;
+        try {
+            return snapToPage(whichPage, delta, duration);
+        } finally {
+            mPageScrollVelocity = 0;
+        }
     }
 
     protected int getSnapAnimationDuration() {
@@ -1794,12 +1838,26 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
             abortScrollerAnimation(false);
         }
 
+        SpringAnimationBuilder spring = !immediate && duration > 0 && delta != 0 && !mFreeScroll
+                ? createPageSpring(delta, mPageScrollVelocity) : null;
+        mIsSpringScrolling = spring != null;
+        mSpringOverscroll = 0;
+        if (spring != null) {
+            spring.computeParams();
+            duration = Math.max(1, (int) spring.getDuration());
+            mScrollInterpolator = progress -> spring.getInterpolatedValue(
+                    Utilities.boundToRange(progress, 0f, 1f)) / delta;
+            InteractionBoost.request(duration);
+        } else {
+            mScrollInterpolator = SCROLL;
+        }
         mScroller.startScroll(mOrientationHandler.getPrimaryScroll(this), 0, delta, 0, duration);
         updatePageIndicator();
 
         // Trigger a compute() to finish switching pages if necessary
         if (immediate) {
             computeScroll();
+            computeScrollHelper();
             pageEndTransition();
         }
 

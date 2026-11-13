@@ -632,4 +632,7 @@
     <!-- App Title Pill -->
     <dimen name="app_title_pill_horizontal_padding">4dp</dimen>
     <dimen name="app_title_pill_round_rect_padding">2dp</dimen>
+    <item name="horizontal_spring_stiffness" format="float" type="dimen">250.0</item>
+    <item name="horizontal_spring_damping_ratio" format="float" type="dimen">0.9</item>
+    <item name="workspace_page_back_spring_stiffness" format="float" type="dimen">100.0</item>
 </resources>

@@ -5,4 +5,6 @@
     <entry id="@color/delete_target_hover_tint" />
     <entry id="@color/delete_target_hover_tint" />
 
+    <entry id="@dimen/horizontal_spring_stiffness" />
+    <entry id="@dimen/horizontal_spring_damping_ratio" />
 </DynamicResources>
