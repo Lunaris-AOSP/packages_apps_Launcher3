@@ -127,4 +127,19 @@
     <string name="search_section_recent_downloads">Recent downloads</string>
     <string name="search_recent_downloads_title">Recent downloads</string>
     <string name="search_recent_downloads_summary">Show recently downloaded files before typing</string>
+
+    <!-- Spotlight overlay -->
+    <string name="spotlight_clear_query">Clear search</string>
+    <string name="spotlight_top_hit">Top Hit</string>
+    <string name="spotlight_hint">Search</string>
+    <string name="spotlight_closed">Search closed</string>
+    <string name="spotlight_no_results">No results for \"%1$s\"</string>
+    <string name="spotlight_voice">Voice search</string>
+    <string name="spotlight_clipboard_link">Link on Clipboard</string>
+    <string name="spotlight_open_link">Open Link</string>
+    <string name="spotlight_now_playing">Now Playing</string>
+    <string name="spotlight_suggestions">Suggestions</string>
+    <string name="spotlight_play">Play %1$s</string>
+    <string name="search_pref_spotlight_suggestions">Spotlight suggestions</string>
+    <string name="search_pref_spotlight_suggestions_summary">Suggested apps, a copied link and what\'s playing when Spotlight opens</string>
 </resources>

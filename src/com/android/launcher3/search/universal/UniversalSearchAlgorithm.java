@@ -2,6 +2,8 @@ package com.android.launcher3.search.universal;
 
 import static com.android.launcher3.allapps.BaseAllAppsAdapter.VIEW_TYPE_EMPTY_SEARCH;
 
+import android.app.usage.UsageStats;
+import android.app.usage.UsageStatsManager;
 import android.content.Context;
 import android.os.Handler;
 
@@ -18,6 +20,7 @@ import com.android.launcher3.util.Executors;
 
 import java.text.Collator;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,10 +33,13 @@ import java.util.function.Consumer;
 public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
 
     private static final int MAX_PER_PROVIDER = 12;
+    private static final int MAX_GRID_APPS = 4;
     private static final long DEBOUNCE_MS = 60;
     private static final long PROVIDER_TIMEOUT_MS = 150;
     private static final int NO_FILTER = -1;
     private static final int MAX_SCREENSHOTS = 8;
+    private static final long USAGE_WINDOW_MS = 14L * 24 * 60 * 60 * 1000;
+    private static final long USAGE_TTL_MS = 60_000;
 
     private final Context mContext;
     private final LauncherAppState mAppState;
@@ -49,7 +55,13 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     private String mLastQuery = "";
     private boolean mResetNextQuery;
 
+    // Only touched on the model thread.
+    private Map<String, Long> mUsage;
+    private long mUsageAt;
+
     private Consumer<String> mQueryHandler = q -> { };
+    // Spotlight shows suggested apps before anything is typed, as iOS does.
+    private volatile boolean mSpotlight;
 
     public UniversalSearchAlgorithm(Context context) {
         mContext = context.getApplicationContext();
@@ -62,6 +74,10 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
                 new MediaProvider(), new PhotoProvider(), new CalendarProvider(),
                 new AppSearchProvider(),
                 new ActionProvider(), new WebSuggestionProvider());
+    }
+
+    public void setSpotlight(boolean spotlight) {
+        mSpotlight = spotlight;
     }
 
     public void setQueryHandler(Consumer<String> handler) {
@@ -129,7 +145,9 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
     private AppMatches matchApps(List<AppInfo> apps, String query) {
         String lower = query.trim().toLowerCase(Locale.getDefault());
         if (lower.isEmpty()) {
-            return new AppMatches(new ArrayList<>(), 0);
+            // Spotlight suggests apps even when the drawer's universal search is idle.
+            return new AppMatches(mSpotlight && LauncherPrefs.SPOTLIGHT_SUGGESTIONS.get(mContext)
+                    ? suggestedApps(apps) : new ArrayList<>(), 0);
         }
         record Scored(AppInfo app, int match, int score) {}
         List<Scored> scored = new ArrayList<>();
@@ -161,12 +179,75 @@ public class UniversalSearchAlgorithm implements SearchAlgorithm<AdapterItem> {
         return new AppMatches(items, scored.isEmpty() ? 0 : scored.get(0).score);
     }
 
+    /** The apps opened most from search, then used most lately, as Spotlight's suggestions. */
+    private ArrayList<AdapterItem> suggestedApps(List<AppInfo> apps) {
+        Map<String, Long> usage = recentUsage();
+        String self = mContext.getPackageName();
+        List<AppInfo> sorted = new ArrayList<>();
+        UserManagerState users = UserCache.INSTANCE.get(mContext).getUserManagerState();
+        for (AppInfo app : apps) {
+            if (app.title != null && !self.equals(app.getTargetPackage())
+                    && !users.isUserQuiet(app.user) && users.isUserUnlocked(app.user)) {
+                sorted.add(app);
+            }
+        }
+        sorted.sort((a, b) -> {
+            int boostA = SearchHistory.boost(mContext,
+                    SearchHistory.appKey(a.getTargetComponent(), a.user));
+            int boostB = SearchHistory.boost(mContext,
+                    SearchHistory.appKey(b.getTargetComponent(), b.user));
+            if (boostA != boostB) return boostB - boostA;
+            long usedA = usage.getOrDefault(a.getTargetPackage(), 0L);
+            long usedB = usage.getOrDefault(b.getTargetPackage(), 0L);
+            return usedA != usedB ? Long.compare(usedB, usedA)
+                    : mCollator.compare(a.title.toString(), b.title.toString());
+        });
+        ArrayList<AdapterItem> items = new ArrayList<>();
+        for (int i = 0; i < sorted.size() && i < MAX_GRID_APPS; i++) {
+            items.add(AdapterItem.asApp(sorted.get(i)));
+        }
+        return items;
+    }
+
+    /** Foreground time per package over the last fortnight. */
+    private Map<String, Long> recentUsage() {
+        long now = System.currentTimeMillis();
+        if (mUsage != null && now >= mUsageAt && now - mUsageAt < USAGE_TTL_MS) {
+            return mUsage;
+        }
+        Map<String, Long> usage = new HashMap<>();
+        UsageStatsManager usm = mContext.getSystemService(UsageStatsManager.class);
+        if (usm != null) {
+            try {
+                Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(
+                        now - USAGE_WINDOW_MS, now);
+                if (stats != null) {
+                    for (UsageStats stat : stats.values()) {
+                        usage.put(stat.getPackageName(), stat.getTotalTimeVisible());
+                    }
+                }
+            } catch (SecurityException ignored) {
+                // Usage access is optional; history and alphabetical order still work.
+            }
+        }
+        mUsage = usage;
+        mUsageAt = now;
+        return usage;
+    }
+
     private void publishEmptyQuery(int token, String query, ArrayList<AdapterItem> appItems,
             SearchCallback<AdapterItem> callback) {
         if (token != mRequest.get()) {
             return;
         }
         ArrayList<AdapterItem> items = new ArrayList<>();
+        // Spotlight is its own surface: suggestions come from the app list, not the drawer's
+        // glanceable, history, screenshot or download rows.
+        if (mSpotlight) {
+            items.addAll(appItems);
+            publish(token, query, items, callback);
+            return;
+        }
         if (LauncherPrefs.SEARCH_GLANCEABLE.get(mContext)) {
             UniversalSearchResult glanceable = GlanceableProvider.getGlanceableSummary(mContext);
             if (glanceable != null) {

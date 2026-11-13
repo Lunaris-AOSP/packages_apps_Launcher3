@@ -18,6 +18,7 @@ package com.android.launcher3.qsb;
 
 import static com.android.launcher3.BaseActivity.EVENT_RESUMED;
 import static com.android.launcher3.LauncherState.ALL_APPS;
+import static com.android.launcher3.LauncherState.NORMAL;
 import static com.android.launcher3.anim.AnimatorListeners.forSuccessCallback;
 
 import android.content.ActivityNotFoundException;
@@ -28,6 +29,7 @@ import android.widget.Toast;
 import com.android.launcher3.AbstractFloatingView;
 import com.android.launcher3.Launcher;
 import com.android.launcher3.R;
+import com.android.launcher3.search.universal.SpotlightView;
 import com.android.launcher3.util.ContextTracker;
 import com.android.launcher3.views.ActivityContext;
 
@@ -36,14 +38,22 @@ final class UniversalSearchLauncher {
     private UniversalSearchLauncher() { }
 
     static void launch(Context context) {
+        launch(context, false);
+    }
+
+    static void launchSpotlight(Context context) {
+        launch(context, true);
+    }
+
+    private static void launch(Context context, boolean spotlight) {
         ActivityContext activityContext = ActivityContext.lookupContextNoThrow(context);
         if (activityContext instanceof Launcher launcher) {
-            showSearch(launcher);
+            showSearch(launcher, spotlight);
             return;
         }
 
         ContextTracker.SchedulerCallback<Launcher> callback = (launcher, isHomeStarted) -> {
-            launcher.addEventCallback(EVENT_RESUMED, () -> showSearch(launcher));
+            launcher.addEventCallback(EVENT_RESUMED, () -> showSearch(launcher, spotlight));
             return false;
         };
         Launcher.ACTIVITY_TRACKER.registerCallback(callback, "UniversalSearchLauncher.launch");
@@ -59,9 +69,14 @@ final class UniversalSearchLauncher {
         }
     }
 
-    private static void showSearch(Launcher launcher) {
-        AbstractFloatingView.closeAllOpenViews(launcher);
+    private static void showSearch(Launcher launcher, boolean spotlight) {
+        AbstractFloatingView.closeAllOpenViews(launcher, !spotlight);
         launcher.getOverlayManager().hideOverlay(true);
+        if (spotlight) {
+            launcher.getStateManager().goToState(NORMAL, false);
+            SpotlightView.show(launcher);
+            return;
+        }
         launcher.getAppsView().setUniversalSearchActive(true);
         // Search shares the All Apps container, but should open directly from home.
         launcher.getStateManager().goToState(ALL_APPS, true, forSuccessCallback(() -> {
