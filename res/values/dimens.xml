@@ -635,4 +635,5 @@
     <item name="horizontal_spring_stiffness" format="float" type="dimen">250.0</item>
     <item name="horizontal_spring_damping_ratio" format="float" type="dimen">0.9</item>
     <item name="workspace_page_back_spring_stiffness" format="float" type="dimen">100.0</item>
+    <item name="workspace_page_back_spring_stiffness_fold" format="float" type="dimen">90.0</item>
 </resources>

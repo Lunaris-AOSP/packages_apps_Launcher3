@@ -133,6 +133,16 @@
             android:persistent="true"
             launcher:iconSpaceReserved="false" />
 
+        <ListPreference
+            android:key="pref_workspace_page_transition"
+            android:title="@string/workspace_page_transition_title"
+            android:summary="%s"
+            android:entries="@array/workspace_page_transition_entries"
+            android:entryValues="@array/workspace_page_transition_values"
+            android:defaultValue="card"
+            android:persistent="true"
+            launcher:iconSpaceReserved="false" />
+
         <SwitchPreferenceCompat
             android:key="pref_app_launch_blur"
             android:title="@string/pref_app_launch_blur_title"

@@ -60,8 +60,12 @@ final class CosWorkspacePageEdgeEffect extends EdgeEffectCompat {
         if (!ValueAnimator.areAnimatorsEnabled()) {
             finish();
         } else if (!mReleasing && mDistance > 0f) {
+            int stiffness = mWorkspace instanceof Workspace
+                    && ((Workspace<?>) mWorkspace).getPanelCount() > 1
+                    ? R.dimen.workspace_page_back_spring_stiffness_fold
+                    : R.dimen.workspace_page_back_spring_stiffness;
             mNaturalFrequency = Math.sqrt(mWorkspace.getResources().getFloat(
-                    R.dimen.workspace_page_back_spring_stiffness));
+                    stiffness));
             mStartDistance = mDistance;
             mStartVelocity = mVelocity;
             mStartTime = AnimationUtils.currentAnimationTimeMillis();

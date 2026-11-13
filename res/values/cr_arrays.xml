@@ -99,6 +99,24 @@
         <item>usage</item>
     </string-array>
 
+    <string-array name="workspace_page_transition_entries">
+        <item>@string/workspace_page_transition_card</item>
+        <item>@string/workspace_page_transition_roll</item>
+        <item>@string/workspace_page_transition_slide</item>
+        <item>@string/workspace_page_transition_cube</item>
+        <item>@string/workspace_page_transition_flip</item>
+        <item>@string/workspace_page_transition_tilt</item>
+    </string-array>
+
+    <string-array name="workspace_page_transition_values" translatable="false">
+        <item>card</item>
+        <item>roll</item>
+        <item>slide</item>
+        <item>cube</item>
+        <item>flip</item>
+        <item>tilt</item>
+    </string-array>
+
     <string-array name="recents_styles_entries">
         <item>@string/recents_style_default</item>
         <item>@string/recents_style_stock</item>

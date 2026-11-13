@@ -329,6 +329,11 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     // Handles workspace state transitions
     private final WorkspaceStateTransitionAnimation mStateTransitionAnimation;
     private final CosWorkspacePageTransition mPageTransition;
+    private final LauncherPrefChangeListener mPageTransitionPreferenceListener = key -> {
+        if (LauncherPrefs.WORKSPACE_PAGE_TRANSITION.getSharedPrefKey().equals(key)) {
+            updatePageTransitionPreference();
+        }
+    };
 
     private final StatsLogManager mStatsLogManager;
 
@@ -370,6 +375,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         mLauncherUiState = mLauncher.getLauncherUiState();
         mStateTransitionAnimation = new WorkspaceStateTransitionAnimation(mLauncher, this);
         mPageTransition = new CosWorkspacePageTransition(this);
+        mPageTransition.setEffect(LauncherPrefs.WORKSPACE_PAGE_TRANSITION.get(context));
         mWallpaperManager = WallpaperManager.getInstance(context);
         mAllAppsIconSize = mLauncher.getDeviceProfile().getAllAppsProfile().getIconSizePx();
         mWallpaperOffset = new WallpaperOffsetInterpolator(this);
@@ -1472,6 +1478,14 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         }
     }
 
+    private void updatePageTransitionPreference() {
+        resetPageTransition();
+        mPageTransition.setEffect(LauncherPrefs.WORKSPACE_PAGE_TRANSITION.get(getContext()));
+        updatePageAlphaValues();
+        enableHwLayersOnVisiblePages();
+        invalidate();
+    }
+
     @Override
     protected void dispatchDraw(Canvas canvas) {
         boolean wasActive = mPageTransition.isActive();
@@ -1480,12 +1494,37 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             updatePageAlphaValues();
             enableHwLayersOnVisiblePages();
         }
+        if (mPageTransition.isRoll()) {
+            mPageTransition.setDrawingBackfaces(true);
+            try {
+                super.dispatchDraw(canvas);
+            } finally {
+                mPageTransition.setDrawingBackfaces(false);
+            }
+        }
         super.dispatchDraw(canvas);
     }
 
     @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        return mPageTransition.isRoll()
+                ? mPageTransition.drawRollChild(canvas, child, drawingTime)
+                : super.drawChild(canvas, child, drawingTime);
+    }
+
+    boolean drawPageForTransition(Canvas canvas, View child, long drawingTime) {
+        return super.drawChild(canvas, child, drawingTime);
+    }
+
+    @Override
+    public int[] getVisibleChildrenRange() {
+        return mPageTransition != null && mPageTransition.isActive()
+                ? mPageTransition.getVisibleChildrenRange() : super.getVisibleChildrenRange();
+    }
+
+    @Override
     protected int getChildDrawingOrder(int childCount, int drawingPosition) {
-        return mPageTransition.isActive() && !mIsRtl
+        return mPageTransition.isCard() && !mIsRtl
                 ? childCount - drawingPosition - 1
                 : super.getChildDrawingOrder(childCount, drawingPosition);
     }
@@ -1653,12 +1692,17 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        updatePageTransitionPreference();
+        LauncherPrefs.get(getContext()).addListener(mPageTransitionPreferenceListener,
+                LauncherPrefs.WORKSPACE_PAGE_TRANSITION);
         mWallpaperOffset.setWindowToken(getWindowToken());
         computeScroll();
         mLauncher.getStateManager().addStateListener(mAccessibilityDropListener);
     }
 
     protected void onDetachedFromWindow() {
+        LauncherPrefs.get(getContext()).removeListener(mPageTransitionPreferenceListener,
+                LauncherPrefs.WORKSPACE_PAGE_TRANSITION);
         resetPageTransition();
         super.onDetachedFromWindow();
         mWallpaperOffset.setWindowToken(null);

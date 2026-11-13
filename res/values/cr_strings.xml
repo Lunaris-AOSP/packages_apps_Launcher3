@@ -632,6 +632,14 @@
     <string name="workspace_unlock_animation_title">Unlock reveal animation</string>
     <string name="workspace_unlock_animation_summary">Fade, scale, and slide in home screen items when unlocking</string>
 
+    <string name="workspace_page_transition_title">Page transition</string>
+    <string name="workspace_page_transition_card">Card</string>
+    <string name="workspace_page_transition_roll">Roll</string>
+    <string name="workspace_page_transition_slide">Classic swipe</string>
+    <string name="workspace_page_transition_cube">Cube</string>
+    <string name="workspace_page_transition_flip">Flip</string>
+    <string name="workspace_page_transition_tilt">Tilt</string>
+
     <!-- App launch blur -->
     <string name="pref_app_launch_blur_title">App launch/close blur</string>
     <string name="pref_app_launch_blur_summary">Show blur effect when launching or closing apps</string>
