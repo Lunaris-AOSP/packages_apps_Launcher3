@@ -152,7 +152,10 @@ public class LauncherAnimationRunner extends RemoteAnimationRunnerCompat {
             if (!mFinished) {
                 mFinished = true;
                 if (mWindowSpring != null) {
-                    if (mWindowSpring.isRunning()) mWindowSpring.end();
+                    if (mWindowSpring.isRunning()) {
+                        if (mWindowSpring.isNothing()) mWindowSpring.interrupt();
+                        else mWindowSpring.end();
+                    }
                     if (!mAnimatorEnded && mAnimator != null && mAnimator.isStarted()) {
                         mAnimator.cancel();
                     }

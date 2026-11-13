@@ -35,6 +35,7 @@ import android.graphics.Matrix;
 import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.RemoteAnimationTarget;
 import android.view.SurfaceControl;
@@ -54,6 +55,7 @@ import com.android.quickstep.DesktopFullscreenDrawParams;
 import com.android.quickstep.FallbackWindowInterface;
 import com.android.quickstep.FullscreenDrawParams;
 import com.android.quickstep.TaskAnimationManager;
+import com.android.quickstep.cos.CosAppAnimation;
 import com.android.quickstep.util.SurfaceTransaction.SurfaceProperties;
 import com.android.systemui.shared.recents.model.ThumbnailData;
 import com.android.systemui.shared.recents.utilities.PreviewPositionHelper;
@@ -90,6 +92,11 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
 
     private final Matrix mMatrix = new Matrix();
     private final Matrix mMatrixTmp = new Matrix();
+    private NothingTransitionState.Snapshot mNothingHandoff;
+    private long mNothingHandoffStart = -1;
+    private float mNothingHandoffRadius = -1f;
+    private final float[] mHandoffStartValues = new float[9];
+    private final float[] mHandoffEndValues = new float[9];
 
     // Thumbnail view properties
     private final Rect mThumbnailPosition = new Rect();
@@ -258,6 +265,12 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
      */
     public void setPreview(RemoteAnimationTarget runningTarget, SplitBounds splitInfo) {
         mSplitBounds = splitInfo;
+        mNothingHandoff = !CosAppAnimation.isEnabled(mContext) && splitInfo == null
+                && !mIsDesktopTask && runningTarget.rotationChange == 0
+                && mOrientationState.getDisplayRotation() == 0
+                ? NothingTransitionState.take(runningTarget) : null;
+        mNothingHandoffStart = -1;
+        mNothingHandoffRadius = -1f;
         if (mSplitBounds == null) {
             setPreviewBounds(
                     runningTarget.startBounds != null
@@ -353,6 +366,10 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
      * Returns the current clipped/visible window bounds in the window coordinate space
      */
     public RectF getCurrentCropRect() {
+        if (mNothingHandoff != null) {
+            mTempRectF.set(mTmpCropRect);
+            return mTempRectF;
+        }
         // Crop rect is the inverse of thumbnail matrix
         mTempRectF.set(0, 0, mTaskRect.width(), mTaskRect.height());
         mInversePositionMatrix.mapRect(mTempRectF);
@@ -529,6 +546,7 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
             mTempRectF.roundOut(mTmpCropRect);
         }
 
+        applyNothingHandoff(params);
         if (params.getTargetSet() != null) {
             params.setProgress(1f - fullScreenProgress);
             params.applySurfaceParams(surfaceTransaction == null
@@ -595,6 +613,7 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
      * TaskView
      */
     public float getCurrentCornerRadius() {
+        if (mNothingHandoffRadius >= 0f) return mNothingHandoffRadius;
         float visibleRadius = mCurrentFullscreenParams.getCurrentCornerRadius();
         mTempPoint[0] = visibleRadius;
         mTempPoint[1] = 0;
@@ -608,6 +627,42 @@ public class TaskViewSimulator implements TransformParams.BuilderProxy {
 
         // Ideally we should use square-root. This is an optimization as one of the dimension is 0.
         return Math.max(Math.abs(mTempPoint[0]), Math.abs(mTempPoint[1]));
+    }
+
+    private void applyNothingHandoff(TransformParams params) {
+        mNothingHandoffRadius = -1f;
+        if (mNothingHandoff == null) return;
+        if (CosAppAnimation.isEnabled(mContext) || mIsDesktopTask || mSplitBounds != null
+                || mOrientationState.getDisplayRotation() != 0) {
+            mNothingHandoff = null;
+            params.setTargetAlpha(1f);
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (mNothingHandoffStart < 0) mNothingHandoffStart = now;
+        float progress = Utilities.boundToRange((float) (now - mNothingHandoffStart)
+                / NothingTransitionState.HANDOFF_DURATION_MS, 0f, 1f);
+        float remaining = 1f - progress;
+        progress = 1f - remaining * remaining * remaining;
+        float radius = getCurrentCornerRadius();
+        mNothingHandoff.matrix.getValues(mHandoffStartValues);
+        mMatrix.getValues(mHandoffEndValues);
+        for (int i = 0; i < mHandoffEndValues.length; i++) {
+            mHandoffEndValues[i] = Utilities.mapRange(progress,
+                    mHandoffStartValues[i], mHandoffEndValues[i]);
+        }
+        mMatrix.setValues(mHandoffEndValues);
+        Rect crop = mNothingHandoff.crop;
+        mTmpCropRect.set(Math.round(Utilities.mapRange(progress, crop.left, mTmpCropRect.left)),
+                Math.round(Utilities.mapRange(progress, crop.top, mTmpCropRect.top)),
+                Math.round(Utilities.mapRange(progress, crop.right, mTmpCropRect.right)),
+                Math.round(Utilities.mapRange(progress, crop.bottom, mTmpCropRect.bottom)));
+        float[] values = mHandoffStartValues;
+        float scale = (float) Math.hypot(values[Matrix.MSCALE_X], values[Matrix.MSKEW_Y]);
+        mNothingHandoffRadius = Utilities.mapRange(progress,
+                mNothingHandoff.radius / Math.max(0.001f, scale), radius);
+        params.setTargetAlpha(1f);
+        if (progress >= 1f) mNothingHandoff = null;
     }
 
     public float getScaledCornerRadius() {

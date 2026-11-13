@@ -93,6 +93,8 @@ public abstract class SwipeUpAnimationLogic implements
     protected boolean mIsSwipeForSplit;
     @Nullable
     protected SpringAnimationRunner mCosHomeAnimationRunner;
+    @Nullable
+    protected SpringAnimationRunner mNothingHomeAnimationRunner;
 
     public SwipeUpAnimationLogic(Context context, GestureState gestureState,
             RotationTouchHelper rotationTouchHelper) {
@@ -250,6 +252,8 @@ public abstract class SwipeUpAnimationLogic implements
 
         public void onCancel() { }
 
+        public void onReverseToApp() { }
+
         protected float getWindowCornerRadius(float progress) {
             return -1f;
         }
@@ -348,6 +352,7 @@ public abstract class SwipeUpAnimationLogic implements
         final RectF targetRect = homeAnimationFactory.getWindowTargetRect();
         RectFSpringAnim[] out = new RectFSpringAnim[mRemoteTargetHandles.length];
         mCosHomeAnimationRunner = null;
+        mNothingHomeAnimationRunner = null;
         Matrix[] homeToWindowPositionMap = new Matrix[mRemoteTargetHandles.length];
         RectF[] startRects = updateProgressForStartRect(homeToWindowPositionMap, startProgress);
         for (int i = 0, mRemoteTargetHandlesLength = mRemoteTargetHandles.length;
@@ -431,6 +436,9 @@ public abstract class SwipeUpAnimationLogic implements
         anim.addAnimatorListener(runner);
         anim.addOnUpdateListener(runner);
         if (cos) mCosHomeAnimationRunner = runner;
+        if (anim.isNothing() && !CosAppAnimation.isEnabled(mContext)) {
+            mNothingHomeAnimationRunner = runner;
+        }
         return anim;
     }
 
@@ -439,6 +447,8 @@ public abstract class SwipeUpAnimationLogic implements
 
         private static final String TAG = "SpringAnimationRunner";
         private final boolean mNothingAnimation;
+        private final RectFSpringAnim mSpring;
+        private float mReverseRadius;
 
         final Rect mCropRect = new Rect();
         final Matrix mMatrix = new Matrix();
@@ -484,6 +494,7 @@ public abstract class SwipeUpAnimationLogic implements
                 TaskViewSimulator taskViewSimulator,
                 RectF invariantStartRect, RectFSpringAnim spring) {
             mNothingAnimation = spring.isNothing() && factory.getTargetTaskView() == null;
+            mSpring = spring;
             mAnimationFactory = factory;
             mHomeAnim = factory.createActivityAnimationToHome();
             mCropRectF = cropRectF;
@@ -518,6 +529,13 @@ public abstract class SwipeUpAnimationLogic implements
         public void onUpdate(RectF currentRect, float progress) {
             float cornerRadius = Utilities.mapRange(progress, mStartRadius, mEndRadius);
             float alpha = mAnimationFactory.getWindowAlpha(progress);
+            if (mSpring.isReverse()) {
+                float closingProgress = Utilities.boundToRange(
+                        progress / mSpring.getReverseProgress(), 0f, 1f);
+                cornerRadius = Utilities.mapRange(closingProgress,
+                        com.android.systemui.shared.system.QuickStepContract
+                                .getWindowCornerRadius(mContext), mReverseRadius);
+            }
             mHomeCurrentRect.set(currentRect);
             mSnapshotRadius = cornerRadius;
             if (mSnapshot != null) mSnapshot.update(currentRect, cornerRadius, alpha);
@@ -625,7 +643,8 @@ public abstract class SwipeUpAnimationLogic implements
                     || mCropRectF.isEmpty() || mHomeCurrentRect.isEmpty() || taskBounds.isEmpty()) {
                 return null;
             }
-            mSnapshot = new CosHomeSnapshot(mContext, bitmap, mCropRectF, taskBounds);
+            mSnapshot = new CosHomeSnapshot(mContext, bitmap, mCropRectF, taskBounds,
+                    mNothingAnimation);
             mSnapshot.update(mHomeCurrentRect, mSnapshotRadius,
                     mLocalTransformParams.getTargetAlpha());
             return mSnapshot;
@@ -710,9 +729,25 @@ public abstract class SwipeUpAnimationLogic implements
         @Override
         public void onAnimationSuccess(Animator animator) {
             cleanUp();
-            if (!mLocalTransformParams.isDetachedForParallelAnimation()) {
+            if (mSpring.isReverse()) {
+                mHomeAnim.dispatchOnCancel();
+            } else if (!mLocalTransformParams.isDetachedForParallelAnimation()) {
                 finishHomeAnimation();
             }
+        }
+
+        public boolean reverseToOpen() {
+            if (!mNothingAnimation || mTargetTaskView != null || mAnimationFactory.isWidget()) {
+                return false;
+            }
+            RectF bounds = new RectF(mCropRectF);
+            Matrix inverse = new Matrix();
+            if (!mHomeToWindowPositionMap.invert(inverse)) return false;
+            inverse.mapRect(bounds);
+            mReverseRadius = mSnapshotRadius;
+            if (!mSpring.reverseToOpen(bounds)) return false;
+            mAnimationFactory.onReverseToApp();
+            return true;
         }
 
         public void finishHomeAnimation() {

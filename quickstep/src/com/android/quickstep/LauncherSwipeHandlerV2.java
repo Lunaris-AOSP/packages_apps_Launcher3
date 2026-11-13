@@ -59,7 +59,6 @@ import com.android.quickstep.cos.CosAppAnimation;
 import com.android.quickstep.cos.CosCloseAnimation;
 import com.android.quickstep.cos.CosWorkspaceRevealAnim;
 import com.android.quickstep.util.RectFSpringAnim;
-import com.android.quickstep.util.ScalingWorkspaceRevealAnim;
 import com.android.quickstep.util.TaskViewSimulator;
 import com.android.quickstep.views.FloatingWidgetView;
 import com.android.quickstep.views.RecentsView;
@@ -264,7 +263,8 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                         }
                     });
                 }
-                floatingIconView.setAllowParallelAnimation(anim.isCos());
+                floatingIconView.setAllowParallelAnimation(anim.isCos()
+                        || (anim.isNothing() && !CosAppAnimation.isEnabled(mContainer)));
                 floatingIconView.setOnTargetChangeListener(
                         mSiblingAnimation::onTargetPositionChanged);
                 floatingIconView.setFastFinishRunnable(mSiblingAnimation::end);
@@ -310,13 +310,18 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                         && mSiblingAnimation.isNothing();
                 boolean cos = mSiblingAnimation != null && mSiblingAnimation.isCos();
                 float iconAlpha = cos ? mSiblingAnimation.getCosFadeProgress() : useNothingAnimation
-                        ? 1f
+                        ? NothingAppAnimation.getIconAlpha(progress)
                         : Interpolators.clampToProgress(progress, 0f, windowAlphaThreshold);
                 float shapeProgressStart = cos ? 0f : useNothingAnimation
                         ? (isQsb() ? 0.5f : NothingAppAnimation.SHAPE_PROGRESS_START)
                         : windowAlphaThreshold;
                 floatingIconView.update(iconAlpha, currentRect, progress, shapeProgressStart,
                         radius, false, overlayAlpha);
+            }
+
+            @Override
+            public void onReverseToApp() {
+                floatingIconView.setAnimationReversed();
             }
 
             @Override
@@ -497,9 +502,8 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                             getWindowTargetRect(), true, true).start();
                     return;
                 }
-                new ScalingWorkspaceRevealAnim(mContainer, mSiblingAnimation,
-                        getWindowTargetRect(), true /* playAlphaReveal */,
-                        true /* playBlur */).start();
+                mContainer.getAppTransitionManager().getNothingWorkspaceAnimation().reveal(
+                        mSiblingAnimation, getWindowTargetRect(), true, true);
             }
         }
 
@@ -516,6 +520,9 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
             super.setAnimation(anim);
             if (CosAppAnimation.isEnabled(mContainer)) {
                 anim.addAnimatorListener(new CosCloseAnimation(mContainer, anim::end));
+            } else {
+                mContainer.getAppTransitionManager().getNothingWorkspaceAnimation()
+                        .trackClosingAnimation(anim);
             }
         }
 
@@ -553,9 +560,8 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
                     new CosWorkspaceRevealAnim(mContainer, null, null, true, true).start();
                     return;
                 }
-                new ScalingWorkspaceRevealAnim(
-                        mContainer, null /* siblingAnimation */, null /* windowTargetRect */,
-                        true /* playAlphaReveal */, true /* playBlur */).start();
+                mContainer.getAppTransitionManager().getNothingWorkspaceAnimation().reveal(
+                        null, null, true, true);
             }
         }
     }

@@ -214,7 +214,9 @@ class ScalingWorkspaceRevealAnim(
                         launcher.resources.getInteger(R.integer.max_depth_blur_radius)
                     }
                 val blurAnimator = ValueAnimator.ofFloat(1f, 0f)
-                blurAnimator.setInterpolator(BLUR_INTERPOLATOR)
+                blurAnimator.setInterpolator(if (isNothingAnimation) {
+                    Interpolators.clampToProgress(EMPHASIZED, 0f, 0.666f)
+                } else BLUR_INTERPOLATOR)
                 var lastBlurRadius = -1
                 blurAnimator.addUpdateListener {
                     val blurRadius = (maxBlurRadius * blurAnimator.animatedValue as Float).toInt()
@@ -227,7 +229,9 @@ class ScalingWorkspaceRevealAnim(
 
                 transitionConfig.setInterpolator(
                     StateAnimationConfig.ANIM_SCRIM_FADE,
-                    BLUR_INTERPOLATOR,
+                    if (isNothingAnimation) {
+                        Interpolators.clampToProgress(EMPHASIZED, 0f, 0.666f)
+                    } else BLUR_INTERPOLATOR,
                 )
                 launcher.workspace.stateTransitionAnimation.setScrim(
                     animation,
@@ -279,7 +283,6 @@ class ScalingWorkspaceRevealAnim(
                 override fun onAnimationCancel(animation: Animator) {
                     super.onAnimationCancel(animation)
                     Log.d(TAG, "onAnimationCancel")
-                    if (siblingAnimation?.isNothing == true) siblingAnimation.cancel()
                     applyBlur(0f, 0f)
                 }
 

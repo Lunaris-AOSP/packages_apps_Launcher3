@@ -539,6 +539,16 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
     @Override
     public RunnableList startActivitySafely(View v, Intent intent, ItemInfo item) {
         RunnableList deferred = new RunnableList();
+        if (com.android.quickstep.AbsSwipeUpHandler.handleNothingHomeFlightLaunch(this,
+                intent, item, () -> {
+                    if (isDestroyed()) {
+                        deferred.executeAllAndDestroy();
+                        return;
+                    }
+                    RunnableList actual = startActivitySafelyAfterHomeFlight(v, intent, item);
+                    if (actual == null) deferred.executeAllAndDestroy();
+                    else actual.add(deferred::executeAllAndDestroy);
+                }, deferred::executeAllAndDestroy)) return deferred;
         if (com.android.quickstep.AbsSwipeUpHandler.finishHomeFlightForLaunch(() -> {
             if (isDestroyed()) {
                 deferred.executeAllAndDestroy();

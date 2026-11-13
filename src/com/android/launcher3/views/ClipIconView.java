@@ -83,6 +83,7 @@ public class ClipIconView extends View implements ClipPathView {
     @Nullable private BubbleTextView mSuperIconSourceView;
 
     private ValueAnimator mRevealAnimator;
+    private boolean mAnimationReversed;
 
     private final Rect mStartRevealRect = new Rect();
     private final Rect mEndRevealRect = new Rect();
@@ -125,6 +126,10 @@ public class ClipIconView extends View implements ClipPathView {
     public void setTaskViewArtist(TaskViewArtist taskViewArtist) {
         mTaskViewArtist = taskViewArtist;
         invalidate();
+    }
+
+    public void setAnimationReversed(boolean reversed) {
+        mAnimationReversed = reversed;
     }
 
     public void setAllowScaleDown(boolean allow) {
@@ -219,7 +224,8 @@ public class ClipIconView extends View implements ClipPathView {
         mTaskCornerRadius = cornerRadius / scale;
         if (mIsAdaptiveIcon) {
             if ((!isOpening || Flags.enableLauncherIconShapes())
-                    && progress >= shapeProgressStart) {
+                    && (progress >= shapeProgressStart
+                            || (mAnimationReversed && mRevealAnimator != null))) {
                 if (mRevealAnimator == null) {
                     ShapeDelegate shape;
                     if (Flags.enableLauncherIconShapes()) {
@@ -487,6 +493,7 @@ public class ClipIconView extends View implements ClipPathView {
             mRevealAnimator.cancel();
         }
         mRevealAnimator = null;
+        mAnimationReversed = false;
         mTaskCornerRadius = 0;
         mOutline.setEmpty();
         mTaskViewArtist = null;

@@ -129,6 +129,7 @@ import com.android.launcher3.dagger.LauncherComponentProvider;
 import com.android.launcher3.dragndrop.DragView;
 import com.android.launcher3.logging.StatsLogManager;
 import com.android.launcher3.logging.StatsLogManager.StatsLogger;
+import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.statehandlers.DesktopVisibilityController;
 import com.android.launcher3.statemanager.BaseState;
 import com.android.launcher3.statemanager.StatefulContainer;
@@ -336,6 +337,10 @@ public abstract class AbsSwipeUpHandler<
     // Either RectFSpringAnim (if animating home) or ObjectAnimator (from mCurrentShift) otherwise
     private RunningWindowAnim[] mRunningWindowAnim;
     private RectFSpringAnim mCosHomeFlight;
+    private RectFSpringAnim mNothingHomeFlight;
+    private boolean mNothingHomeReversed;
+    private static WeakReference<AbsSwipeUpHandler<?, ?, ?>> sNothingHomeFlight =
+            new WeakReference<>(null);
     private boolean mHomeAnimDetachedFromWindow;
     private final PendingAppLaunch mHomeFlightLaunch = new PendingAppLaunch();
     private static WeakReference<AbsSwipeUpHandler<?, ?, ?>> sHomeFlight =
@@ -433,7 +438,8 @@ public abstract class AbsSwipeUpHandler<
                     }
                     return mRecentsView.getPagedViewOrientedState().getRecentsActivityRotation();
                 }, inputConsumer, /* onTouchDownCallback = */ () -> {
-                    if (mCosHomeFlight == null || !mCosHomeFlight.isRunning()
+                    if (((mCosHomeFlight == null || !mCosHomeFlight.isRunning())
+                            && (mNothingHomeFlight == null || !mNothingHomeFlight.isRunning()))
                             || mGestureState.getEndTarget() != HOME) {
                         endRunningWindowAnim(mGestureState.getEndTarget() == HOME);
                     }
@@ -1113,6 +1119,9 @@ public abstract class AbsSwipeUpHandler<
         } else {
             forDesktop = targets.hasDesktopTasks(mContext);
         }
+        if (!CosAppAnimation.isEnabled(mContext) && mContainer instanceof QuickstepLauncher launcher) {
+            launcher.getAppTransitionManager().interruptNothingLaunch();
+        }
         if (forDesktop) {
             mRemoteTargetHandles = mTargetGluer.assignTargetsForDesktop(targets, transitionInfo);
         } else {
@@ -1157,7 +1166,10 @@ public abstract class AbsSwipeUpHandler<
     @Override
     public void onRecentsAnimationCanceled(HashMap<Integer, ThumbnailData> thumbnailDatas) {
         ActiveGestureProtoLogProxy.logAbsSwipeUpHandlerOnRecentsAnimationCanceled();
-        if (thumbnailDatas == null || thumbnailDatas.isEmpty()) detachHomeAnimationFromWindow();
+        if (thumbnailDatas == null || thumbnailDatas.isEmpty()) {
+            detachHomeAnimationFromWindow();
+            detachNothingHomeAnimationFromWindow();
+        }
         cleanUpOnFailedRecentsAnimation("AbsSwipeUpHandler.onRecentsAnimationCanceled");
     }
 
@@ -1171,6 +1183,79 @@ public abstract class AbsSwipeUpHandler<
             @NonNull Runnable onSuperseded) {
         AbsSwipeUpHandler<?, ?, ?> handler = sHomeFlight.get();
         return handler != null && handler.finishHomeFlightEarly(launch, onSuperseded);
+    }
+
+    @UiThread
+    public static boolean handleNothingHomeFlightLaunch(QuickstepLauncher launcher,
+            Intent intent, ItemInfo item, Runnable launch, Runnable onSuperseded) {
+        AbsSwipeUpHandler<?, ?, ?> handler = sNothingHomeFlight.get();
+        return handler != null && handler.mContainer == launcher
+                && handler.handleNothingHomeFlightLaunch(intent, item, launch, onSuperseded);
+    }
+
+    private boolean handleNothingHomeFlightLaunch(Intent intent, ItemInfo item,
+            Runnable launch, Runnable onSuperseded) {
+        if (!CosAppAnimation.isEnabled(mContext) && mHomeFlightLaunch.hasPendingLaunch()) {
+            mHomeFlightLaunch.set(launch, onSuperseded);
+            return true;
+        }
+        if (CosAppAnimation.isEnabled(mContext) || mRecentsAnimationController == null
+                || mGestureState.getEndTarget() != HOME || mNothingHomeFlight == null
+                || !mNothingHomeFlight.isRunning() || mNothingHomeAnimationRunner == null
+                || mIsSwipingPipToHome || mIsSwipeForSplit
+                || !mStateCallback.hasStates(STATE_GESTURE_COMPLETED)
+                || mStateCallback.hasStates(STATE_CURRENT_TASK_FINISHED)
+                || mStateCallback.hasStates(STATE_HANDLER_INVALIDATED)) return false;
+        RemoteAnimationTarget target = mRecentsAnimationTargets == null ? null
+                : mRecentsAnimationTargets.findTask(mGestureState.getTopRunningTaskId());
+        boolean sameApp = !mHomeAnimDetachedFromWindow && target != null
+                && target.taskInfo != null && item != null
+                && item.itemType == com.android.launcher3.LauncherSettings.Favorites
+                        .ITEM_TYPE_APPLICATION
+                && item.user != null && item.user.getIdentifier() == target.taskInfo.userId
+                && intent != null && Intent.ACTION_MAIN.equals(intent.getAction())
+                && intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+                && intent.getComponent() != null && target.taskInfo.baseIntent != null
+                && intent.getComponent().equals(target.taskInfo.baseIntent.getComponent())
+                && mRotationTouchHelper.getCurrentActiveRotation() == ROTATION_0
+                && mRemoteTargetHandles[0].getTaskViewSimulator().getOrientationState()
+                        .getRecentsActivityRotation() == ROTATION_0
+                && target.rotationChange == 0
+                && !mHandOffAnimationToHome
+                && target.taskInfo.getWindowingMode() != WINDOWING_MODE_FREEFORM;
+        if (sameApp && mContainer instanceof QuickstepLauncher launcher
+                && mNothingHomeAnimationRunner.reverseToOpen()) {
+            mNothingHomeReversed = true;
+            mRecentsAnimationController.setWillFinishToHome(false);
+            RecentsAnimationController controller = mRecentsAnimationController;
+            UI_HELPER_EXECUTOR.execute(() -> controller.getController()
+                    .setInputConsumerEnabled(false));
+            mInputConsumerProxy.destroy();
+            resetLauncherListeners();
+            mGestureState.setEndTarget(LAST_TASK, false);
+            mGestureState.setState(STATE_RECENTS_SCROLLING_FINISHED);
+            launcher.getAppTransitionManager().getNothingWorkspaceAnimation().open(false);
+            mNothingHomeFlight.addAnimatorListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    MAIN_EXECUTOR.getHandler().post(onSuperseded);
+                }
+            });
+            return true;
+        }
+        mHomeFlightLaunch.set(launch, onSuperseded);
+        mStateCallback.runOnceAtState(STATE_CURRENT_TASK_FINISHED, this::runHomeFlightLaunches);
+        mRecentsAnimationController.setWillFinishToHome(true);
+        if (!mHomeAnimDetachedFromWindow
+                && !flyHomeSnapshot(mNothingHomeFlight, mNothingHomeAnimationRunner)) {
+            mNothingHomeFlight.end();
+            return true;
+        }
+        detachNothingHomeAnimationFromWindow();
+        mNothingHomeAnimationRunner.finishHomeAnimation();
+        mGestureState.setState(STATE_RECENTS_SCROLLING_FINISHED);
+        mGestureState.setState(STATE_END_TARGET_ANIMATION_FINISHED);
+        return true;
     }
 
     private boolean finishHomeFlightEarly(Runnable launch, Runnable onSuperseded) {
@@ -1205,14 +1290,19 @@ public abstract class AbsSwipeUpHandler<
         MAIN_EXECUTOR.getHandler().post(() -> {
             if (mParallelRunningAnim != null) mParallelRunningAnim.end();
             if (sHomeFlight.get() == this) sHomeFlight.clear();
+            if (sNothingHomeFlight.get() == this) sNothingHomeFlight.clear();
             mHomeFlightLaunch.execute();
         });
     }
 
     private boolean flyHomeSnapshot() {
-        if (mCosHomeFlight == null || !mCosHomeFlight.isRunning() || mContainer == null
+        return flyHomeSnapshot(mCosHomeFlight, mCosHomeAnimationRunner);
+    }
+
+    private boolean flyHomeSnapshot(RectFSpringAnim spring, SpringAnimationRunner runner) {
+        if (spring == null || !spring.isRunning() || mContainer == null
                 || !mContainer.getDragLayer().isAttachedToWindow()
-                || mCosHomeAnimationRunner == null || mRemoteTargetHandles == null
+                || runner == null || mRemoteTargetHandles == null
                 || mRemoteTargetHandles.length != 1 || mIsSwipingPipToHome
                 || !mStateCallback.hasStates(STATE_GESTURE_COMPLETED)) {
             return false;
@@ -1239,13 +1329,13 @@ public abstract class AbsSwipeUpHandler<
         }
         Rect bounds = target.startBounds == null ? target.screenSpaceBounds : target.startBounds;
         if (bounds == null || bounds.isEmpty()) return false;
-        CosHomeSnapshot view = mCosHomeAnimationRunner.createSnapshot(bitmap, bounds);
+        CosHomeSnapshot view = runner.createSnapshot(bitmap, bounds);
         if (view == null) return false;
         view.attachTo(mContainer.getDragLayer());
         RECENTS_CONTAINER container = mContainer;
-        Runnable onDestroy = mCosHomeFlight::end;
+        Runnable onDestroy = spring::end;
         container.addEventCallback(EVENT_DESTROYED, onDestroy);
-        mCosHomeFlight.addAnimatorListener(new AnimatorListenerAdapter() {
+        spring.addAnimatorListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
                 view.remove();
@@ -1265,6 +1355,18 @@ public abstract class AbsSwipeUpHandler<
             if (handle != null) handle.getTransformParams().detachForParallelAnimation();
         }
         mCosHomeFlight.detachWindow();
+    }
+
+    private void detachNothingHomeAnimationFromWindow() {
+        if (mNothingHomeFlight == null || !mNothingHomeFlight.isRunning()
+                || mGestureState.getEndTarget() != HOME || mIsSwipingPipToHome
+                || !mStateCallback.hasStates(STATE_GESTURE_COMPLETED)
+                || mRemoteTargetHandles == null) return;
+        mHomeAnimDetachedFromWindow = true;
+        for (RemoteTargetHandle handle : mRemoteTargetHandles) {
+            if (handle != null) handle.getTransformParams().detachForParallelAnimation();
+        }
+        mNothingHomeFlight.detachWindow();
     }
 
     @UiThread
@@ -2094,6 +2196,20 @@ public abstract class AbsSwipeUpHandler<
                     }
                 });
             }
+            if (!CosAppAnimation.isEnabled(mContext) && windowAnim.length == 1
+                    && windowAnim[0] != null && windowAnim[0].isNothing()
+                    && !mIsSwipingPipToHome && !mIsSwipeForSplit) {
+                mNothingHomeFlight = windowAnim[0];
+                sNothingHomeFlight = new WeakReference<>(this);
+                mNothingHomeFlight.addAnimatorListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (sNothingHomeFlight.get() == AbsSwipeUpHandler.this
+                                && !mHomeFlightLaunch.hasPendingLaunch()) sNothingHomeFlight.clear();
+                        mNothingHomeFlight = null;
+                    }
+                });
+            }
             mRunningWindowAnim = new RunningWindowAnim[windowAnim.length];
             for (int i = 0, windowAnimLength = windowAnim.length; i < windowAnimLength; i++) {
                 RectFSpringAnim windowAnimation = windowAnim[i];
@@ -2450,6 +2566,7 @@ public abstract class AbsSwipeUpHandler<
             @Override
             public void onAnimationSuccess(Animator animator) {
                 // Make sure recents is in its final state
+                if (mNothingHomeReversed) return;
                 maybeUpdateRecentsAttachedState(false);
                 mContainerInterface.onSwipeUpToHomeComplete();
             }
@@ -2565,6 +2682,12 @@ public abstract class AbsSwipeUpHandler<
     private void cancelCurrentAnimation() {
         ActiveGestureProtoLogProxy.logAbsSwipeUpHandlerCancelCurrentAnimation();
         mCanceled = true;
+        if (mNothingHomeReversed && mNothingHomeFlight != null
+                && mNothingHomeFlight.isRunning()) {
+            mNothingHomeFlight.interrupt();
+            if (mNothingHomeAnimationRunner != null) mNothingHomeAnimationRunner.onCancel();
+            mNothingHomeReversed = false;
+        }
         mCurrentShift.cancelAnimation();
         resetOverviewGestureState();
 
@@ -2593,6 +2716,9 @@ public abstract class AbsSwipeUpHandler<
 
     private void invalidateHandler() {
         if (sHomeFlight.get() == this && !mHomeFlightLaunch.hasPendingLaunch()) sHomeFlight.clear();
+        if (sNothingHomeFlight.get() == this && !mHomeFlightLaunch.hasPendingLaunch()) {
+            sNothingHomeFlight.clear();
+        }
         if (!mContainerInterface.isInLiveTileMode() || mGestureState.getEndTarget() != RECENTS) {
             mInputConsumerProxy.destroy();
             mTaskAnimationManager.setLiveTileCleanUpHandler(null);

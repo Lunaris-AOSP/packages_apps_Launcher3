@@ -21,9 +21,9 @@ import android.graphics.RectF;
 public final class NothingAppAnimation {
     public static final long LAUNCH_DURATION_MS = 500;
     public static final int FALLBACK_CLOSE_DURATION_MS = 250;
-    public static final float STIFFNESS_X = 342f;
-    public static final float STIFFNESS_Y = 315f;
-    public static final float STIFFNESS_SCALE = 380f;
+    public static final float STIFFNESS_X = 300f;
+    public static final float STIFFNESS_Y = 300f;
+    public static final float STIFFNESS_SCALE = 363f;
     public static final float DAMPING_RATIO = 1f;
     public static final float OPEN_ALPHA_END = 0.15f;
     public static final float CLOSE_ALPHA_END = 0.85f;
@@ -32,6 +32,11 @@ public final class NothingAppAnimation {
     public static final long WORKSPACE_DURATION_MS = 350;
     public static final long WORKSPACE_FADE_DURATION_MS = 200;
     public static final float WORKSPACE_MIN_ALPHA = 0.5f;
+    public static final float WORKSPACE_MIN_SCALE = 0.95f;
+    public static final float WORKSPACE_SCALE_STIFFNESS = 600f;
+    public static final float WORKSPACE_ALPHA_STIFFNESS = 285f;
+    public static final float DEPTH_STIFFNESS = 111f;
+    public static final float SYS_UI_STIFFNESS = 300f;
 
     private NothingAppAnimation() { }
 
@@ -44,6 +49,10 @@ public final class NothingAppAnimation {
     public static float getFallbackWindowAlpha(float progress) {
         float t = clamp(progress / NO_TARGET_CLOSE_ALPHA_END);
         return 1f - t * t * t;
+    }
+
+    public static float getIconAlpha(float progress) {
+        return clamp(progress / SHAPE_PROGRESS_START);
     }
 
     public static RectF getDefaultWindowTargetRect(int iconSizePx, float primaryDimension,
