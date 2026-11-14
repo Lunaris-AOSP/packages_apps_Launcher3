@@ -20,6 +20,7 @@ import static com.android.launcher3.LauncherAnimUtils.SCALE_INDEX_WORKSPACE_STAT
 import static com.android.launcher3.LauncherAnimUtils.VIEW_ALPHA;
 import static com.android.launcher3.LauncherAnimUtils.WORKSPACE_SCALE_PROPERTY_FACTORY;
 import static com.android.launcher3.LauncherState.BACKGROUND_APP;
+import static com.android.launcher3.LauncherState.FLAG_HAS_SYS_UI_SCRIM;
 import static com.android.launcher3.LauncherState.NORMAL;
 import static com.android.launcher3.states.StateAnimationConfig.SKIP_DEPTH_CONTROLLER;
 import static com.android.launcher3.states.StateAnimationConfig.SKIP_OVERVIEW;
@@ -55,6 +56,7 @@ import com.android.quickstep.views.RecentsView;
 import com.android.systemui.shared.system.BlurUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
 public final class NothingWorkspaceAnimation {
     private final QuickstepLauncher mLauncher;
@@ -66,7 +68,7 @@ public final class NothingWorkspaceAnimation {
     private final RectF mOriginalTarget = new RectF();
     private final RectF mTransformedTarget = new RectF();
     private final SurfaceTransactionApplier mApplier;
-    private final ArrayList<RectFSpringAnim> mClosingAnimations = new ArrayList<>();
+    private final HashMap<RectFSpringAnim, AnimatorSet> mClosingAnimations = new HashMap<>();
     private RectFSpringAnim mSibling;
     private RectF mTarget;
     private SurfaceControl mBlurLayer;
@@ -74,6 +76,9 @@ public final class NothingWorkspaceAnimation {
     private int mLastBlur = -1;
     private float mDepthValue;
     private float mSysUiValue;
+    private long mAnimationId;
+    private boolean mRevealing;
+    private boolean mDestroyed;
     private final StateListener<LauncherState> mStateListener = new StateListener<>() {
         @Override
         public void onStateTransitionStart(LauncherState state) {
@@ -127,15 +132,28 @@ public final class NothingWorkspaceAnimation {
     }
 
     public void trackClosingAnimation(RectFSpringAnim spring) {
+        trackClosingAnimation(spring, null);
+    }
+
+    public void trackClosingAnimation(RectFSpringAnim spring, AnimatorSet animator) {
         spring.addAnimatorListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
-                mClosingAnimations.add(spring);
+                mClosingAnimations.put(spring, animator);
+                if (mDestroyed) {
+                    spring.end();
+                } else if (mLauncher.getWorkspace().isPageInTransition()) {
+                    mLauncher.getDragLayer().post(spring::end);
+                }
             }
 
             @Override
             public void onAnimationEnd(Animator animation) {
                 mClosingAnimations.remove(spring);
+                if (mSibling == spring) {
+                    mSibling = null;
+                    mTarget = null;
+                }
             }
         });
     }
@@ -145,16 +163,30 @@ public final class NothingWorkspaceAnimation {
         set.play(ValueAnimator.ofFloat(0f, 1f)
                 .setDuration(NothingAppAnimation.LAUNCH_DURATION_MS));
         set.addListener(new AnimatorListenerAdapter() {
+            private long mId = -1;
+            private boolean mCanceled;
+
             @Override
             public void onAnimationStart(Animator animation) {
-                if (!CosAppAnimation.isEnabled(mLauncher)) start.run();
+                if (!mCanceled && !mDestroyed && !CosAppAnimation.isEnabled(mLauncher)) {
+                    mId = mAnimationId + 1;
+                    start.run();
+                }
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                mCanceled = true;
+                if (mId == mAnimationId) reset();
             }
         });
         return set;
     }
 
     public void open(boolean scrimHandlesBlur) {
-        if (CosAppAnimation.isEnabled(mLauncher)) return;
+        if (mDestroyed || CosAppAnimation.isEnabled(mLauncher)) return;
+        mAnimationId++;
+        mRevealing = false;
         mSibling = null;
         mTarget = null;
         prepareViews();
@@ -172,7 +204,13 @@ public final class NothingWorkspaceAnimation {
     }
 
     public void reveal(RectFSpringAnim sibling, RectF target, boolean fade, boolean blur) {
-        if (CosAppAnimation.isEnabled(mLauncher)) return;
+        if (mDestroyed || CosAppAnimation.isEnabled(mLauncher)) return;
+        mAnimationId++;
+        mRevealing = true;
+        if (mLauncher.getWorkspace().isPageInTransition()) {
+            reset();
+            return;
+        }
         float scale = mWorkspace.currentScale();
         float alpha = mWorkspace.currentAlpha();
         float depth = mDepth.isRunning() ? mDepthValue
@@ -191,7 +229,7 @@ public final class NothingWorkspaceAnimation {
                         ? scale : NothingAppAnimation.WORKSPACE_MIN_SCALE,
                 !fade ? alpha : alpha != 1f || running
                         ? alpha : NothingAppAnimation.WORKSPACE_MIN_ALPHA);
-        mHotseat.setValues(mWorkspace.view.getScaleX(), mWorkspace.view.getAlpha());
+        mHotseat.setValues(mWorkspace.currentScale(), mWorkspace.currentAlpha());
         mLauncher.getDepthController().stateDepth.setValue(depth);
         mLauncher.getWorkspace().setPivotToScaleWithSelf(mLauncher.getHotseat());
         mSibling = sibling;
@@ -276,9 +314,9 @@ public final class NothingWorkspaceAnimation {
     private void removeBlur() {
         if (mBlurLayer != null) {
             if (mBlurLayer.isValid()) {
-                SurfaceTransaction transaction = new SurfaceTransaction();
-                transaction.forSurface(mBlurLayer).setRemove();
-                mApplier.scheduleApply(transaction);
+                try (SurfaceControl.Transaction transaction = new SurfaceControl.Transaction()) {
+                    transaction.remove(mBlurLayer).apply();
+                }
             }
             mBlurLayer = null;
         }
@@ -288,25 +326,40 @@ public final class NothingWorkspaceAnimation {
         }
     }
 
+    public void finishReveal() {
+        if (!mClosingAnimations.isEmpty() || (mRevealing && (mWorkspace.isRunning()
+                || mHotseat.isRunning() || mDepth.isRunning() || mSysUi.isRunning()))) reset();
+    }
+
     public void reset() {
+        mAnimationId++;
+        mRevealing = false;
         mSibling = null;
         mTarget = null;
-        ArrayList<RectFSpringAnim> closingAnimations = new ArrayList<>(mClosingAnimations);
+        ArrayList<RectFSpringAnim> closingAnimations = new ArrayList<>(mClosingAnimations.keySet());
+        ArrayList<AnimatorSet> closingAnimators = new ArrayList<>(mClosingAnimations.values());
         mClosingAnimations.clear();
-        for (RectFSpringAnim spring : closingAnimations) {
-            if (spring.isRunning()) spring.end();
-        }
         mWorkspace.cancel();
         mHotseat.cancel();
         mDepth.cancel();
         mSysUi.cancel();
         removeBlur();
-        mWorkspace.setValues(1f, 1f);
-        mHotseat.setValues(1f, 1f);
-        mLauncher.getDepthController().setState(mLauncher.getStateManager().getState());
+        LauncherState state = mLauncher.getStateManager().getState();
+        mWorkspace.setValues(state.getWorkspaceScaleAndTranslation(mLauncher).scale, 1f);
+        mHotseat.setValues(state.getHotseatScaleAndTranslation(mLauncher).scale, 1f);
+        mLauncher.getDepthController().setState(state);
+        mLauncher.getRootView().getSysUiScrim().getSysUIProgress().updateValue(
+                state.hasFlag(FLAG_HAS_SYS_UI_SCRIM) ? 1f : 0f);
+        for (RectFSpringAnim spring : closingAnimations) {
+            if (spring.isRunning()) spring.end();
+        }
+        for (AnimatorSet animator : closingAnimators) {
+            if (animator != null) animator.cancel();
+        }
     }
 
     public void destroy() {
+        mDestroyed = true;
         mLauncher.getStateManager().removeStateListener(mStateListener);
         reset();
     }
@@ -344,7 +397,7 @@ public final class NothingWorkspaceAnimation {
             scaleProperty = property;
             scale = spring(target, property, NothingAppAnimation.WORKSPACE_SCALE_STIFFNESS, 0.001f);
             alpha = spring(target, VIEW_ALPHA, NothingAppAnimation.WORKSPACE_ALPHA_STIFFNESS, 0.002f);
-            scaleValue = target.getScaleX();
+            scaleValue = (Float) property.get(target);
             alphaValue = target.getAlpha();
             scale.addUpdateListener((animation, value, velocity) -> scaleValue = value);
             alpha.addUpdateListener((animation, value, velocity) -> alphaValue = value);
@@ -363,7 +416,7 @@ public final class NothingWorkspaceAnimation {
         }
 
         float currentScale() {
-            return scale.isRunning() ? scaleValue : view.getScaleX();
+            return scale.isRunning() ? scaleValue : (Float) scaleProperty.get(view);
         }
 
         float currentAlpha() {

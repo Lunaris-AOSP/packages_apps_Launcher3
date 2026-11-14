@@ -807,6 +807,9 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
             mUnlockAnimationController.destroy();
             mUnlockAnimationController = null;
         }
+        if (mAppTransitionManager != null) {
+            mAppTransitionManager.onActivityDestroyed();
+        }
         if (mDepthController != null) {
             SystemUiProxy.INSTANCE.get(this)
                     .removeOnSystemUiStateChangeListener(mSystemUiStateChangeListener);
@@ -814,9 +817,6 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         }
         if (!LauncherPrefs.SHOW_STATUS_BAR.get(this)) {
             getStateManager().removeStateListener(noStatusBarStateListener);
-        }
-        if (mAppTransitionManager != null) {
-            mAppTransitionManager.onActivityDestroyed();
         }
         mAppTransitionManager = null;
         mIsPredictiveBackToHomeInProgress = false;
@@ -1148,6 +1148,9 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         if (mUnlockAnimationController != null) {
             mUnlockAnimationController.cancel();
         }
+        if (mAppTransitionManager != null) {
+            mAppTransitionManager.finishNothingAnimations();
+        }
         super.onStop();
         if (mTaskbarInteractor != null && FeatureFlags.enableHomeTransitionListener()) {
             mTaskbarInteractor.onLauncherStop();
@@ -1240,6 +1243,14 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
             mUnlockAnimationController.cancel();
         }
         return tryHandleBackKey(event) || super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onPageBeginTransition() {
+        super.onPageBeginTransition();
+        if (mAppTransitionManager != null) {
+            mAppTransitionManager.onWorkspacePageTransitionStart();
+        }
     }
 
     @Override

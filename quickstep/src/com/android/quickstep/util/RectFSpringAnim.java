@@ -158,6 +158,11 @@ public class RectFSpringAnim extends ReleaseCheck {
     private boolean mUpdatePending;
     private final Runnable mFrameUpdate;
     private boolean mEnding;
+    private boolean mEndNotified;
+    private boolean mDispatchingStart;
+    private boolean mFinishRequested;
+    private boolean mCancelRequested;
+    private boolean mInterruptRequested;
     private boolean mWindowDetached;
     private boolean mReverse;
     private boolean mInterrupted;
@@ -201,7 +206,7 @@ public class RectFSpringAnim extends ReleaseCheck {
     }
 
     public boolean isRunning() {
-        return mAnimsStarted && !isEnded();
+        return mAnimsStarted && !mEnding && !isEnded();
     }
 
     public boolean isReverse() {
@@ -232,11 +237,15 @@ public class RectFSpringAnim extends ReleaseCheck {
     }
 
     public void interrupt() {
+        if (mDispatchingStart) {
+            mInterruptRequested = true;
+            return;
+        }
         if (!mNothing) {
             cancel();
             return;
         }
-        if (!isRunning()) return;
+        if (mEnding || mEndNotified) return;
         mInterrupted = true;
         mEnding = true;
         for (Animator.AnimatorListener listener : mAnimatorListeners) {
@@ -246,7 +255,7 @@ public class RectFSpringAnim extends ReleaseCheck {
         if (mRectYSpring != null) mRectYSpring.cancel();
         if (mRectScaleAnim != null) mRectScaleAnim.cancel();
         mRectXAnimEnded = mRectYAnimEnded = mRectScaleAnimEnded = true;
-        maybeOnEnd();
+        notifyAnimationEnd();
     }
 
     public void detachWindow() {
@@ -277,7 +286,7 @@ public class RectFSpringAnim extends ReleaseCheck {
     }
 
     public void onTargetPositionChanged() {
-        if (isEnded() || mReverse) {
+        if (!isRunning() || mReverse) {
             return;
         }
 
@@ -333,6 +342,7 @@ public class RectFSpringAnim extends ReleaseCheck {
      * @param velocityPxPerMs Velocity of swipe in px/ms.
      */
     public void start(Context context, @Nullable DeviceProfile profile, PointF velocityPxPerMs) {
+        if (mAnimsStarted || mEnding || isEnded()) return;
         ensureConstantsLoaded(context);
 
         // Only tell caller that we ended if both x and y animations have ended.
@@ -437,15 +447,43 @@ public class RectFSpringAnim extends ReleaseCheck {
         mRectYSpring.start();
 
         mRectScaleAnim.start();
-        for (Animator.AnimatorListener animatorListener : mAnimatorListeners) {
-            animatorListener.onAnimationStart(null);
-        }
+        notifyAnimationStart();
         if (mNothing && !ValueAnimator.areAnimatorsEnabled()) end();
         if (mCos && !ValueAnimator.areAnimatorsEnabled()) end();
     }
 
+    private void notifyAnimationStart() {
+        mDispatchingStart = true;
+        try {
+            for (Animator.AnimatorListener listener : mAnimatorListeners) {
+                listener.onAnimationStart(null);
+            }
+        } finally {
+            mDispatchingStart = false;
+        }
+        if (mInterruptRequested) {
+            mInterruptRequested = false;
+            interrupt();
+        } else if (mCancelRequested) {
+            mCancelRequested = false;
+            cancel();
+        } else if (mFinishRequested) {
+            mFinishRequested = false;
+            end();
+        }
+    }
+
     public void end() {
-        if (mInterrupted) return;
+        if (mDispatchingStart) {
+            mFinishRequested = true;
+            return;
+        }
+        if (mEnding || mEndNotified) return;
+        if (!mAnimsStarted) {
+            mAnimsStarted = true;
+            notifyAnimationStart();
+            if (mEnding || mEndNotified) return;
+        }
         mEnding = true;
         if (mUpdatePending) {
             mChoreographer.removeCallbacks(Choreographer.CALLBACK_INSETS_ANIMATION,
@@ -453,16 +491,10 @@ public class RectFSpringAnim extends ReleaseCheck {
             mUpdatePending = false;
         }
         if (mAnimsStarted) {
-            if (mRectXSpring.canSkipToEnd()) {
-                mRectXSpring.skipToEnd();
-            }
-            if (mRectYSpring.canSkipToEnd()) {
-                mRectYSpring.skipToEnd();
-            }
-            if (mRectScaleAnim.canSkipToEnd()) {
-                mRectScaleAnim.skipToEnd();
-            }
-            mCurrentScaleProgress = mRectScaleAnim.getSpring().getFinalPosition();
+            if (mRectXSpring != null) mRectXSpring.cancel();
+            if (mRectYSpring != null) mRectYSpring.cancel();
+            if (mRectScaleAnim != null) mRectScaleAnim.cancel();
+            mCurrentScaleProgress = mReverse ? 0f : 1f;
             if (mCos || mNothing) {
                 RectF endRect = mReverse ? mStartRect : mTargetRect;
                 mCurrentCenterX = endRect.centerX();
@@ -479,7 +511,7 @@ public class RectFSpringAnim extends ReleaseCheck {
         mRectXAnimEnded = true;
         mRectYAnimEnded = true;
         mRectScaleAnimEnded = true;
-        maybeOnEnd();
+        notifyAnimationEnd();
     }
 
     private boolean isEnded() {
@@ -579,16 +611,26 @@ public class RectFSpringAnim extends ReleaseCheck {
     }
 
     private void maybeOnEnd() {
-        if (mAnimsStarted && isEnded() && !mUpdatePending) {
-            mAnimsStarted = false;
-            setCanRelease(true);
-            for (Animator.AnimatorListener animatorListener : mAnimatorListeners) {
-                animatorListener.onAnimationEnd(null);
-            }
+        if (mAnimsStarted && !mEnding && isEnded() && !mUpdatePending) {
+            notifyAnimationEnd();
+        }
+    }
+
+    private void notifyAnimationEnd() {
+        if (mEndNotified) return;
+        mEndNotified = true;
+        mAnimsStarted = false;
+        setCanRelease(true);
+        for (Animator.AnimatorListener animatorListener : mAnimatorListeners) {
+            animatorListener.onAnimationEnd(null);
         }
     }
 
     public void cancel() {
+        if (mDispatchingStart) {
+            mCancelRequested = true;
+            return;
+        }
         if (mAnimsStarted) {
             for (OnUpdateListener onUpdateListener : mOnUpdateListeners) {
                 onUpdateListener.onCancel();

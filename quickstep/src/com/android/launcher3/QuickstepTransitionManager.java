@@ -326,6 +326,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     private final boolean mCosAppAnimations;
     private NothingWorkspaceAnimation mNothingWorkspaceAnimation;
     private RectFSpringAnim mActiveNothingLaunch;
+    private AnimatorSet mActiveNothingLaunchAnimation;
     private float mNothingDrawerAlpha = Float.NaN;
 
     private final SystemUiProxy mSystemUiProxy;
@@ -368,6 +369,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
     @Override
     public void onDeviceProfileChanged(DeviceProfile dp) {
+        finishNothingAnimations();
         mDeviceProfile = dp;
     }
 
@@ -759,7 +761,15 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             public void onAnimationCancel(Animator ignored) {
                 spring.interrupt();
             }
+
+            @Override
+            public void onAnimationEnd(Animator ignored) {
+                if (mActiveNothingLaunchAnimation == animation) {
+                    mActiveNothingLaunchAnimation = null;
+                }
+            }
         });
+        mActiveNothingLaunchAnimation = animation;
         animation.play(ValueAnimator.ofFloat(0f, 1f)
                 .setDuration(NothingAppAnimation.LAUNCH_DURATION_MS));
         if (launcherClosing && !translucent) {
@@ -1842,8 +1852,24 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         return mNothingWorkspaceAnimation;
     }
 
-    public void onActivityDestroyed() {
+    public void onWorkspacePageTransitionStart() {
+        if (mNothingWorkspaceAnimation != null) {
+            mNothingWorkspaceAnimation.finishReveal();
+        }
+    }
+
+    public void finishNothingAnimations() {
+        AnimatorSet animation = mActiveNothingLaunchAnimation;
         if (mActiveNothingLaunch != null) mActiveNothingLaunch.cancel();
+        if (animation != null) animation.cancel();
+        if (mNothingWorkspaceAnimation != null) mNothingWorkspaceAnimation.reset();
+        mNothingDrawerAlpha = Float.NaN;
+    }
+
+    public void onActivityDestroyed() {
+        AnimatorSet animation = mActiveNothingLaunchAnimation;
+        if (mActiveNothingLaunch != null) mActiveNothingLaunch.cancel();
+        if (animation != null) animation.cancel();
         if (mNothingWorkspaceAnimation != null) mNothingWorkspaceAnimation.destroy();
         unregisterRemoteAnimations();
         unregisterRemoteTransitions();
@@ -2098,7 +2124,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         if (mCosAppAnimations) {
             anim.addAnimatorListener(new CosCloseAnimation(mLauncher, anim::end));
         } else {
-            getNothingWorkspaceAnimation().trackClosingAnimation(anim);
+            getNothingWorkspaceAnimation().trackClosingAnimation(anim, animation);
         }
         final int initialScrollX = mLauncher.getWorkspace().getScrollX();
         final RectF overlayRect = new RectF();

@@ -1336,6 +1336,8 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     }
 
     protected void onPageBeginTransition() {
+        mLauncher.onPageBeginTransition();
+
         // Widget resize frame doesn't receive events to close when talkback is enabled. For that
         // case, close it here.
         AbstractFloatingView.closeOpenViews(mLauncher, false,

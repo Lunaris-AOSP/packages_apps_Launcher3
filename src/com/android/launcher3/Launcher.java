@@ -2653,6 +2653,8 @@ public class Launcher extends StatefulActivity<LauncherState>
      */
     public void onPageEndTransition() {}
 
+    public void onPageBeginTransition() {}
+
     /**
      * See {@code LauncherBindingDelegate}
      */
