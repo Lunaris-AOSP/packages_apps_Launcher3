@@ -32,8 +32,6 @@ import android.view.View
 import androidx.core.graphics.ColorUtils
 import com.android.internal.R as InternalR
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
-import com.android.launcher3.Launcher
-import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.dagger.ActivityContextSingleton
 import com.android.launcher3.folder.Folder
@@ -202,7 +200,7 @@ constructor(
         }
     }
 
-    override fun isPopupBlurEnabled(): Boolean = isBlurEnabled() && isHomescreen()
+    override fun isPopupBlurEnabled(): Boolean = isBlurEnabled()
 
     override fun createBottomSheetBlurBackground(background: Drawable, view: View): Drawable? {
         val dragLayer = activityContext.dragLayer
@@ -301,20 +299,6 @@ constructor(
                 return super.setVisible(visible, restart)
             }
         }
-    }
-
-    private fun isHomescreen(): Boolean {
-        (activityContext as? Launcher)?.let { launcher ->
-            if (launcher.isInState(LauncherState.ALL_APPS)) {
-                return false
-            }
-        }
-        activityContext.appsView?.let { appsView ->
-            if (appsView.isInAllApps) {
-                return false
-            }
-        }
-        return true
     }
 
     override fun applyPopupBlurBackground(view: View) {
