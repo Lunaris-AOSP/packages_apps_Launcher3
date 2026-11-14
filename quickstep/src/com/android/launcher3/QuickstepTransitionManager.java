@@ -2037,6 +2037,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         FloatingIconView floatingIconView = null;
         FloatingWidgetView floatingWidget = null;
         RectF targetRect = new RectF();
+        final boolean isQsbTarget = launcherView != null && mLauncher.getHotseat() != null
+                && mLauncher.getHotseat().isQsbView(launcherView);
 
         RemoteAnimationTarget runningTaskTarget = null;
         boolean isTransluscent = false;
@@ -2066,14 +2068,12 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
                     mLauncher.getTaskbarInteractor() == null
                             ? null
                             : mLauncher.getTaskbarInteractor().findMatchingAsyncView(launcherView),
-                    true /* hideOriginal */, targetRect, false /* isOpening */);
+                    !isQsbTarget /* hideOriginal */, targetRect, false /* isOpening */);
         } else {
             targetRect.set(getDefaultWindowTargetRect());
         }
 
         boolean useTaskbarHotseatParams = mDeviceProfile.isTaskbarPresent && isInHotseat;
-        final boolean isQsbTarget = launcherView != null && mLauncher.getHotseat() != null
-                && mLauncher.getHotseat().isQsbView(launcherView);
         final boolean useNothingSpring = isQsbTarget || !mCosAppAnimations;
         final boolean useCosSpring = mCosAppAnimations && !isQsbTarget
                 && (floatingIconView != null || islandTarget != null)

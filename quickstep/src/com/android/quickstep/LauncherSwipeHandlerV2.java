@@ -189,11 +189,13 @@ public class LauncherSwipeHandlerV2 extends AbsSwipeUpHandler<
     private HomeAnimationFactory createIconHomeAnimationFactory(
             View workspaceView, @Nullable TaskView targetTaskView, boolean isTargetTranslucent) {
         RectF iconLocation = new RectF();
+        final boolean isQsbTarget = mContainer.getHotseat() != null
+                && mContainer.getHotseat().isQsbView(workspaceView);
         FloatingIconView floatingIconView = getFloatingIconView(mContainer, workspaceView, null,
                 mContainer.getTaskbarInteractor() == null
                         ? null
                         : mContainer.getTaskbarInteractor().findMatchingAsyncView(workspaceView),
-                true /* hideOriginal */, iconLocation, false /* isOpening */);
+                !isQsbTarget /* hideOriginal */, iconLocation, false /* isOpening */);
 
         // We want the window alpha to be 0 once this threshold is met, so that the
         // FloatingIconView can be seen morphing into the icon shape.
