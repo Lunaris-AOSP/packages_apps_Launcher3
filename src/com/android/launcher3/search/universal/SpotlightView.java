@@ -5,6 +5,9 @@
 
 package com.android.launcher3.search.universal;
 
+import static com.android.app.animation.Interpolators.EMPHASIZED_ACCELERATE;
+import static com.android.app.animation.Interpolators.EMPHASIZED_DECELERATE;
+
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -44,7 +47,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
-import android.view.animation.PathInterpolator;
+import android.view.animation.Interpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -85,7 +88,10 @@ public class SpotlightView extends AbstractFloatingView
 
     private static final int APPS_PER_ROW = 4;
     private static final int APP_CELL_WIDTH_DP = 104;
-    private static final PathInterpolator EASE = new PathInterpolator(0.3f, 0f, 0.1f, 1f);
+    private static final Interpolator OPEN_INTERPOLATOR = EMPHASIZED_DECELERATE;
+    private static final Interpolator CLOSE_INTERPOLATOR = EMPHASIZED_ACCELERATE;
+    private static final int OPEN_DURATION_MS = 380;
+    private static final int CLOSE_DURATION_MS = 260;
 
     private Launcher mHost;
     private UniversalSearchAlgorithm mSearch;
@@ -95,6 +101,7 @@ public class SpotlightView extends AbstractFloatingView
     private RecyclerView mResults;
     private View mCard;
     private View mPanel;
+    private View mDivider;
     private SpotlightGlass mPanelGlass;
     private SpotlightGlass mFieldGlass;
     private SpotlightGlass mCardGlass;
@@ -153,9 +160,9 @@ public class SpotlightView extends AbstractFloatingView
         if (mRevealAnimator != null) mRevealAnimator.cancel();
         ValueAnimator animator = ValueAnimator.ofFloat(mRevealProgress, open ? 1f : 0f);
         mRevealAnimator = animator;
-        animator.setDuration(Math.round((open ? 420 : 280)
+        animator.setDuration(Math.round((open ? OPEN_DURATION_MS : CLOSE_DURATION_MS)
                 * Math.abs((open ? 1f : 0f) - mRevealProgress)));
-        animator.setInterpolator(EASE);
+        animator.setInterpolator(open ? OPEN_INTERPOLATOR : CLOSE_INTERPOLATOR);
         animator.addUpdateListener(a -> {
             mRevealProgress = (float) a.getAnimatedValue();
             applyRevealProgress();
@@ -178,25 +185,45 @@ public class SpotlightView extends AbstractFloatingView
 
     private void applyRevealProgress() {
         float t = mRevealProgress;
-        // Compositor glass does not follow an offscreen View-alpha layer's rectangular crop.
-        // Move intact rounded surfaces and fade their drawables directly instead.
-        mPanel.setScaleX(1f);
-        mPanel.setScaleY(1f);
+        // Anchor the scale and translation to the top center of the panel
+        float width = mPanel.getWidth();
+        mPanel.setPivotX(width * 0.5f);
+        mPanel.setPivotY(0f);
+
+        // Top-anchored scale: expands downward and slightly outward on open,
+        // collapses back up toward the top anchor on close.
+        float scaleX = Utilities.mapRange(t, 0.94f, 1f);
+        float scaleY = Utilities.mapRange(t, 0.86f, 1f);
+        mPanel.setScaleX(scaleX);
+        mPanel.setScaleY(scaleY);
         mPanel.setAlpha(1f);
-        mPanel.setTranslationY(-Math.min(dp(24), Math.max(0, mPanel.getTop())) * (1f - t));
+
+        // Top-anchored translation: drops down into resting position from above
+        float maxTravel = dp(28);
+        float topOffset = mPanel.getTop() > 0 ? Math.min(maxTravel, mPanel.getTop()) : maxTravel;
+        mPanel.setTranslationY(-topOffset * (1f - t));
+
         mField.setAlpha(1f);
         mCard.setAlpha(1f);
         mCard.setTranslationY(0f);
         mCard.setClipBounds(null);
-        int alpha = Math.round(255 * t);
+
+        // Compositor glass does not follow an offscreen View-alpha layer's rectangular crop.
+        // Fade the drawables and child elements directly instead.
+        int alpha = Math.max(0, Math.min(255, Math.round(255 * Math.min(1f, t * 1.2f))));
         setGlassAlpha(mPanel, alpha);
         setGlassAlpha(mField, alpha);
         setGlassAlpha(mCard, alpha);
+
+        float contentAlpha = Math.max(0f, Math.min(1f, (t - 0.05f) / 0.95f));
         ViewGroup field = (ViewGroup) mField;
-        for (int i = 0; i < field.getChildCount(); i++) field.getChildAt(i).setAlpha(t);
-        mResults.setAlpha(t);
-        ViewGroup content = findViewById(R.id.spotlight_content);
-        content.getChildAt(1).setAlpha(t);
+        for (int i = 0; i < field.getChildCount(); i++) {
+            field.getChildAt(i).setAlpha(contentAlpha);
+        }
+        mResults.setAlpha(contentAlpha);
+        if (mDivider != null && mDivider.getVisibility() == VISIBLE) {
+            mDivider.setAlpha(contentAlpha);
+        }
         mScrim.setAlpha(t);
     }
     private static void setGlassAlpha(View view, int alpha) {
@@ -291,6 +318,14 @@ public class SpotlightView extends AbstractFloatingView
         mPanelGlass = new SpotlightGlass(mPanel);
         mFieldGlass = new SpotlightGlass(mField);
         mCardGlass = new SpotlightGlass(mCard);
+        ViewGroup content = findViewById(R.id.spotlight_content);
+        int fieldIndex = content.indexOfChild(mField);
+        if (fieldIndex >= 0 && fieldIndex + 1 < content.getChildCount()) {
+            View child = content.getChildAt(fieldIndex + 1);
+            if (child != mCard) {
+                mDivider = child;
+            }
+        }
         findViewById(R.id.spotlight_clear).setOnClickListener(v -> mInput.setText(""));
         mCanDictate = launcher.getPackageManager().resolveActivity(dictationIntent(), 0) != null;
         View mic = findViewById(R.id.spotlight_mic);
@@ -306,6 +341,7 @@ public class SpotlightView extends AbstractFloatingView
         mResults.setLayoutManager(new LinearLayoutManager(launcher));
         mResults.setAdapter(mAdapter);
         mScrim.setBackgroundColor(0x08000000);
+        mScrim.setAlpha(0f);
 
         mScrim.setOnClickListener(v -> close(true));
         mPanel.setOnClickListener(v -> { });
@@ -379,9 +415,8 @@ public class SpotlightView extends AbstractFloatingView
         mSplitState = state;
         LinearLayout content = findViewById(R.id.spotlight_content);
         // The divider sits between the field and the card in a single panel.
-        View divider = content.getChildAt(content.indexOfChild(mField) + 1);
-        if (divider != null && divider != mCard) {
-            divider.setVisibility(split ? GONE : VISIBLE);
+        if (mDivider != null) {
+            mDivider.setVisibility(split ? GONE : VISIBLE);
         }
         mPanel.setBackground(split ? null : mPanelGlass);
         // A detached background can otherwise leave its compositor region visible.
@@ -446,6 +481,7 @@ public class SpotlightView extends AbstractFloatingView
     private void removeFromHost() {
         if (mRevealAnimator != null) mRevealAnimator.cancel();
         animate().cancel();
+        mPanel.animate().cancel();
         mField.animate().cancel();
         mCard.animate().cancel();
         mInput.clearFocus();
