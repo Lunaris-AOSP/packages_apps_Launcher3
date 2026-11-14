@@ -50,7 +50,9 @@ public class MultiTranslateDelegate {
     // Specific for hotseat items when adjusting for bubbles
     public static final int INDEX_BUBBLE_ADJUSTMENT_ANIM = 3;
 
-    public static final int COUNT = 9;
+    public static final int INDEX_WORKSPACE_UNLOCK_ANIM = 9;
+
+    public static final int COUNT = 10;
 
     private final MultiPropertyFactory<View> mTranslationX;
     private final MultiPropertyFactory<View> mTranslationY;

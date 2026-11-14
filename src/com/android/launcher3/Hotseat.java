@@ -83,20 +83,22 @@ public class Hotseat extends CellLayout implements Insettable {
     public static final int ALPHA_CHANNEL_TASKBAR_STASH = 2;
     public static final int ALPHA_CHANNEL_ASSISTANT_VISIBILITY = 3;
     public static final int ALPHA_CHANNEL_STATE_VISIBILITY = 4;
-    public static final int ALPHA_CHANNEL_CHANNELS_COUNT = 5;
+    public static final int ALPHA_CHANNEL_WORKSPACE_UNLOCK = 5;
+    public static final int ALPHA_CHANNEL_CHANNELS_COUNT = 6;
 
     @Retention(RetentionPolicy.RUNTIME)
     @IntDef({ALPHA_CHANNEL_TASKBAR_ALIGNMENT, ALPHA_CHANNEL_PREVIEW_RENDERER,
             ALPHA_CHANNEL_TASKBAR_STASH, ALPHA_CHANNEL_ASSISTANT_VISIBILITY,
-            ALPHA_CHANNEL_STATE_VISIBILITY})
+            ALPHA_CHANNEL_STATE_VISIBILITY, ALPHA_CHANNEL_WORKSPACE_UNLOCK})
     public @interface HotseatQsbAlphaId {
     }
 
     public static final int ICONS_TRANSLATION_X_NAV_BAR_ALIGNMENT = 0;
-    public static final int ICONS_TRANSLATION_X_CHANNELS_COUNT = 1;
+    public static final int ICONS_TRANSLATION_X_WORKSPACE_UNLOCK = 1;
+    public static final int ICONS_TRANSLATION_X_CHANNELS_COUNT = 2;
 
     @Retention(RetentionPolicy.RUNTIME)
-    @IntDef({ICONS_TRANSLATION_X_NAV_BAR_ALIGNMENT})
+    @IntDef({ICONS_TRANSLATION_X_NAV_BAR_ALIGNMENT, ICONS_TRANSLATION_X_WORKSPACE_UNLOCK})
     public @interface IconsTranslationX {
     }
 
@@ -847,7 +849,8 @@ public class Hotseat extends CellLayout implements Insettable {
                 "ALPHA_CHANNEL_PREVIEW_RENDERER",
                 "ALPHA_CHANNEL_TASKBAR_STASH",
                 "ALPHA_CHANNEL_ASSISTANT_VISIBILITY",
-                "ALPHA_CHANNEL_STATE_VISIBILITY");
+                "ALPHA_CHANNEL_STATE_VISIBILITY",
+                "ALPHA_CHANNEL_WORKSPACE_UNLOCK");
         mQsbAlphaChannels.dump(
                 prefix + "\t",
                 writer,
@@ -856,7 +859,8 @@ public class Hotseat extends CellLayout implements Insettable {
                 "ALPHA_CHANNEL_PREVIEW_RENDERER",
                 "ALPHA_CHANNEL_TASKBAR_STASH",
                 "ALPHA_CHANNEL_ASSISTANT_VISIBILITY",
-                "ALPHA_CHANNEL_STATE_VISIBILITY"
+                "ALPHA_CHANNEL_STATE_VISIBILITY",
+                "ALPHA_CHANNEL_WORKSPACE_UNLOCK"
         );
     }
 

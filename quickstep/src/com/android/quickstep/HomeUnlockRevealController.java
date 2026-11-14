@@ -16,8 +16,7 @@
 
 package com.android.quickstep;
 
-import static com.android.app.animation.Interpolators.EMPHASIZED_DECELERATE;
-import static com.android.launcher3.LauncherState.NORMAL;
+import static com.android.app.animation.Interpolators.LINEAR;
 import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
 
 import android.animation.Animator;
@@ -25,10 +24,12 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
+import android.os.Looper;
 
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
+import com.android.launcher3.util.ScreenOnTracker;
 import com.android.quickstep.util.HomeUnlockReveal;
 import com.android.systemui.shared.system.smartspace.ILauncherUnlockAnimationController;
 import com.android.systemui.shared.system.smartspace.SmartspaceState;
@@ -38,10 +39,16 @@ import java.util.concurrent.ExecutionException;
 public final class HomeUnlockRevealController
         extends ILauncherUnlockAnimationController.Stub
         implements SharedPreferences.OnSharedPreferenceChangeListener {
+    private static final long PREPARE_TIMEOUT_MS = 2000;
+
     private QuickstepLauncher mLauncher;
     private HomeUnlockReveal mWorkspaceAnimation;
     private ValueAnimator mAnimator;
     private boolean mPrepared;
+    private final Runnable mPrepareTimeout = this::cancel;
+    private final ScreenOnTracker.ScreenOnListener mScreenOnListener = isOn -> {
+        if (!isOn) cancel();
+    };
     private final Runnable mSystemUiConnectionListener = () -> {
         if (mLauncher != null && !SystemUiProxy.INSTANCE.get(mLauncher).isActive()) {
             cancel();
@@ -51,6 +58,7 @@ public final class HomeUnlockRevealController
     public HomeUnlockRevealController(QuickstepLauncher launcher) {
         mLauncher = launcher;
         mWorkspaceAnimation = new HomeUnlockReveal(launcher);
+        ScreenOnTracker.INSTANCE.get(launcher).addListener(mScreenOnListener);
         LauncherPrefs.getPrefs(launcher).registerOnSharedPreferenceChangeListener(this);
         SystemUiProxy proxy = SystemUiProxy.INSTANCE.get(launcher);
         proxy.addOnStateChangeListener(mSystemUiConnectionListener);
@@ -61,14 +69,21 @@ public final class HomeUnlockRevealController
     @Override
     public void prepareForUnlock(boolean animateSmartspace, Rect lockscreenSmartspaceBounds,
             int selectedPage) {
-        try {
-            MAIN_EXECUTOR.submit(() -> {
-                cancel();
-                if (isEnabled() && mLauncher.isInState(NORMAL)) {
-                    mWorkspaceAnimation.prepareForUnlock();
-                    mPrepared = true;
+        Runnable prepare = () -> {
+            cancel();
+            if (isEnabled()) {
+                mPrepared = mWorkspaceAnimation.prepareForUnlock();
+                if (mPrepared) {
+                    mLauncher.getDragLayer().postDelayed(mPrepareTimeout, PREPARE_TIMEOUT_MS);
                 }
-            }).get();
+            }
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            prepare.run();
+            return;
+        }
+        try {
+            MAIN_EXECUTOR.submit(prepare).get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while preparing workspace unlock", e);
@@ -87,11 +102,15 @@ public final class HomeUnlockRevealController
             if (!Float.isFinite(amount) || (mAnimator != null && !forceIfAnimating)) {
                 return;
             }
+            mLauncher.getDragLayer().removeCallbacks(mPrepareTimeout);
             stopAnimator();
             if (amount >= 1f) {
                 cancel();
-            } else if (mPrepared) {
+            } else if (mPrepared && mWorkspaceAnimation.finishPreparation()) {
                 mWorkspaceAnimation.setUnlockAmount(Utilities.boundToRange(amount, 0f, 1f));
+                mLauncher.getDragLayer().postDelayed(mPrepareTimeout, PREPARE_TIMEOUT_MS);
+            } else {
+                cancel();
             }
         });
     }
@@ -103,18 +122,39 @@ public final class HomeUnlockRevealController
                 cancel();
                 return;
             }
-            if (!mPrepared) {
+            if (!mPrepared || !mWorkspaceAnimation.isPrepared()) {
+                cancel();
                 return;
             }
+            mLauncher.getDragLayer().removeCallbacks(mPrepareTimeout);
             stopAnimator();
-            ValueAnimator animator = ValueAnimator.ofFloat(
-                    mWorkspaceAnimation.getUnlockAmount(), unlocked ? 1f : 0f);
+            if (!mWorkspaceAnimation.finishPreparation()) {
+                cancel();
+                return;
+            }
+            float from = mWorkspaceAnimation.getUnlockAmount();
+            float to = unlocked ? 1f : 0f;
+            if (duration <= 0 || from == to) {
+                cancel();
+                return;
+            }
+            ValueAnimator animator = ValueAnimator.ofFloat(from, to);
             mAnimator = animator;
-            animator.setDuration(Math.max(0L, duration));
-            animator.setStartDelay(Math.max(0L, startDelay));
-            animator.setInterpolator(EMPHASIZED_DECELERATE);
-            animator.addUpdateListener(value -> mWorkspaceAnimation.setUnlockAmount(
-                    (Float) value.getAnimatedValue()));
+            animator.setDuration(Math.round(
+                    mWorkspaceAnimation.getDuration() * Math.abs(to - from)));
+            long revealStartDelay = Math.max(0L, startDelay);
+            animator.setStartDelay(unlocked ? revealStartDelay / 2 : revealStartDelay);
+            animator.setInterpolator(LINEAR);
+            animator.addUpdateListener(value -> {
+                if (!isEnabled() || !mWorkspaceAnimation.isPrepared()) {
+                    cancel();
+                } else {
+                    mWorkspaceAnimation.setUnlockAmount((Float) value.getAnimatedValue());
+                    if (unlocked && mWorkspaceAnimation.isFinished()) {
+                        cancel();
+                    }
+                }
+            });
             animator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
@@ -162,7 +202,8 @@ public final class HomeUnlockRevealController
     }
 
     private boolean isEnabled() {
-        return mLauncher != null && LauncherPrefs.WORKSPACE_UNLOCK_ANIMATION.get(mLauncher);
+        return mLauncher != null && ValueAnimator.areAnimatorsEnabled()
+                && LauncherPrefs.WORKSPACE_UNLOCK_ANIMATION.get(mLauncher);
     }
 
     private void stopAnimator() {
@@ -175,6 +216,9 @@ public final class HomeUnlockRevealController
 
     public void cancel() {
         stopAnimator();
+        if (mLauncher != null) {
+            mLauncher.getDragLayer().removeCallbacks(mPrepareTimeout);
+        }
         if (mWorkspaceAnimation != null) {
             mWorkspaceAnimation.reset();
         }
@@ -189,6 +233,7 @@ public final class HomeUnlockRevealController
             return;
         }
         cancel();
+        ScreenOnTracker.INSTANCE.get(mLauncher).removeListener(mScreenOnListener);
         LauncherPrefs.getPrefs(mLauncher).unregisterOnSharedPreferenceChangeListener(this);
         SystemUiProxy proxy = SystemUiProxy.INSTANCE.get(mLauncher);
         proxy.removeOnStateChangeListener(mSystemUiConnectionListener);
