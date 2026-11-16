@@ -6,6 +6,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.util.AttributeSet;
+import android.view.View;
 import android.view.ViewDebug;
 import android.view.WindowInsets;
 
@@ -13,6 +14,7 @@ import com.android.launcher3.graphics.SysUiScrim;
 import com.android.launcher3.statemanager.StatefulContainer;
 import com.android.launcher3.util.window.WindowManagerProxy;
 import com.android.launcher3.views.ActivityContext;
+import com.android.launcher3.views.HomeClockView;
 
 import java.util.Collections;
 import java.util.List;
@@ -34,11 +36,18 @@ public class LauncherRootView extends InsettableFrameLayout {
     private boolean mForceHideBackArrow;
 
     private final SysUiScrim mSysUiScrim;
+    private HomeClockView mHomeClock;
 
     public LauncherRootView(Context context, AttributeSet attrs) {
         super(context, attrs);
         mStatefulContainer = ActivityContext.lookupContext(context);
         mSysUiScrim = new SysUiScrim(this);
+    }
+
+    @Override
+    protected void onFinishInflate() {
+        super.onFinishInflate();
+        mHomeClock = findViewById(R.id.home_clock);
     }
 
     private void handleSystemWindowInsets(Rect insets) {
@@ -113,8 +122,14 @@ public class LauncherRootView extends InsettableFrameLayout {
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
-        mSysUiScrim.draw(canvas);
+        if (mHomeClock == null) mSysUiScrim.draw(canvas);
         super.dispatchDraw(canvas);
+    }
+
+    @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        if (mHomeClock != null && child.getId() == R.id.drag_layer) mSysUiScrim.draw(canvas);
+        return super.drawChild(canvas, child, drawingTime);
     }
 
     @Override

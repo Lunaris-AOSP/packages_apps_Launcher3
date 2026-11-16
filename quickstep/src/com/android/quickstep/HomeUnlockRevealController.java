@@ -27,9 +27,11 @@ import android.graphics.Rect;
 import android.os.Looper;
 
 import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.ScreenOnTracker;
+import com.android.launcher3.views.HomeClockView;
 import com.android.quickstep.util.HomeUnlockReveal;
 import com.android.systemui.shared.system.smartspace.ILauncherUnlockAnimationController;
 import com.android.systemui.shared.system.smartspace.SmartspaceState;
@@ -144,6 +146,10 @@ public final class HomeUnlockRevealController
                     mWorkspaceAnimation.getDuration() * Math.abs(to - from)));
             long revealStartDelay = Math.max(0L, startDelay);
             animator.setStartDelay(unlocked ? revealStartDelay / 2 : revealStartDelay);
+            HomeClockView clock = mLauncher.findViewById(R.id.home_clock);
+            if (clock != null) {
+                clock.onUnlockAnimation(unlocked, animator.getDuration(), animator.getStartDelay());
+            }
             animator.setInterpolator(LINEAR);
             animator.addUpdateListener(value -> {
                 if (!isEnabled() || !mWorkspaceAnimation.isPrepared()) {
