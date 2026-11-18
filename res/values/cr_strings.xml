@@ -485,6 +485,9 @@
     <!-- Icon pack -->
     <string name="icon_pack_title">Icon pack</string>
     <string name="icon_pack_default_label">Default</string>
+    <string name="app_info_icon_style_title">Icon style</string>
+    <string name="app_info_icon_style_global">Use launcher setting</string>
+    <string name="app_info_icon_style_themed">Themed</string>
     <string name="icon_pack_add">Install more</string>
     <string name="icon_pack_no_market">There\'s no available app store</string>
 

@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import com.android.launcher3.customization.IconDatabase;
 
@@ -41,11 +42,20 @@ public class AppReloader {
     }
 
     public Set<ComponentKey> withIconPack(String iconPack) {
+        return withIcons(key -> IconDatabase.getByComponent(mContext, key).equals(iconPack));
+    }
+
+    public Set<ComponentKey> withIconStyle(String iconStyle) {
+        return withIcons(key ->
+                IconDatabase.getSelectionForComponent(mContext, key).equals(iconStyle));
+    }
+
+    private Set<ComponentKey> withIcons(Predicate<ComponentKey> filter) {
         Set<ComponentKey> reloadKeys = new HashSet<>();
         for (UserHandle user : mUsers.getUserProfiles()) {
             for (LauncherActivityInfo info : mApps.getActivityList(null, user)) {
                 ComponentKey key = new ComponentKey(info.getComponentName(), info.getUser());
-                if (IconDatabase.getByComponent(mContext, key).equals(iconPack)) {
+                if (filter.test(key)) {
                     reloadKeys.add(key);
                 }
             }

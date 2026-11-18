@@ -131,8 +131,8 @@ public class InfoBottomSheet extends WidgetsBottomSheet {
             mKey = new ComponentKey(mComponent, itemInfo.user);
 
             ReloadingListPreference icons = (ReloadingListPreference) findPreference(KEY_ICON_PACK);
-            icons.setValue(IconDatabase.getByComponent(mContext, mKey));
-            icons.setOnReloadListener(ctx -> new IconPackPrefSetter(ctx, mComponent));
+            icons.setValue(IconDatabase.getSelectionForComponent(mContext, mKey));
+            icons.setOnReloadListener(ctx -> new IconPackPrefSetter(ctx, mKey));
             icons.setOnPreferenceChangeListener(this);
 
             Preference customIcon = findPreference(KEY_CUSTOM_ICON);
@@ -142,7 +142,11 @@ public class InfoBottomSheet extends WidgetsBottomSheet {
                             (IconPickerBottomSheet) mLauncher.getLayoutInflater().inflate(
                                     R.layout.icon_picker_bottom_sheet,
                                     mLauncher.getDragLayer(), false);
-                    picker.show(mKey, () -> AppReloader.get(mContext).reload(mKey));
+                    picker.show(mKey, () -> {
+                        icons.setValue(IconDatabase.getSelectionForComponent(mContext, mKey));
+                        icons.onResume();
+                        AppReloader.get(mContext).reload(mKey);
+                    });
                     return true;
                 });
             }
@@ -190,11 +194,7 @@ public class InfoBottomSheet extends WidgetsBottomSheet {
 
         @Override
         public boolean onPreferenceChange(Preference preference, Object newValue) {
-            if (newValue.equals(IconDatabase.getGlobal(mContext))) {
-                IconDatabase.resetForComponent(mContext, mKey);
-            } else {
-                IconDatabase.setForComponent(mContext, mKey, (String) newValue);
-            }
+            IconDatabase.setForComponent(mContext, mKey, (String) newValue);
             AppReloader.get(mContext).reload(mKey);
             return true;
         }

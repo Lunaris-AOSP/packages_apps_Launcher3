@@ -20,6 +20,7 @@ import static android.app.ActivityTaskManager.INVALID_TASK_ID;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_HOME;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
 import static android.app.WindowConfiguration.WINDOWING_MODE_MULTI_WINDOW;
+import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
 import static android.app.role.RoleManager.ROLE_HOME;
 import static android.provider.Settings.Secure.LAUNCHER_TASKBAR_EDUCATION_SHOWING;
 import static android.view.RemoteAnimationTarget.MODE_CLOSING;
@@ -616,7 +617,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
         mLauncher.getStateManager().setCurrentAnimation(animation);
         RemoteAnimationTargets targets = new RemoteAnimationTargets(appTargets,
                 wallpaperTargets, nonAppTargets, MODE_OPENING);
-        RemoteAnimationTarget openingTarget = targets.getFirstAppTarget();
+        RemoteAnimationTarget openingTarget = getOpeningAppTarget(appTargets);
         RectF targetRect = new RectF(getWindowTargetBounds(appTargets,
                 getRotationChange(appTargets)));
         if (openingTarget != null) {
@@ -791,12 +792,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
      */
     private Rect getWindowTargetBounds(@NonNull RemoteAnimationTarget[] appTargets,
             int rotationChange) {
-        RemoteAnimationTarget target = null;
-        for (RemoteAnimationTarget t : appTargets) {
-            if (t.mode != MODE_OPENING) continue;
-            target = t;
-            break;
-        }
+        RemoteAnimationTarget target = getOpeningAppTarget(appTargets);
         final int widthPx = mDeviceProfile.getDeviceProperties().getWidthPx();
         final int heightPx = mDeviceProfile.getDeviceProperties().getHeightPx();
         if (target == null) return new Rect(0, 0, widthPx, heightPx);
@@ -817,6 +813,16 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             }
         }
         return bounds;
+    }
+
+    private RemoteAnimationTarget getOpeningAppTarget(RemoteAnimationTarget[] appTargets) {
+        for (RemoteAnimationTarget target : appTargets) {
+            if (target.mode == MODE_OPENING && (mCosAppAnimations
+                    || target.windowConfiguration.getWindowingMode() != WINDOWING_MODE_PINNED)) {
+                return target;
+            }
+        }
+        return null;
     }
 
     /** Dump debug logs to bug report. */
@@ -1840,9 +1846,11 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
     }
 
     public void interruptNothingLaunch() {
-        if (!mCosAppAnimations && mActiveNothingLaunch != null) {
-            mActiveNothingLaunch.interrupt();
-        }
+        if (mCosAppAnimations) return;
+        RectFSpringAnim spring = mActiveNothingLaunch;
+        AnimatorSet animation = mActiveNothingLaunchAnimation;
+        if (spring != null) spring.interrupt();
+        if (animation != null) animation.cancel();
     }
 
     public NothingWorkspaceAnimation getNothingWorkspaceAnimation() {
@@ -2728,12 +2736,10 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
 
         private void applyAnimation(BackAnimState state,
                 LauncherAnimationRunner.AnimationResult result) {
-            if (mCosAppAnimations) {
-                mBackAnimState = state;
-                state.addOnAnimCompleteCallback(() -> {
-                    if (mBackAnimState == state) mBackAnimState = null;
-                });
-            }
+            mBackAnimState = state;
+            state.addOnAnimCompleteCallback(() -> {
+                if (mBackAnimState == state) mBackAnimState = null;
+            });
             state.applyToAnimationResult(result, mLauncher);
         }
 
@@ -2774,6 +2780,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             }
             if (!mCosAppAnimations && (!ValueAnimator.areAnimatorsEnabled()
                     || !(mV.getParent() instanceof ViewGroup)
+                    || getOpeningAppTarget(appTargets) == null
                     || RemoveAnimationSettingsTracker.INSTANCE.get(mLauncher)
                             .isRemoveAnimationEnabled())) {
                 result.setAnimation(null, mLauncher, mOnEndCallback::executeAllAndDestroy, false);
@@ -3196,7 +3203,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             // transfer the coordinate based on animation target.
             if (mAppTargets != null) {
                 for (RemoteAnimationTarget t : mAppTargets) {
-                    if (t.mode == mMode) {
+                    if (t.mode == mMode && (mCosAppAnimations
+                            || t.windowConfiguration.getWindowingMode()
+                                    != WINDOWING_MODE_PINNED)) {
                         final RectF transferRect = new RectF(mWindowStartBounds);
                         final RectF result = new RectF();
                         transferRectToTargetCoordinate(t, transferRect, false, result);
@@ -3242,6 +3251,8 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             SurfaceTransaction transaction = new SurfaceTransaction();
             for (int i = mAppTargets.length - 1; i >= 0; i--) {
                 RemoteAnimationTarget target = mAppTargets[i];
+                if (!mCosAppAnimations && target.windowConfiguration.getWindowingMode()
+                        == WINDOWING_MODE_PINNED) continue;
                 SurfaceProperties builder = transaction.forSurface(target.leash);
 
                 if (target.localBounds != null) {

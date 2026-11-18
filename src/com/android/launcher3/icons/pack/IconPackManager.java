@@ -8,17 +8,25 @@ import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.drawable.AdaptiveIconDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.InsetDrawable;
 import android.os.Handler;
 import android.util.Log;
+
+import androidx.annotation.Nullable;
 
 import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 
 import com.android.launcher3.LauncherModel;
+import com.android.launcher3.icons.ThemedIconSettings;
 import com.android.launcher3.util.ComponentKey;
 
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -90,10 +98,10 @@ public class IconPackManager extends BroadcastReceiver {
                 Set<ComponentKey> updateKeys = appReloader.withIconPack(pkg);
 
                 // Remove the changed package from the providers to reload the application info.
-                mProviders.remove(pkg);
-
-                // This can reset the global preference, so do this after creating the list.
-                reloadProviders();
+                synchronized (this) {
+                    mProviders.remove(pkg);
+                    reloadProviders();
+                }
 
                 // Ensure all icons are up-to-date after this icon pack change.
                 // Calendar and clock information will automatically be reloaded by this call.
@@ -143,7 +151,7 @@ public class IconPackManager extends BroadcastReceiver {
         }
     }
 
-    public Map<String, CharSequence> getProviderNames() {
+    public synchronized Map<String, CharSequence> getProviderNames() {
         Map<String, CharSequence> providerTitles = new HashMap<>();
         for (Map.Entry<String, IconPack> pack : mProviders.entrySet()) {
             providerTitles.put(pack.getKey(), pack.getValue().getTitle());
@@ -151,11 +159,73 @@ public class IconPackManager extends BroadcastReceiver {
         return providerTitles;
     }
 
-    public boolean packContainsActivity(String packPackage, ComponentName componentName) {
+    public synchronized boolean isThemedPack(String packPackage) {
+        IconPack pack = mProviders.get(packPackage);
+        if (pack == null) return false;
+        try {
+            return pack.isThemed(mContext.getPackageManager());
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
+    public synchronized boolean supportsThemedIcon(ComponentKey key) {
+        String packPackage = IconDatabase.getByComponent(mContext, key);
+        IconPack pack = mProviders.get(packPackage);
+        if (pack == null) return false;
+        PackageManager pm = mContext.getPackageManager();
+        try {
+            if (pack.isThemed(pm)) return true;
+            String drawable = IconDatabase.getExplicitDrawableForComponent(mContext, key);
+            if (drawable == null || pack.getDrawableId(pm, drawable) == 0) {
+                IconPack.Data data = pack.getData(pm);
+                drawable = getDefaultDrawableName(pack, data, key.componentName);
+            }
+            return pack.isThemedDrawable(pm, drawable);
+        } catch (PackageManager.NameNotFoundException | XmlPullParserException | IOException e) {
+            return false;
+        }
+    }
+
+    private String getDefaultDrawableName(IconPack pack, IconPack.Data data, ComponentName component)
+            throws PackageManager.NameNotFoundException {
+        String prefix = data.calendarPrefix.get(component);
+        if (prefix != null) {
+            String calendar = prefix + Calendar.getInstance().get(Calendar.DAY_OF_MONTH);
+            if (pack.getDrawableId(mContext.getPackageManager(), calendar) != 0) return calendar;
+        }
+        return data.drawables.get(component);
+    }
+
+    @Nullable
+    public Drawable applyThemedColors(Context context, String packPackage,
+            @Nullable Drawable icon) {
+        if (icon == null || packPackage == null || packPackage.isEmpty()) return icon;
+        AdaptiveIconDrawable adaptive = icon instanceof AdaptiveIconDrawable
+                ? (AdaptiveIconDrawable) icon : null;
+        Drawable mono = adaptive == null ? null : adaptive.getMonochrome();
+        if (mono == null && isThemedPack(packPackage)) {
+            mono = adaptive == null ? icon : adaptive.getForeground();
+        }
+        if (mono == null) return icon;
+
+        Drawable.ConstantState state = mono.getConstantState();
+        Drawable foreground = state == null ? mono : state.newDrawable(context.getResources());
+        foreground = new InsetDrawable(foreground.mutate(),
+                ThemedIconSettings.getIconInsetFraction(context));
+        foreground.setTint(ThemedIconSettings.getForegroundColor(context));
+        return new AdaptiveIconDrawable(
+                new ColorDrawable(ThemedIconSettings.getBackgroundColor(context)),
+                foreground, mono);
+    }
+
+    public synchronized boolean packContainsActivity(String packPackage, ComponentName componentName) {
         try {
             IconPack pack = mProviders.get(packPackage);
+            if (pack == null) return false;
             IconPack.Data data = pack.getData(mContext.getPackageManager());
-            return data.drawables.containsKey(componentName);
+            return pack.getDrawableId(mContext.getPackageManager(),
+                    getDefaultDrawableName(pack, data, componentName)) != 0;
         } catch (PackageManager.NameNotFoundException | XmlPullParserException | IOException ignored) {
             return false;
         }
@@ -168,12 +238,12 @@ public class IconPackManager extends BroadcastReceiver {
      * @param key Component for which an icon should be extracted.
      * @return Resolver that loads the icon, or null if there is no resolution strategy.
      */
-    public IconResolver resolve(ComponentKey key) {
+    public synchronized IconResolver resolve(ComponentKey key) {
         String packPackage = IconDatabase.getByComponent(mContext, key);
-        if (mProviders.containsKey(packPackage)) {
+        IconPack pack = mProviders.get(packPackage);
+        if (pack != null) {
             // The icon provider package is available.
             try {
-                IconPack pack = mProviders.get(packPackage);
                 IconPack.Data data = pack.getData(mContext.getPackageManager());
                 String explicitDrawable =
                         IconDatabase.getExplicitDrawableForComponent(mContext, key);
@@ -184,18 +254,16 @@ public class IconPackManager extends BroadcastReceiver {
                     if (drawableId != 0) {
                         return new IconResolverExternal(mContext.getPackageManager(),
                                 pack.getAi(), drawableId,
-                                data.calendarPrefix.get(key.componentName),
+                                null,
                                 data.clockMetadata.get(drawableId));
                     }
                 }
-                if (data.drawables.containsKey(key.componentName)) {
-                    int drawableId = pack.getDrawableId(mContext.getPackageManager(), key.componentName);
-                    if (drawableId != 0) {
-                        return new IconResolverExternal(mContext.getPackageManager(), pack.getAi(),
-                                drawableId,
-                                data.calendarPrefix.get(key.componentName),
-                                data.clockMetadata.get(drawableId));
-                    }
+                String drawableName = getDefaultDrawableName(pack, data, key.componentName);
+                int drawableId = pack.getDrawableId(mContext.getPackageManager(), drawableName);
+                if (drawableId != 0) {
+                    return new IconResolverExternal(mContext.getPackageManager(), pack.getAi(),
+                            drawableId, data.calendarPrefix.get(key.componentName),
+                            data.clockMetadata.get(drawableId));
                 }
                 if (data.hasMasking()) {
                     return new IconResolverMasked(mContext, data, pack.getAi(), key.hashCode());
@@ -209,7 +277,7 @@ public class IconPackManager extends BroadcastReceiver {
         return null;
     }
 
-    public List<IconPack.IconEntry> getAllIconEntries(String packPackage) {
+    public synchronized List<IconPack.IconEntry> getAllIconEntries(String packPackage) {
         IconPack pack = mProviders.get(packPackage);
         if (pack == null) return java.util.Collections.emptyList();
         try {

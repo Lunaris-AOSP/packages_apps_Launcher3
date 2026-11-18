@@ -102,6 +102,7 @@ import com.android.launcher3.icons.CacheableShortcutInfo;
 import com.android.launcher3.icons.IconShape;
 import com.android.launcher3.icons.IconThemeController;
 import com.android.launcher3.icons.LauncherIcons;
+import com.android.launcher3.icons.PerAppIconThemeController;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.ItemInfoWithIcon;
 import com.android.launcher3.pm.ShortcutConfigActivityInfo;
@@ -703,6 +704,10 @@ public final class Utilities {
     @WorkerThread
     public static <T extends Context & ActivityContext> Pair<AdaptiveIconDrawable, Drawable>
             getFullDrawable(T context, ItemInfo info, int width, int height, boolean useTheme) {
+        if (info instanceof ItemInfoWithIcon iiwi) {
+            useTheme = (iiwi.resolveIconCreationFlags(context, useTheme ? FLAG_THEMED : 0)
+                    & FLAG_THEMED) != 0;
+        }
         LauncherAppState appState = LauncherAppState.getInstance(context);
         Drawable mainIcon = null;
 
@@ -778,7 +783,8 @@ public final class Utilities {
         // Inject theme icon drawable
         if (ATLEAST_T && useTheme && !noWrapHintSet) {
             IconThemeController themeController =
-                    ThemeManager.INSTANCE.get(context).getThemeController();
+                    PerAppIconThemeController.getThemedController(
+                            ThemeManager.INSTANCE.get(context));
             if (themeController != null) {
                 result = themeController.createThemedAdaptiveIcon(
                         context,

@@ -107,7 +107,9 @@ import com.android.launcher3.icons.DotRenderer;
 import com.android.launcher3.icons.DotRenderer.IconShapeInfo;
 import com.android.launcher3.icons.FastBitmapDrawable;
 import com.android.launcher3.icons.IconCache.ItemInfoUpdateReceiver;
+import com.android.launcher3.icons.IconThemeController;
 import com.android.launcher3.icons.LauncherIcons;
+import com.android.launcher3.icons.PerAppIconThemeController;
 import com.android.launcher3.icons.PlaceHolderDrawableDelegate;
 import com.android.launcher3.icons.cache.CacheLookupFlag;
 import com.android.launcher3.model.data.AppInfo;
@@ -1205,6 +1207,10 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
     }
 
     private boolean isMonetThemeActive() {
+        if (getTag() instanceof ItemInfoWithIcon info) {
+            return (info.resolveIconCreationFlags(getContext(),
+                    getIconCreationFlagsForInfo(info)) & FLAG_THEMED) != 0;
+        }
         return shouldUseTheme() && ThemeManager.INSTANCE.get(getContext()).isIconThemeEnabled();
     }
 
@@ -1218,8 +1224,9 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
         int fgColor = context.getColor(isNight
                 ? android.R.color.system_accent1_100 : android.R.color.system_neutral2_700);
         try {
-            com.android.launcher3.icons.IconThemeController controller =
-                    ThemeManager.INSTANCE.get(context).getThemeController();
+            IconThemeController controller =
+                    PerAppIconThemeController.getThemedController(
+                            ThemeManager.INSTANCE.get(context));
             if (controller != null) {
                 AdaptiveIconDrawable probe = new AdaptiveIconDrawable(
                         new ColorDrawable(Color.BLACK), null, new ColorDrawable(Color.WHITE));
@@ -2500,18 +2507,21 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
      * Verifies that the current icon is high-res otherwise posts a request to load the icon.
      */
     public void verifyHighRes() {
-        CacheLookupFlag expectedFlag = DEFAULT_LOOKUP_FLAG.withThemeIcon(shouldUseTheme());
-        if (getTag() instanceof ItemInfoWithIcon info && !mHighResUpdateInProgress
-                && info.getMatchingLookupFlag().isVisuallyLessThan(expectedFlag)) {
-                if (mIcon != null && mIcon.isThemed() && shouldUseTheme()) {
-                    return;
-                }
-            if (mIconLoadRequest != null) {
-                mIconLoadRequest.cancel();
-            }
-            mIconLoadRequest = LauncherAppState.getInstance(getContext()).getIconCache()
-                    .updateIconInBackground(BubbleTextView.this, info, expectedFlag);
+        if (!(getTag() instanceof ItemInfoWithIcon info) || mHighResUpdateInProgress) {
+            return;
         }
+        boolean useTheme = (info.resolveIconCreationFlags(getContext(),
+                getIconCreationFlagsForInfo(info)) & FLAG_THEMED) != 0;
+        CacheLookupFlag expectedFlag = DEFAULT_LOOKUP_FLAG.withThemeIcon(useTheme);
+        if (!info.getMatchingLookupFlag().isVisuallyLessThan(expectedFlag)
+                || (mIcon != null && mIcon.isThemed() && useTheme)) {
+            return;
+        }
+        if (mIconLoadRequest != null) {
+            mIconLoadRequest.cancel();
+        }
+        mIconLoadRequest = LauncherAppState.getInstance(getContext()).getIconCache()
+                .updateIconInBackground(BubbleTextView.this, info, expectedFlag);
     }
 
     public int getIconSize() {

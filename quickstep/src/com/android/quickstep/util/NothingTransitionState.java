@@ -16,6 +16,10 @@
 package com.android.quickstep.util;
 
 import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
+import static android.view.WindowManager.TRANSIT_CLOSE;
+import static android.view.WindowManager.TRANSIT_OPEN;
+import static android.view.WindowManager.TRANSIT_TO_BACK;
+import static android.view.WindowManager.TRANSIT_TO_FRONT;
 
 import android.app.ActivityManager.RunningTaskInfo;
 import android.graphics.Matrix;
@@ -40,6 +44,7 @@ public final class NothingTransitionState {
     public static final long HANDOFF_DURATION_MS = NothingAppAnimation.LAUNCH_DURATION_MS / 2;
     private static final long EXPIRY_MS = NothingAppAnimation.LAUNCH_DURATION_MS * 2;
     private static long sNextId;
+    private static long sActiveId;
     private static Snapshot sSnapshot;
     private static final ConcurrentHashMap<Integer, HandoffTarget> sOpeningTargets =
             new ConcurrentHashMap<>();
@@ -48,6 +53,8 @@ public final class NothingTransitionState {
 
     public static synchronized long begin(RemoteAnimationTarget target) {
         long id = ++sNextId;
+        sActiveId = id;
+        sSnapshot = null;
         HandoffTarget opening = target == null ? null : sOpeningTargets.get(target.taskId);
         if (opening != null && target.taskInfo != null
                 && opening.task.userId == target.taskInfo.userId
@@ -59,7 +66,7 @@ public final class NothingTransitionState {
 
     public static synchronized void update(long id, RemoteAnimationTarget target,
             RectF launcherBounds, Matrix matrix, Rect crop, float radius, float alpha) {
-        if (target.taskInfo == null
+        if (id != sActiveId || target.taskInfo == null
                 || target.taskInfo.getWindowingMode() != WINDOWING_MODE_FULLSCREEN
                 || target.taskInfo.parentTaskId != -1
                 || target.rotationChange != 0 || crop.isEmpty() || launcherBounds.isEmpty()
@@ -84,15 +91,18 @@ public final class NothingTransitionState {
         }
         if (target.taskInfo == null
                 || target.taskInfo.getWindowingMode() != WINDOWING_MODE_FULLSCREEN
+                || target.taskInfo.parentTaskId != -1
                 || target.rotationChange != 0 || target.taskId != sSnapshot.taskId
                 || target.taskInfo.userId != sSnapshot.userId
                 || target.taskInfo.displayId != sSnapshot.displayId) return null;
         Snapshot snapshot = new Snapshot(sSnapshot);
+        if (sActiveId == snapshot.id) sActiveId = 0;
         sSnapshot = null;
         return snapshot;
     }
 
     public static synchronized void clear(long id) {
+        if (sActiveId == id) sActiveId = 0;
         if (sSnapshot != null && sSnapshot.id == id) sSnapshot = null;
     }
 
@@ -129,12 +139,13 @@ public final class NothingTransitionState {
                     HandoffTarget target = new HandoffTarget(task,
                             new SurfaceControl(surface, "Nothing transition handoff"));
                     targets.add(target);
-                    if (change.getMode() == android.view.WindowManager.TRANSIT_OPEN
-                            || change.getMode() == android.view.WindowManager.TRANSIT_TO_FRONT) {
+                    if (change.getMode() == TRANSIT_OPEN
+                            || change.getMode() == TRANSIT_TO_FRONT) {
                         sOpeningTargets.put(task.taskId, target);
                     }
-                    if (peek(task) != null && (change.getMode() == android.view.WindowManager.TRANSIT_CLOSE
-                            || change.getMode() == android.view.WindowManager.TRANSIT_TO_BACK)) {
+                    if (change.getMode() == TRANSIT_OPEN || change.getMode() == TRANSIT_TO_FRONT
+                            || change.getMode() == TRANSIT_CLOSE
+                            || change.getMode() == TRANSIT_TO_BACK) {
                         transaction.setMatrix(surface, 1f, 0f, 0f, 1f)
                                 .setCrop(surface, null).setCornerRadius(surface, 0f)
                                 .setAlpha(surface, 1f);
@@ -156,7 +167,8 @@ public final class NothingTransitionState {
                                         if (held != null) {
                                             float[] values = new float[9];
                                             for (HandoffTarget target : held) {
-                                                Snapshot state = peek(target.task, target.animationId);
+                                                Snapshot state = target.allowHandoff
+                                                        ? peek(target.task, target.animationId) : null;
                                                 if (state == null || !target.surface.isValid()) continue;
                                                 state.matrix.getValues(values);
                                                 float scale = (float) Math.hypot(
@@ -185,6 +197,13 @@ public final class NothingTransitionState {
             public void mergeAnimation(IBinder token, TransitionInfo info,
                     SurfaceControl.Transaction transaction, IBinder mergeTarget,
                     IRemoteTransitionFinishedCallback finish) throws RemoteException {
+                List<HandoffTarget> targets = mTargets.get(mergeTarget);
+                if (targets != null) {
+                    for (HandoffTarget target : targets) {
+                        target.allowHandoff = isClosingTask(info, target.task);
+                        if (!target.allowHandoff) clear(target.animationId);
+                    }
+                }
                 try {
                     delegate.mergeAnimation(token, info, transaction, mergeTarget, finish);
                 } finally {
@@ -194,13 +213,30 @@ public final class NothingTransitionState {
 
             @Override
             public void onTransitionConsumed(IBinder token, boolean aborted) throws RemoteException {
+                List<HandoffTarget> targets = mTargets.remove(token);
+                if (targets == null) return;
+                for (HandoffTarget target : targets) clear(target.animationId);
                 try {
                     delegate.onTransitionConsumed(token, aborted);
                 } finally {
-                    release(mTargets.remove(token));
+                    release(targets);
                 }
             }
         };
+    }
+
+    private static boolean isClosingTask(TransitionInfo info, RunningTaskInfo target) {
+        for (TransitionInfo.Change change : info.getChanges()) {
+            RunningTaskInfo task = change.getTaskInfo();
+            if (task != null && task.taskId == target.taskId && task.userId == target.userId
+                    && task.displayId == target.displayId && task.parentTaskId == -1
+                    && task.getWindowingMode() == WINDOWING_MODE_FULLSCREEN
+                    && change.getStartRotation() == change.getEndRotation()
+                    && change.getStartDisplayId() == change.getEndDisplayId()
+                    && (change.getMode() == TRANSIT_CLOSE
+                            || change.getMode() == TRANSIT_TO_BACK)) return true;
+        }
+        return false;
     }
 
     private static void release(List<HandoffTarget> targets) {
@@ -215,6 +251,7 @@ public final class NothingTransitionState {
         final RunningTaskInfo task;
         final SurfaceControl surface;
         volatile long animationId;
+        volatile boolean allowHandoff = true;
 
         HandoffTarget(RunningTaskInfo taskInfo, SurfaceControl leash) {
             task = taskInfo;

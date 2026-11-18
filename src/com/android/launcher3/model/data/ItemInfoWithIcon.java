@@ -16,6 +16,7 @@
 
 package com.android.launcher3.model.data;
 
+import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION;
 import static com.android.launcher3.icons.BitmapInfo.FLAG_THEMED;
 
 import android.content.Context;
@@ -26,6 +27,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.android.launcher3.Flags;
+import com.android.launcher3.customization.IconDatabase;
 import com.android.launcher3.graphics.ThemeManager;
 import com.android.launcher3.icons.BitmapInfo;
 import com.android.launcher3.icons.BitmapInfo.DrawableCreationFlags;
@@ -35,6 +37,7 @@ import com.android.launcher3.icons.cache.CacheLookupFlag;
 import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.pm.PackageInstallInfo;
 import com.android.launcher3.util.ApiWrapper;
+import com.android.launcher3.util.ComponentKey;
 
 /**
  * Represents an ItemInfo which also holds an icon.
@@ -324,16 +327,27 @@ public abstract class ItemInfoWithIcon extends ItemInfo {
 
     public FastBitmapDrawable newIcon(Context context, @DrawableCreationFlags int creationFlags) {
         ThemeManager themeManager = ThemeManager.INSTANCE.get(context);
+        int shapeFlags = creationFlags;
+        creationFlags = resolveIconCreationFlags(context, creationFlags);
         IconShape iconShape = null;
-        if (supportsCustomShapes(creationFlags)) {
+        if (supportsCustomShapes(shapeFlags | (creationFlags & FLAG_THEMED))) {
             iconShape = themeManager.getIconShapeData().getValue();
-        }
-        if (!themeManager.isIconThemeEnabled()) {
-            creationFlags &= ~FLAG_THEMED;
         }
         FastBitmapDrawable drawable = bitmap.newIcon(context, creationFlags, iconShape);
         drawable.setDisabled(isDisabled());
         return drawable;
+    }
+
+    @DrawableCreationFlags
+    public int resolveIconCreationFlags(Context context,
+            @DrawableCreationFlags int creationFlags) {
+        boolean useTheme = (creationFlags & FLAG_THEMED) != 0
+                && ThemeManager.INSTANCE.get(context).isIconThemeEnabled();
+        if (itemType == ITEM_TYPE_APPLICATION && getTargetComponent() != null) {
+            useTheme = IconDatabase.shouldUseThemedIcon(context,
+                    new ComponentKey(getTargetComponent(), user), useTheme);
+        }
+        return useTheme ? creationFlags | FLAG_THEMED : creationFlags & ~FLAG_THEMED;
     }
 
     /**

@@ -16,6 +16,7 @@
 
 package com.android.launcher3.icons;
 
+import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_DEEP_SHORTCUT;
 import static com.android.launcher3.icons.cache.CacheLookupFlag.DEFAULT_LOOKUP_FLAG;
 import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
@@ -51,6 +52,7 @@ import androidx.core.util.Pair;
 import com.android.launcher3.Flags;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.Utilities;
+import com.android.launcher3.customization.IconDatabase;
 import com.android.launcher3.dagger.ApplicationContext;
 import com.android.launcher3.dagger.LauncherAppSingleton;
 import com.android.launcher3.icons.cache.BaseIconCache;
@@ -161,6 +163,16 @@ public class IconCache extends BaseIconCache {
         return mIconPool.obtain();
     }
 
+    private CacheLookupFlag getLookupFlagForIconStyle(
+            ItemInfoWithIcon info, CacheLookupFlag lookupFlag) {
+        if (info.itemType == ITEM_TYPE_APPLICATION && info.getTargetComponent() != null
+                && IconDatabase.shouldUseThemedIcon(mContext,
+                        new ComponentKey(info.getTargetComponent(), info.user), false)) {
+            return lookupFlag.withThemeIcon();
+        }
+        return lookupFlag;
+    }
+
     /**
      * Updates the entries related to the given package in memory and persistent DB.
      */
@@ -247,7 +259,7 @@ public class IconCache extends BaseIconCache {
     public synchronized void updateTitleAndIcon(AppInfo application) {
         CacheEntry entry = cacheLocked(application.componentName,
                 application.user, () -> null, LauncherActivityCachingLogic.INSTANCE,
-                application.getMatchingLookupFlag());
+                getLookupFlagForIconStyle(application, application.getMatchingLookupFlag()));
         if (entry.bitmap != null || !isDefaultIcon(entry.bitmap, application.user)) {
             applyCacheEntry(entry, application);
         }
@@ -396,7 +408,8 @@ public class IconCache extends BaseIconCache {
             @NonNull Supplier<LauncherActivityInfo> activityInfoProvider,
             @NonNull CacheLookupFlag lookupFlag) {
         CacheEntry entry = cacheLocked(infoInOut.getTargetComponent(), infoInOut.user,
-                activityInfoProvider, LauncherActivityCachingLogic.INSTANCE, lookupFlag);
+                activityInfoProvider, LauncherActivityCachingLogic.INSTANCE,
+                getLookupFlagForIconStyle(infoInOut, lookupFlag));
         applyCacheEntry(entry, infoInOut);
     }
 
@@ -447,7 +460,8 @@ public class IconCache extends BaseIconCache {
                             return true;
                         })
                         .collect(groupingBy(iconRequest ->
-                                Pair.create(iconRequest.itemInfo.user, iconRequest.lookupFlag)));
+                                Pair.create(iconRequest.itemInfo.user, getLookupFlagForIconStyle(
+                                        iconRequest.itemInfo, iconRequest.lookupFlag))));
 
         Trace.beginSection("loadIconsInBulk");
         iconLoadSubsectionsMap.forEach((sectionKey, filteredList) -> {
@@ -550,7 +564,7 @@ public class IconCache extends BaseIconCache {
                                     lai,
                                     entry,
                                     LauncherActivityCachingLogic.INSTANCE,
-                                    DEFAULT_LOOKUP_FLAG.withUsePackageIcon(false),
+                                    sectionKey.second.withUsePackageIcon(false),
                                     /* usePackageTitle= */ loadFallbackTitle,
                                     cn,
                                     sectionKey.first);

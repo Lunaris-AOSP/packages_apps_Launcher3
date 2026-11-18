@@ -1,11 +1,11 @@
 package com.android.launcher3.settings.preference;
 
-import android.content.ComponentName;
 import android.content.Context;
 
-import androidx.preference.ListPreference;
-
 import com.android.launcher3.R;
+import com.android.launcher3.customization.IconDatabase;
+import com.android.launcher3.icons.pack.IconPackManager;
+import com.android.launcher3.util.ComponentKey;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,44 +13,49 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
-import com.android.launcher3.icons.pack.IconPackManager;
-import com.android.launcher3.customization.IconDatabase;
-
 public class IconPackPrefSetter implements ReloadingListPreference.OnReloadListener {
     private final Context mContext;
-    private final ComponentName mFilter;
+    private final ComponentKey mKey;
 
     public IconPackPrefSetter(Context context) {
         this(context, null);
     }
 
-    public IconPackPrefSetter(Context context, ComponentName filter) {
+    public IconPackPrefSetter(Context context, ComponentKey key) {
         mContext = context;
-        mFilter = filter;
+        mKey = key;
     }
 
     @Override
     public Runnable listUpdater(ReloadingListPreference pref) {
         IconPackManager ipm = IconPackManager.get(mContext);
         Map<String, CharSequence> packList = ipm.getProviderNames();
-        String globalPack = IconDatabase.getGlobal(mContext);
-
-        if (mFilter != null) {
-            // Filter for packs with icon for this app, or the global pack.
+        if (mKey != null) {
+            String selectedPack = IconDatabase.getSelectionForComponent(mContext, mKey);
             for (String pkg : new HashSet<>(packList.keySet())) {
-                if (!ipm.packContainsActivity(pkg, mFilter)) {
+                if (!pkg.equals(selectedPack)
+                        && !ipm.packContainsActivity(pkg, mKey.componentName)) {
                     packList.remove(pkg);
                 }
             }
         }
 
-        CharSequence[] keys = new String[packList.size() + 1];
+        CharSequence[] keys = new String[packList.size() + (mKey == null ? 1 : 3)];
         CharSequence[] values = new String[keys.length];
         int i = 0;
 
-        // First value, system default, or the current icon pack if that has no icon yet.
+        if (mKey != null) {
+            keys[i] = mContext.getString(R.string.app_info_icon_style_global);
+            values[i++] = IconDatabase.VALUE_GLOBAL;
+        }
+
         keys[i] = mContext.getResources().getString(R.string.icon_pack_default_label);
-        values[i++] = packList.containsKey(globalPack) ? "" : globalPack;
+        values[i++] = IconDatabase.VALUE_DEFAULT;
+
+        if (mKey != null) {
+            keys[i] = mContext.getString(R.string.app_info_icon_style_themed);
+            values[i++] = IconDatabase.VALUE_THEMED;
+        }
 
         // List of available icon packs
         List<Map.Entry<String, CharSequence>> packs = new ArrayList<>(packList.entrySet());

@@ -4,6 +4,8 @@ import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.graphics.drawable.AdaptiveIconDrawable;
+import android.graphics.drawable.Drawable;
 import android.util.SparseArray;
 
 import org.xmlpull.v1.XmlPullParserException;
@@ -23,6 +25,8 @@ public class IconPack {
     private Data mData;
     private Resources mRes;
     private List<IconEntry> mAllEntries;
+    private Boolean mIsThemed;
+    private final Map<String, Boolean> mThemedDrawables = new HashMap<>();
 
     IconPack(ApplicationInfo ai, CharSequence label) {
         mAi = ai;
@@ -57,12 +61,46 @@ public class IconPack {
         return res.getIdentifier(data.drawables.get(name), "drawable", pkg);
     }
 
+    int getDrawableId(PackageManager pm, String name)
+            throws PackageManager.NameNotFoundException {
+        return name == null ? 0 : getResources(pm).getIdentifier(name, "drawable", getPackage());
+    }
+
     public List<IconEntry> getAllIconEntries(PackageManager pm)
             throws PackageManager.NameNotFoundException, XmlPullParserException, IOException {
         if (mAllEntries == null) {
             mAllEntries = IconPackParser.parseAllEntries(pm, getResources(pm), getPackage());
         }
         return mAllEntries;
+    }
+
+    boolean isThemed(PackageManager pm) throws PackageManager.NameNotFoundException {
+        if (mIsThemed == null) {
+            mIsThemed = getResources(pm).getIdentifier(
+                    "grayscale_icon_map", "xml", getPackage()) != 0;
+        }
+        return mIsThemed;
+    }
+
+    boolean isThemedDrawable(PackageManager pm, String drawableName)
+            throws PackageManager.NameNotFoundException {
+        if (drawableName == null) return false;
+        Boolean themed = mThemedDrawables.get(drawableName);
+        if (themed == null) {
+            Resources res = getResources(pm);
+            int id = res.getIdentifier(drawableName, "drawable", getPackage());
+            themed = false;
+            if (id != 0) {
+                try {
+                    Drawable icon = res.getDrawable(id, null);
+                    themed = icon instanceof AdaptiveIconDrawable
+                            && ((AdaptiveIconDrawable) icon).getMonochrome() != null;
+                } catch (Resources.NotFoundException ignored) {
+                }
+            }
+            mThemedDrawables.put(drawableName, themed);
+        }
+        return themed;
     }
 
     private Resources getResources(PackageManager pm) throws PackageManager.NameNotFoundException {

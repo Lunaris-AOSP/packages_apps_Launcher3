@@ -313,6 +313,8 @@ public class IconPickerBottomSheet extends AbstractSlideInView<BaseActivity> {
             } catch (Resources.NotFoundException e) {
                 d = null;
             }
+            d = IconPackManager.get(holder.image.getContext()).applyThemedColors(
+                    holder.image.getContext(), mPackPackage, d);
             holder.image.setImageDrawable(d);
             holder.itemView.setOnClickListener(v -> mListener.onClick(mPackPackage, entry));
         }

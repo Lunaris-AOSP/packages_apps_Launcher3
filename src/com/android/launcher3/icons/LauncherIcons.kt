@@ -49,7 +49,7 @@ internal constructor(
         idp.fillResIconDpi,
         idp.iconBitmapSize,
         /* drawFullBleedIcons */ Flags.enableLauncherIconShapes(),
-        themeManager.themeController,
+        PerAppIconThemeController(context, themeManager),
     ),
     AutoCloseable {
 

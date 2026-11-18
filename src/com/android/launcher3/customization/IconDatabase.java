@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import com.android.launcher3.BuildConfig;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
+import com.android.launcher3.icons.pack.IconPackManager;
 import com.android.launcher3.util.ComponentKey;
 
 public class IconDatabase {
@@ -15,6 +16,8 @@ public class IconDatabase {
     private static final String PREF_FILE_NAME = BuildConfig.APPLICATION_ID + ".ICON_DATABASE";
     public static final String KEY_ICON_PACK = "pref_icon_pack";
     public static final String VALUE_DEFAULT = "";
+    public static final String VALUE_THEMED = "@themed";
+    public static final String VALUE_GLOBAL = "@global";
     private static final String DRAWABLE_SEPARATOR = "::";
 
     public static String getGlobal(Context context) {
@@ -47,12 +50,33 @@ public class IconDatabase {
     }
 
     public static String getByComponent(Context context, ComponentKey key) {
-        String raw = getIconPackPrefs(context).getString(key.toString(), getGlobal(context));
+        String selection = getSelectionForComponent(context, key);
+        if (VALUE_GLOBAL.equals(selection)) {
+            return getGlobal(context);
+        }
+        return VALUE_THEMED.equals(selection) ? VALUE_DEFAULT : selection;
+    }
+
+    public static String getSelectionForComponent(Context context, ComponentKey key) {
+        String raw = getIconPackPrefs(context).getString(key.toString(), VALUE_GLOBAL);
         int idx = raw.indexOf(DRAWABLE_SEPARATOR);
         return idx == -1 ? raw : raw.substring(0, idx);
     }
 
+    public static boolean shouldUseThemedIcon(
+            Context context, ComponentKey key, boolean launcherSetting) {
+        String selection = getSelectionForComponent(context, key);
+        if (VALUE_DEFAULT.equals(selection)) return false;
+        if (VALUE_THEMED.equals(selection)) return true;
+        if (VALUE_GLOBAL.equals(selection) && launcherSetting) return true;
+        return IconPackManager.get(context).supportsThemedIcon(key);
+    }
+
     public static void setForComponent(Context context, ComponentKey key, String value) {
+        if (VALUE_GLOBAL.equals(value)) {
+            resetForComponent(context, key);
+            return;
+        }
         getIconPackPrefs(context).edit().putString(key.toString(), value).apply();
     }
     

@@ -32,9 +32,11 @@ import android.util.Log;
 import com.android.internal.util.lunaris.Utils;
 import com.android.launcher3.R;
 import com.android.launcher3.config.FeatureFlags;
+import com.android.launcher3.customization.IconDatabase;
 import com.android.launcher3.dagger.ApplicationContext;
 import com.android.launcher3.dagger.LauncherAppSingleton;
 import com.android.launcher3.graphics.ThemeManager;
+import com.android.launcher3.util.AppReloader;
 import com.android.launcher3.util.SafeCloseable;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -85,7 +87,7 @@ public class LauncherIconProvider extends IconProvider {
         super.updateSystemState();
         mSystemState += "," + mThemeManager.getIconState().toUniqueId()
             + Build.VERSION.INCREMENTAL
-            + ",icon-pack-shape-v2";
+            + ",icon-pack-shape-v2,per-app-icon-style-v2";
     }
 
     private Map<String, ThemeData> getThemedIconMap() {
@@ -156,21 +158,24 @@ public class LauncherIconProvider extends IconProvider {
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_PACKAGE_ADDED);
             filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+            filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+            filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
             filter.addDataScheme("package");
             mContext.registerReceiver(this, filter, null, MAIN_EXECUTOR.getHandler());
         }
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
             String pkg = intent.getData() != null ? intent.getData().getSchemeSpecificPart() : null;
             if (pkg == null) return;
-            if ((Intent.ACTION_PACKAGE_ADDED.equals(action) || Intent.ACTION_PACKAGE_REMOVED.equals(action))
-                    && LAWNICONS_PACKAGE.equals(pkg)) {
+            if (LAWNICONS_PACKAGE.equals(pkg)) {
                 mThemedIconMap = null;
                 if (mThemeManager.isMonoThemeEnabled()) {
                     mThemeManager.setMonoThemeEnabled(false);
                     mThemeManager.setMonoThemeEnabled(true);
+                } else {
+                    AppReloader appReloader = AppReloader.get(mContext);
+                    appReloader.reload(appReloader.withIconStyle(IconDatabase.VALUE_THEMED));
                 }
             }
         }

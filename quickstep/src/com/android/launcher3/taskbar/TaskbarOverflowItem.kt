@@ -45,7 +45,7 @@ internal class TaskWrapper(private val context: Context, private val singleTask:
 internal class ItemInfoWrapper(val itemInfo: ItemInfo?, private val context: Context) :
     TaskbarOverflowItem {
     override val drawableIcon: Drawable?
-        get() = (itemInfo as? ItemInfoWithIcon)?.bitmap?.newIcon(context)
+        get() = (itemInfo as? ItemInfoWithIcon)?.newIcon(context)
 
     override val itemId: Int
         get() = itemInfo?.id ?: ItemInfo.NO_ID
