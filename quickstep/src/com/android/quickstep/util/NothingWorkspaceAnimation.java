@@ -82,7 +82,9 @@ public final class NothingWorkspaceAnimation {
     private final StateListener<LauncherState> mStateListener = new StateListener<>() {
         @Override
         public void onStateTransitionStart(LauncherState state) {
-            if (state != NORMAL && state != BACKGROUND_APP) reset();
+            if (state != NORMAL && state != BACKGROUND_APP) {
+                reset(false);
+            }
         }
 
         @Override
@@ -332,6 +334,10 @@ public final class NothingWorkspaceAnimation {
     }
 
     public void reset() {
+        reset(true);
+    }
+
+    private void reset(boolean applyState) {
         mAnimationId++;
         mRevealing = false;
         mSibling = null;
@@ -344,12 +350,14 @@ public final class NothingWorkspaceAnimation {
         mDepth.cancel();
         mSysUi.cancel();
         removeBlur();
-        LauncherState state = mLauncher.getStateManager().getState();
-        mWorkspace.setValues(state.getWorkspaceScaleAndTranslation(mLauncher).scale, 1f);
-        mHotseat.setValues(state.getHotseatScaleAndTranslation(mLauncher).scale, 1f);
-        mLauncher.getDepthController().setState(state);
-        mLauncher.getRootView().getSysUiScrim().getSysUIProgress().updateValue(
-                state.hasFlag(FLAG_HAS_SYS_UI_SCRIM) ? 1f : 0f);
+        if (applyState) {
+            LauncherState state = mLauncher.getStateManager().getState();
+            mWorkspace.setValues(state.getWorkspaceScaleAndTranslation(mLauncher).scale, 1f);
+            mHotseat.setValues(state.getHotseatScaleAndTranslation(mLauncher).scale, 1f);
+            mLauncher.getDepthController().setState(state);
+            mLauncher.getRootView().getSysUiScrim().getSysUIProgress().updateValue(
+                    state.hasFlag(FLAG_HAS_SYS_UI_SCRIM) ? 1f : 0f);
+        }
         for (RectFSpringAnim spring : closingAnimations) {
             if (spring.isRunning()) spring.end();
         }
