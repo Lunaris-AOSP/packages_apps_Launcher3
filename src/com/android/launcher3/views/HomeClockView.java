@@ -4,6 +4,7 @@
  */
 package com.android.launcher3.views;
 
+import static com.android.launcher3.states.StateAnimationConfig.ANIM_WORKSPACE_FADE;
 import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
 import static com.android.launcher3.util.Executors.UI_HELPER_EXECUTOR;
 
@@ -26,22 +27,43 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.AttributeSet;
+import android.util.FloatProperty;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceControlViewHost.SurfacePackage;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+import android.view.ViewTreeObserver;
 
 import com.android.launcher3.Launcher;
 import com.android.launcher3.LauncherState;
+import com.android.launcher3.anim.PendingAnimation;
+import com.android.launcher3.statemanager.StateManager.StateHandler;
 import com.android.launcher3.statemanager.StateManager.StateListener;
+import com.android.launcher3.states.StateAnimationConfig;
 
 public final class HomeClockView extends SurfaceView
-        implements SurfaceHolder.Callback, StateListener<LauncherState> {
+        implements SurfaceHolder.Callback, StateListener<LauncherState>,
+        StateHandler<LauncherState> {
     private static final String TAG = "HomeClockView";
     private static final String ENABLED_SETTING = "lock_screen_home_clock_enabled";
     private static final String STYLE_SETTING = "lock_screen_custom_clock_style";
     private static final Uri PROVIDER = Uri.parse("content://com.android.systemui.homeclock");
+
+    private static final FloatProperty<HomeClockView> STATE_ALPHA =
+            new FloatProperty<HomeClockView>("stateAlpha") {
+                @Override
+                public Float get(HomeClockView view) {
+                    return view.mStateAlpha;
+                }
+
+                @Override
+                public void setValue(HomeClockView view, float alpha) {
+                    view.mStateAlpha = Math.max(0f, Math.min(1f, alpha));
+                    view.updateClockAlpha();
+                }
+            };
 
     private final Launcher mLauncher;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -76,6 +98,16 @@ public final class HomeClockView extends SurfaceView
     private int mRequestY;
     private int mRetryCount;
     private Connection mConnection;
+    private float mDrawerProgress = 1f;
+    private boolean mStateTransitionRunning;
+    private boolean mStateAlphaAnimating;
+    private float mStateAlpha = 1f;
+    private ViewTreeObserver mObservedTree;
+    private final ViewTreeObserver.OnPreDrawListener mPreDraw = () -> {
+        if (mEnabled) updateClockAlpha();
+        return true;
+    };
+    private boolean mContentVisible = true;
     private boolean mUnlocking;
     private long mUnlockStartTime;
     private long mUnlockDuration;
@@ -105,12 +137,20 @@ public final class HomeClockView extends SurfaceView
         filter.addAction(Intent.ACTION_USER_UNLOCKED);
         getContext().registerReceiver(mReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         mLauncher.getStateManager().addStateListener(this);
+        mObservedTree = getViewTreeObserver();
+        mObservedTree.addOnPreDrawListener(mPreDraw);
         update();
     }
 
     @Override
     protected void onDetachedFromWindow() {
         mAttached = false;
+        mStateTransitionRunning = false;
+        mStateAlphaAnimating = false;
+        if (mObservedTree != null && mObservedTree.isAlive()) {
+            mObservedTree.removeOnPreDrawListener(mPreDraw);
+        }
+        mObservedTree = null;
         mUnlockDuration = 0;
         releaseClock();
         mLauncher.getStateManager().removeStateListener(this);
@@ -186,20 +226,79 @@ public final class HomeClockView extends SurfaceView
     }
 
     private void updateVisibility(LauncherState state) {
-        boolean showClock = mEnabled && state == LauncherState.NORMAL;
-        if (!showClock) releaseClock(true);
-        setVisibility(showClock ? VISIBLE : INVISIBLE);
+        if (!mStateTransitionRunning) mStateAlpha = stateAlpha(state);
+        setDrawerProgress(mLauncher.getAllAppsController().getProgress());
+        if (!mEnabled) releaseClock(true);
+        setVisibility(mEnabled ? VISIBLE : INVISIBLE);
         if (canRender()) requestRender();
         else releaseClock();
     }
 
+    public void setDrawerProgress(float progress) {
+        if (!Float.isFinite(progress)) return;
+        mDrawerProgress = Math.max(0f, Math.min(1f, progress));
+        updateClockAlpha();
+    }
+
+    private void updateClockAlpha() {
+        View workspace = mLauncher.getWorkspace();
+        View dragLayer = mLauncher.getDragLayer();
+        float contentAlpha = (workspace == null ? 1f : workspace.getAlpha())
+                * (dragLayer == null ? 1f : dragLayer.getAlpha());
+        float alpha = mDrawerProgress * mDrawerProgress * (3f - 2f * mDrawerProgress)
+                * mStateAlpha * Math.max(0f, Math.min(1f, contentAlpha));
+        if (Float.compare(getAlpha(), alpha) != 0) setAlpha(alpha);
+        boolean visible = Math.round(alpha * 255f) > 0 || mStateTransitionRunning;
+        if (mContentVisible != visible) {
+            mContentVisible = visible;
+            sendContentVisibility();
+        }
+    }
+
+    private void sendContentVisibility() {
+        Connection connection = mConnection;
+        if (connection == null) return;
+        boolean visible = mContentVisible;
+        UI_HELPER_EXECUTOR.execute(() -> connection.setContentVisible(visible));
+    }
+
+    private static float stateAlpha(LauncherState state) {
+        return state == LauncherState.NORMAL || state == LauncherState.ALL_APPS ? 1f : 0f;
+    }
+
+    @Override
+    public void setState(LauncherState state) {
+        mStateAlphaAnimating = false;
+        mStateAlpha = stateAlpha(state);
+        updateClockAlpha();
+    }
+
+    @Override
+    public void setStateWithAnimation(LauncherState state,
+            StateAnimationConfig config, PendingAnimation animation) {
+        mStateAlphaAnimating = true;
+        animation.setFloat(this, STATE_ALPHA, stateAlpha(state),
+                config.getInterpolator(ANIM_WORKSPACE_FADE,
+                        state.getWorkspacePageAlphaProvider(mLauncher).interpolator));
+        animation.addEndListener(success -> {
+            mStateAlphaAnimating = false;
+            if (!success) {
+                mStateTransitionRunning = false;
+                setState(mLauncher.getStateManager().getCurrentStableState());
+            }
+        });
+    }
+
     @Override
     public void onStateTransitionStart(LauncherState toState) {
+        mStateTransitionRunning = true;
+        if (!mStateAlphaAnimating) setState(toState);
         updateVisibility(toState);
     }
 
     @Override
     public void onStateTransitionComplete(LauncherState finalState) {
+        mStateTransitionRunning = false;
         updateVisibility(finalState);
     }
 
@@ -252,6 +351,7 @@ public final class HomeClockView extends SurfaceView
         request.putInt("height", mRequestHeight);
         request.putInt("screen_x", mRequestX);
         request.putInt("screen_y", mRequestY);
+        request.putBoolean("visible", mContentVisible);
         addUnlockTiming(request);
         UI_HELPER_EXECUTOR.execute(() -> {
             ContentProviderClient client = null;
@@ -312,6 +412,7 @@ public final class HomeClockView extends SurfaceView
                             if (mConnection != connection) return;
                             if (confirmed) {
                                 mRetryCount = 0;
+                                sendContentVisibility();
                                 sendUnlockTiming();
                             } else {
                                 releaseClock();
@@ -376,6 +477,19 @@ public final class HomeClockView extends SurfaceView
                 client.call("unlock", null, request);
             } catch (Exception e) {
                 Log.w(TAG, "Cannot synchronize the home clock unlock", e);
+            }
+        }
+
+        void setContentVisible(boolean visible) {
+            if (closed) return;
+            try {
+                Bundle request = new Bundle();
+                request.putBinder("lifecycle", lifetime);
+                request.putBinder("renderer", renderer);
+                request.putBoolean("visible", visible);
+                client.call("visibility", null, request);
+            } catch (Exception e) {
+                Log.w(TAG, "Cannot update the home clock visibility", e);
             }
         }
 

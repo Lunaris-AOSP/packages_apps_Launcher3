@@ -65,6 +65,7 @@ import com.android.launcher3.util.MultiPropertyFactory.MultiProperty;
 import com.android.launcher3.util.MultiValueAlpha;
 import com.android.launcher3.util.ScrollableLayoutManager;
 import com.android.launcher3.util.Themes;
+import com.android.launcher3.views.HomeClockView;
 import com.android.launcher3.views.ScrimView;
 
 import com.google.android.msdl.data.model.MSDLToken;
@@ -202,6 +203,7 @@ public class AllAppsTransitionController
     private float mProgress;        // [0, 1], mShiftRange * mProgress = shiftCurrent
 
     private ScrimView mScrimView;
+    private HomeClockView mHomeClock;
 
     private MultiValueAlpha mAppsViewAlpha;
     private MultiPropertyFactory<View> mAppsViewTranslationY;
@@ -261,6 +263,7 @@ public class AllAppsTransitionController
         float shiftRange = fromBackground ? mLauncher.getDeviceProfile().getDeviceProperties().getHeightPx() : mShiftRange;
         getAppsViewProgressTranslationY().setValue(mProgress * shiftRange);
         mLauncher.onAllAppsTransition(1 - progress);
+        if (mHomeClock != null) mHomeClock.setDrawerProgress(progress);
 
         boolean hasNavScrim = progress < NAV_BAR_COLOR_FORCE_UPDATE_THRESHOLD
                 && mLauncher.getAppsView().getNavBarScrimHeight() > 0;
@@ -458,6 +461,8 @@ public class AllAppsTransitionController
      */
     public void setupViews(ScrimView scrimView, ActivityAllAppsContainerView<Launcher> appsView) {
         mScrimView = scrimView;
+        mHomeClock = mLauncher.findViewById(R.id.home_clock);
+        if (mHomeClock != null) mHomeClock.setDrawerProgress(mProgress);
         mAppsView = appsView;
         mAppsView.setScrimView(scrimView);
 
