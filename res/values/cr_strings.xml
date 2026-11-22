@@ -693,4 +693,8 @@
     <string name="overscroll_max_stretch_summary">How far the list can be pulled past its edge, as a percentage of its size</string>
     <string name="overscroll_velocity_scale_title">Fling velocity scale</string>
     <string name="overscroll_velocity_scale_summary">How strongly a fling at the edge feeds into the overscroll spring</string>
+    <!-- Icon shape -->
+    <string name="icon_shape_title">Icon shape</string>
+    <string name="icon_shape_default_label">System default</string>
+
 </resources>

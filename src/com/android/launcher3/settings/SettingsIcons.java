@@ -47,6 +47,7 @@ import com.android.launcher3.icons.ThemedIconSettings;
 import com.android.launcher3.settings.preferences.ColorPreference;
 import com.android.launcher3.settings.preferences.CustomSeekBarPreference;
 import com.android.launcher3.icons.pack.IconPackSettingsActivity;
+import com.android.launcher3.shapes.IconShapeSettingsActivity;
 import com.android.launcher3.settings.preference.ReloadingListPreference;
 import com.android.launcher3.util.SettingsCache;
 
@@ -56,6 +57,7 @@ import com.android.launcher3.util.SettingsCache;
 public class SettingsIcons extends ComposeSettingsActivity {
 
     private static final String NOTIFICATION_DOTS_PREFERENCE_KEY = "pref_icon_badging";
+    private static final String ICON_SHAPE_PREFERENCE_KEY = "pref_icon_shape";
 
     public static final String EXTRA_FRAGMENT_ARGS = ":settings:fragment_args";
 
@@ -211,6 +213,9 @@ public class SettingsIcons extends ComposeSettingsActivity {
                 case IconDatabase.KEY_ICON_PACK:
                     setupIconPackPreference(preference);
                     return true;
+                case ICON_SHAPE_PREFERENCE_KEY:
+                    setupIconShapePreference(preference);
+                    return true;
                 case KEY_THEMED_ICONS:
                     setupThemedIconsSwitch(preference);
                     return true;
@@ -272,6 +277,14 @@ public class SettingsIcons extends ComposeSettingsActivity {
             preference.setSummary(pkgLabel);
             preference.setOnPreferenceClickListener(p -> {
                 startActivity(new Intent(getContext(), IconPackSettingsActivity.class));
+                return true;
+            });
+        }
+
+        private void setupIconShapePreference(Preference preference) {
+            preference.setSummary(IconShapeSettingsActivity.getCurrentShapeLabel(getContext()));
+            preference.setOnPreferenceClickListener(p -> {
+                startActivity(new Intent(getContext(), IconShapeSettingsActivity.class));
                 return true;
             });
         }
