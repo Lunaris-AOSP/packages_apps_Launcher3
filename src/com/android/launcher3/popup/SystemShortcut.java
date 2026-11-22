@@ -50,6 +50,7 @@ import androidx.annotation.Nullable;
 import com.android.launcher3.AbstractFloatingView;
 import com.android.launcher3.AbstractFloatingViewHelper;
 import com.android.launcher3.BubbleTextView;
+import com.android.launcher3.DeleteDropTarget;
 import com.android.launcher3.DropTargetHandler;
 import com.android.launcher3.Flags;
 import com.android.launcher3.Launcher;
@@ -313,7 +314,13 @@ public abstract class SystemShortcut<T extends ActivityContext> extends ItemInfo
         }
     }
 
-    public static final Factory<ActivityContext> REMOVE = RemoveApp::new;
+    public static final Factory<ActivityContext> REMOVE =
+            (activity, itemInfo, originalView) -> {
+                if (!DeleteDropTarget.isRemoveAllowed(activity.asContext(), itemInfo)) {
+                    return null;
+                }
+                return new RemoveApp<>(activity, itemInfo, originalView);
+            };
 
     public static class RemoveApp<T extends ActivityContext> extends SystemShortcut<T> {
 

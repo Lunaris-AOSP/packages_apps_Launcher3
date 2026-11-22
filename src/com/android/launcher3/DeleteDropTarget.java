@@ -16,6 +16,7 @@
 
 package com.android.launcher3;
 
+import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION;
 import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCHER_ITEM_DROPPED_ON_CANCEL;
 import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCHER_ITEM_DROPPED_ON_REMOVE;
 
@@ -26,6 +27,7 @@ import android.util.Log;
 import android.view.View;
 
 import com.android.launcher3.accessibility.LauncherAccessibilityDelegate;
+import com.android.launcher3.allapps.AppDrawerStyle;
 import com.android.launcher3.dragndrop.DragOptions;
 import com.android.launcher3.logging.StatsLogManager;
 import com.android.launcher3.model.data.CollectionInfo;
@@ -70,6 +72,9 @@ public class DeleteDropTarget extends ButtonDropTarget {
      * @return true for items that should have a "Remove" action in accessibility.
      */
     private boolean supportsAccessibilityDrop(ItemInfo info, View view) {
+        if (!supportsDrop(info)) {
+            return false;
+        }
         if (info instanceof WorkspaceItemInfo) {
             // Support the action unless the item is in a context menu.
             return canRemove(info);
@@ -97,7 +102,12 @@ public class DeleteDropTarget extends ButtonDropTarget {
 
     @Override
     protected boolean supportsDrop(ItemInfo info) {
-        return true;
+        return isRemoveAllowed(getContext(), info);
+    }
+
+    public static boolean isRemoveAllowed(Context context, ItemInfo info) {
+        return !AppDrawerStyle.isIos(AppDrawerStyle.get(context))
+                || (info.itemType != ITEM_TYPE_APPLICATION && !(info instanceof CollectionInfo));
     }
 
     /**
