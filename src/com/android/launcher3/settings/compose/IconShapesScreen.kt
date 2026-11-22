@@ -3,7 +3,9 @@
  * Copyright (C) 2026 Lunaris AOSP
  * SPDX-License-Identifier: Apache-2.0
  */
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package com.android.launcher3.settings.compose
 
@@ -49,6 +51,7 @@ import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_THEMED
 import com.android.launcher3.icons.GraphicsUtils
 import com.android.launcher3.icons.cache.CacheLookupFlag.Companion.DEFAULT_LOOKUP_FLAG
 import com.android.launcher3.model.data.AppInfo
+import com.android.launcher3.settings.preferences.PreviewWallpaper
 import com.android.launcher3.shapes.*
 import com.android.launcher3.util.Executors.MODEL_EXECUTOR
 import java.text.NumberFormat
@@ -302,7 +305,8 @@ internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val wallpaper by
         produceState<android.graphics.drawable.Drawable?>(null, context) {
-            value = withContext(Dispatchers.IO) { loadShapeWallpaper(context.applicationContext) }
+            value =
+                withContext(Dispatchers.IO) { PreviewWallpaper.load(context.applicationContext) }
         }
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
@@ -419,17 +423,3 @@ private suspend fun loadPreviewApps(context: Context): List<AppInfo> =
             if (continuation.isActive) continuation.resume(apps)
         }
     }
-
-private fun loadShapeWallpaper(context: Context): android.graphics.drawable.Drawable? {
-    val drawable =
-        runCatching { android.app.WallpaperManager.getInstance(context).drawable }
-            .onFailure { Log.w("IconShapePreview", "Unable to read wallpaper", it) }
-            .getOrNull() ?: return null
-    val bitmap = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return drawable
-    if (bitmap.width <= 720) return drawable
-    val height = bitmap.height * 720 / bitmap.width
-    return android.graphics.drawable.BitmapDrawable(
-        context.resources,
-        android.graphics.Bitmap.createScaledBitmap(bitmap, 720, height, true),
-    )
-}

@@ -314,11 +314,7 @@ private fun IconPacksScreen(onBack: () -> Unit) {
     ) { query ->
         if (query.isEmpty() && preview.isNotEmpty())
             item("preview") {
-                Surface(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                ) {
+                SettingsPreviewCard {
                     LazyRow(
                         contentPadding = PaddingValues(24.dp),
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
