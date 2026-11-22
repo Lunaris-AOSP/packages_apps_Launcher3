@@ -7,6 +7,10 @@
 
 package com.android.launcher3.settings.compose
 
+import android.content.Context
+import android.content.pm.LauncherApps
+import android.os.Process
+import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import androidx.compose.foundation.layout.*
@@ -31,13 +35,27 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.android.launcher3.InvariantDeviceProfile
+import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherPrefChangeListener
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
+import com.android.launcher3.graphics.ShapeDelegate.Companion.pickBestShape
+import com.android.launcher3.graphics.ThemeManager
 import com.android.launcher3.graphics.ThemeManager.Companion.PREF_CUSTOM_ICON_SHAPE
 import com.android.launcher3.graphics.ThemeManager.Companion.PREF_ICON_SHAPE
+import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_NO_BADGE
+import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_THEMED
+import com.android.launcher3.icons.GraphicsUtils
+import com.android.launcher3.icons.cache.CacheLookupFlag.Companion.DEFAULT_LOOKUP_FLAG
+import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.shapes.*
+import com.android.launcher3.util.Executors.MODEL_EXECUTOR
 import java.text.NumberFormat
+import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 /** Observe both values, including changes made while the editor is a separate activity. */
 @Composable
@@ -278,9 +296,140 @@ private fun ShapeOutline(path: String, modifier: Modifier = Modifier.size(40.dp)
     )
 }
 
+/** Shared wallpaper card also used by the icon pack screen. Loading follows the composition. */
+@Composable
+internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val wallpaper by
+        produceState<android.graphics.drawable.Drawable?>(null, context) {
+            value = withContext(Dispatchers.IO) { loadShapeWallpaper(context.applicationContext) }
+        }
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            AndroidView(
+                factory = {
+                    ImageView(it).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    }
+                },
+                modifier = Modifier.matchParentSize(),
+                update = { it.setImageDrawable(wallpaper) },
+            )
+            content()
+        }
+    }
+}
+
 @Composable
 private fun IconShapeAppPreview(path: String) {
-    Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-        ShapeOutline(path, Modifier.size(128.dp))
+    val context = LocalContext.current
+    val apps by
+        produceState<List<AppInfo>>(emptyList(), context) {
+            value = loadPreviewApps(context.applicationContext)
+        }
+    val theme = ThemeManager.INSTANCE.get(context)
+    val drawables =
+        remember(apps, path) {
+            val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
+            val shape =
+                if (apps.isEmpty()) null
+                else
+                    GraphicsUtils.generateIconShape(
+                        size,
+                        pickBestShape(path).getPath(size.toFloat()),
+                    )
+            apps.map { app ->
+                val flags =
+                    app.resolveIconCreationFlags(
+                        context,
+                        FLAG_NO_BADGE or if (theme.isIconThemeEnabled) FLAG_THEMED else 0,
+                    )
+                app.bitmap.newIcon(
+                    context,
+                    flags,
+                    if (app.supportsCustomShapes(flags)) shape else null,
+                )
+            }
+        }
+    SettingsPreviewCard {
+        Column(Modifier.fillMaxWidth().padding(vertical = 20.dp)) {
+            repeat(2) { row ->
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(4) { column ->
+                        val index = row * 4 + column
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            val drawable = drawables.getOrNull(index)
+                            if (drawable == null) ShapeOutline(path, Modifier.size(56.dp))
+                            else
+                                AndroidView(
+                                    factory = {
+                                        ImageView(it).apply {
+                                            scaleType = ImageView.ScaleType.FIT_CENTER
+                                        }
+                                    },
+                                    modifier = Modifier.size(56.dp),
+                                    update = {
+                                        it.setImageDrawable(drawable)
+                                        it.contentDescription = apps[index].title
+                                    },
+                                )
+                        }
+                    }
+                }
+            }
+        }
     }
+}
+
+/** The icon cache expects its model executor; keep package and bitmap work off the UI thread. */
+private suspend fun loadPreviewApps(context: Context): List<AppInfo> =
+    suspendCancellableCoroutine { continuation ->
+        MODEL_EXECUTOR.execute {
+            val apps =
+                runCatching {
+                        val user = Process.myUserHandle()
+                        val launcherApps = context.getSystemService(LauncherApps::class.java)
+                        val cache = LauncherAppState.getInstance(context).iconCache
+                        val flag =
+                            DEFAULT_LOOKUP_FLAG.withUseLowRes(false)
+                                .withThemeIcon(
+                                    ThemeManager.INSTANCE.get(context).isIconThemeEnabled
+                                )
+                        launcherApps
+                            ?.getActivityList(null, user)
+                            .orEmpty()
+                            .distinctBy { it.componentName.packageName }
+                            .sortedBy { it.label.toString().lowercase() }
+                            .take(8)
+                            .map { activity ->
+                                AppInfo(context, activity, user).also {
+                                    cache.getTitleAndIcon(it, activity, flag)
+                                }
+                            }
+                    }
+                    .onFailure { Log.w("IconShapePreview", "Unable to load preview icons", it) }
+                    .getOrDefault(emptyList())
+            if (continuation.isActive) continuation.resume(apps)
+        }
+    }
+
+private fun loadShapeWallpaper(context: Context): android.graphics.drawable.Drawable? {
+    val drawable =
+        runCatching { android.app.WallpaperManager.getInstance(context).drawable }
+            .onFailure { Log.w("IconShapePreview", "Unable to read wallpaper", it) }
+            .getOrNull() ?: return null
+    val bitmap = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return drawable
+    if (bitmap.width <= 720) return drawable
+    val height = bitmap.height * 720 / bitmap.width
+    return android.graphics.drawable.BitmapDrawable(
+        context.resources,
+        android.graphics.Bitmap.createScaledBitmap(bitmap, 720, height, true),
+    )
 }
