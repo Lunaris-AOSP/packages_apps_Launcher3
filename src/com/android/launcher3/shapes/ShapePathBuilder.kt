@@ -16,8 +16,12 @@
 
 package com.android.launcher3.shapes
 
+import androidx.graphics.shapes.Cubic
+import androidx.graphics.shapes.Feature
 import androidx.graphics.shapes.RoundedPolygon
+import androidx.graphics.shapes.SvgPathParser
 import java.util.Locale
+import kotlin.math.abs
 
 /** How a corner joins its two edges. */
 enum class CornerStyle(val key: String) {
@@ -42,6 +46,69 @@ data class ShapeCorner(val style: CornerStyle, val size: Float)
 
 /** Builds SVG path strings on the 100x100 viewport used by [ShapesProvider]. */
 object ShapePathBuilder {
+
+    private val NUMBER_BOUNDARY = Regex("(?<![eE])(?=[+-])")
+
+    /** SvgPathParser requires separators before signed values; SVG also permits compact values. */
+    fun separateSvgNumbers(pathString: String): String = NUMBER_BOUNDARY.replace(pathString, " ")
+
+    /** Restores sharp corner directions which SvgPathParser loses on zero-length corner cubics. */
+    fun parseForMorph(pathString: String): List<Feature> {
+        val features = SvgPathParser.parseFeatures(separateSvgNumbers(pathString))
+        val cubics = features.flatMap { it.cubics }
+        var offset = 0
+        return features.map { feature ->
+            val start = offset
+            offset += feature.cubics.size
+            if (feature.isEdge || feature.cubics.any { it.hasExtent() }) return@map feature
+
+            val before =
+                (1..cubics.size)
+                    .asSequence()
+                    .map { cubics[(start - it + cubics.size) % cubics.size] }
+                    .firstOrNull { it.hasExtent() } ?: return@map feature
+            val after =
+                (0 until cubics.size)
+                    .asSequence()
+                    .map { cubics[(offset + it) % cubics.size] }
+                    .firstOrNull { it.hasExtent() } ?: return@map feature
+            val incoming = before.endDirection()
+            val outgoing = after.startDirection()
+            val cross = incoming.first * outgoing.second - incoming.second * outgoing.first
+            // SvgPathParser normalizes contours to clockwise winding.
+            when {
+                abs(cross) < 0.0001f -> Feature.buildIgnorableFeature(feature.cubics)
+                cross > 0f -> Feature.buildConvexCorner(feature.cubics)
+                else -> Feature.buildConcaveCorner(feature.cubics)
+            }
+        }
+    }
+
+    private fun Cubic.hasExtent(): Boolean =
+        abs(control0X - anchor0X) > 0.0001f ||
+            abs(control0Y - anchor0Y) > 0.0001f ||
+            abs(control1X - anchor0X) > 0.0001f ||
+            abs(control1Y - anchor0Y) > 0.0001f ||
+            abs(anchor1X - anchor0X) > 0.0001f ||
+            abs(anchor1Y - anchor0Y) > 0.0001f
+
+    private fun Cubic.startDirection(): Pair<Float, Float> =
+        when {
+            abs(control0X - anchor0X) > 0.0001f || abs(control0Y - anchor0Y) > 0.0001f ->
+                (control0X - anchor0X) to (control0Y - anchor0Y)
+            abs(control1X - anchor0X) > 0.0001f || abs(control1Y - anchor0Y) > 0.0001f ->
+                (control1X - anchor0X) to (control1Y - anchor0Y)
+            else -> (anchor1X - anchor0X) to (anchor1Y - anchor0Y)
+        }
+
+    private fun Cubic.endDirection(): Pair<Float, Float> =
+        when {
+            abs(control1X - anchor1X) > 0.0001f || abs(control1Y - anchor1Y) > 0.0001f ->
+                (anchor1X - control1X) to (anchor1Y - control1Y)
+            abs(control0X - anchor1X) > 0.0001f || abs(control0Y - anchor1Y) > 0.0001f ->
+                (anchor1X - control0X) to (anchor1Y - control0Y)
+            else -> (anchor1X - anchor0X) to (anchor1Y - anchor0Y)
+        }
 
     private const val SIZE = 100f
     private const val HALF = SIZE / 2f

@@ -38,13 +38,13 @@ import androidx.dynamicanimation.animation.DynamicAnimation.MIN_VISIBLE_CHANGE_S
 import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
-import androidx.graphics.shapes.SvgPathParser
 import androidx.graphics.shapes.rectangle
 import androidx.graphics.shapes.toPath
 import androidx.graphics.shapes.transformed
 import com.android.launcher3.Flags
 import com.android.launcher3.anim.SpringAnimationBuilder
 import com.android.launcher3.icons.RoundRectEstimator.estimateRadius
+import com.android.launcher3.shapes.ShapePathBuilder
 import com.android.launcher3.views.ClipPathView
 
 /** Abstract representation of the shape of an icon shape */
@@ -218,7 +218,7 @@ interface ShapeDelegate {
     data class GenericPathShape(private val pathString: String) : ShapeDelegate {
         private val poly =
             RoundedPolygon(
-                features = SvgPathParser.parseFeatures(pathString),
+                features = ShapePathBuilder.parseForMorph(pathString),
                 centerX = 50f,
                 centerY = 50f,
             )
@@ -395,6 +395,7 @@ interface ShapeDelegate {
         override fun onAnimationEnd(animation: Animator) {
             target.apply {
                 translationZ = 0f
+                setClipPath(null)
                 outlineProvider = oldOutlineProvider
             }
         }
@@ -468,8 +469,8 @@ interface ShapeDelegate {
             RoundedPolygon.rectangle(
                 width = right - left,
                 height = bottom - top,
-                centerX = (right - left) / 2,
-                centerY = (bottom - top) / 2,
+                centerX = (left + right) / 2,
+                centerY = (top + bottom) / 2,
                 rounding = CornerRounding(cornerR),
             )
     }

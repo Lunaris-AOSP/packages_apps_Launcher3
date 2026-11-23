@@ -160,9 +160,7 @@ constructor(
 
         val folderRadius = shapeModel?.folderRadiusRatio ?: 1f
         val folderMask =
-            resolveShapeModel(PREF_FOLDER_SHAPE, PREF_CUSTOM_FOLDER_SHAPE)?.pathString
-                ?: shapeModel?.takeIf { it.key == CustomIconShape.KEY }?.pathString
-                ?: ""
+            resolveShapeModel(PREF_FOLDER_SHAPE, PREF_CUSTOM_FOLDER_SHAPE)?.pathString ?: iconMask
         val folderShape =
             if (
                 oldState != null &&
@@ -170,12 +168,10 @@ constructor(
                     (folderMask.isNotEmpty() || oldState.folderRadius == folderRadius)
             ) {
                 oldState.folderShape
-            } else if (folderMask.isNotEmpty()) {
-                pickBestShape(folderMask)
-            } else if (folderRadius == 1f) {
-                ShapeDelegate.Circle()
+            } else if (folderMask == iconMask) {
+                iconShape
             } else {
-                ShapeDelegate.RoundedSquare(folderRadius)
+                pickBestShape(folderMask)
             }
 
         val themeKey = themePreference.value

@@ -340,10 +340,7 @@ private fun ShapeOutline(path: String, modifier: Modifier = Modifier.size(40.dp)
 
 private fun defaultPreviewPath(context: Context, target: ShapeTarget): String {
     if (target == ShapeTarget.ICON) return ""
-    val icon = IconShapeSettingsActivity.currentShape(context)
-    if (icon?.key == CustomIconShape.KEY) return icon.pathString
-    val corner = ShapeCorner(CornerStyle.ROUND, icon?.folderRadiusRatio ?: 1f)
-    return ShapePathBuilder.fromCorners(corner, corner, corner, corner)
+    return ThemeManager.INSTANCE.get(context).iconState.iconMask
 }
 
 /** Shared wallpaper card also used by the icon pack screen. Loading follows the composition. */
@@ -420,7 +417,7 @@ private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
             if (
                 editedPath != null &&
                     (target == ShapeTarget.FOLDER ||
-                        ShapeTarget.FOLDER.shapePref.get(context).isEmpty())
+                        IconShapeSettingsActivity.currentShape(context, ShapeTarget.FOLDER) == null)
             )
                 pickBestShape(editedPath)
             else theme.folderShape

@@ -16,9 +16,12 @@
 
 package com.android.launcher3.graphics
 
+import android.platform.test.annotations.EnableFlags
+import android.platform.test.flag.junit.SetFlagsRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
 import com.android.launcher3.FakeLauncherPrefs
+import com.android.launcher3.Flags.FLAG_ENABLE_LAUNCHER_ICON_SHAPES
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.dagger.LauncherAppComponent
 import com.android.launcher3.dagger.LauncherAppSingleton
@@ -26,6 +29,7 @@ import com.android.launcher3.icons.mono.MonoIconThemeController
 import com.android.launcher3.shapes.CornerStyle
 import com.android.launcher3.shapes.CustomIconShape
 import com.android.launcher3.shapes.ShapeCorner
+import com.android.launcher3.shapes.ShapesProvider
 import com.android.launcher3.util.AllModulesForTest
 import com.android.launcher3.util.Executors.MAIN_EXECUTOR
 import com.android.launcher3.util.FakePrefsModule
@@ -49,6 +53,7 @@ import org.junit.runner.RunWith
 class ThemeManagerTest {
 
     @get:Rule val context = SandboxApplication()
+    @get:Rule val setFlagsRule = SetFlagsRule()
 
     lateinit var themeManager: ThemeManager
 
@@ -121,6 +126,18 @@ class ThemeManagerTest {
                 )
         }
         assertEquals(shape.pathString, themeManager.iconState.folderMask)
+    }
+
+    @Test
+    @EnableFlags(FLAG_ENABLE_LAUNCHER_ICON_SHAPES)
+    fun `matching folders uses exact preset icon path`() {
+        for (key in listOf(ShapesProvider.SQUARE_KEY, ShapesProvider.HEART_KEY)) {
+            TestUtil.runOnExecutorSync(MAIN_EXECUTOR) {
+                LauncherPrefs.get(context).put(ThemeManager.PREF_ICON_SHAPE, key)
+            }
+            assertEquals(themeManager.iconState.iconMask, themeManager.iconState.folderMask)
+            assertEquals(themeManager.iconShape, themeManager.folderShape)
+        }
     }
 
     @Test

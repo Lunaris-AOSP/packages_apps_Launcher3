@@ -144,6 +144,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     private final RectF mThumbnailBounds = new RectF();
     private final RectF mThumbnailImageBounds = new RectF();
     @Nullable private Bitmap mCustomThumbnail;
+    private int mThumbnailLoadGeneration;
     private boolean mShowThumbnailWhileHidden = false;
 
     private static final int THUMBNAIL_FADE_DURATION_MS = 300;
@@ -1099,9 +1100,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         }
 
         if (mThumbnailFading && !thumbnailOnly) {
-            drawIconContent(canvas, mFadeFromThumbnail, 255);
-            drawIconContent(canvas, mCustomThumbnail,
-                    Math.round(mThumbnailFadeProgress * 255));
+            drawPreviewContent(canvas);
         } else if (mCustomThumbnail != null && (thumbnailOnly || !mAnimating)) {
             drawCustomThumbnail(canvas, mCustomThumbnail);
         } else {
@@ -1121,12 +1120,18 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     }
 
     public void onCustomThumbnailChanged(boolean animate) {
+        final int generation = ++mThumbnailLoadGeneration;
         if (mInfo == null || !mInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
             applyCustomThumbnail(null, animate);
             return;
         }
-        FolderThumbnailManager.loadAsync(getContext(), mInfo.id,
-                bitmap -> applyCustomThumbnail(bitmap, animate));
+        final int folderId = mInfo.id;
+        FolderThumbnailManager.loadAsync(getContext(), folderId, bitmap -> {
+            if (generation == mThumbnailLoadGeneration && mInfo != null
+                    && mInfo.id == folderId && mInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
+                applyCustomThumbnail(bitmap, animate);
+            }
+        });
     }
 
     private void applyCustomThumbnail(@Nullable Bitmap next, boolean animate) {
@@ -1204,8 +1209,16 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
     /** Draws the same thumbnail or app preview used by the closed folder in drag snapshots. */
     public void drawPreviewContent(Canvas canvas) {
-        if (mCustomThumbnail != null) drawCustomThumbnail(canvas, mCustomThumbnail);
-        else mPreviewItemManager.draw(canvas);
+        if (mThumbnailFading) {
+            drawIconContent(canvas, mFadeFromThumbnail,
+                    Math.round((1f - mThumbnailFadeProgress) * 255));
+            drawIconContent(canvas, mCustomThumbnail,
+                    Math.round(mThumbnailFadeProgress * 255));
+        } else if (mCustomThumbnail != null) {
+            drawCustomThumbnail(canvas, mCustomThumbnail);
+        } else {
+            mPreviewItemManager.draw(canvas);
+        }
     }
 
     private void drawCustomThumbnail(Canvas canvas, Bitmap bitmap) {
