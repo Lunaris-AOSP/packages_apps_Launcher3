@@ -7,6 +7,8 @@ import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.UserHandle;
 
+import com.android.launcher3.LauncherPrefs;
+import com.android.launcher3.customization.IconDatabase;
 import com.android.launcher3.dagger.ApplicationContext;
 import com.android.launcher3.dagger.LauncherAppSingleton;
 import com.android.launcher3.graphics.ThemeManager;
@@ -42,14 +44,22 @@ public class ThirdPartyIconProvider extends LauncherIconProvider {
         ComponentKey key = new ComponentKey(
                 info.getComponentName(), UserHandle.getUserHandleForUid(info.applicationInfo.uid));
 
-        IconResolver.DefaultDrawableProvider fallback =
-                () -> super.getIcon(info, iconDpi);
+        boolean[] usedFallback = {false};
+        IconResolver.DefaultDrawableProvider fallback = () -> {
+            usedFallback[0] = true;
+            return super.getIcon(info, iconDpi);
+        };
         Drawable icon = ThirdPartyIconUtils.getByKey(mContext, key, iconDpi, fallback);
 
         if (icon == null) {
             return fallback.get();
         }
         if (!(icon instanceof AdaptiveIconDrawable)) {
+            if (!usedFallback[0]
+                    && !IconDatabase.VALUE_DEFAULT.equals(IconDatabase.getByComponent(mContext, key))
+                    && LauncherPrefs.get(mContext).get(ThemeManager.PREF_RESHAPE_PACK_ICONS)) {
+                return PackIconWrapper.wrap(icon);
+            }
             icon.setChangingConfigurations(icon.getChangingConfigurations() | CONFIG_HINT_NO_WRAP);
         }
         return icon;

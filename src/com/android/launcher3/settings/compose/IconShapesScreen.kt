@@ -44,6 +44,7 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherPrefChangeListener
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
+import com.android.launcher3.customization.IconDatabase
 import com.android.launcher3.graphics.ShapeDelegate.Companion.pickBestShape
 import com.android.launcher3.graphics.ThemeManager
 import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_NO_BADGE
@@ -64,7 +65,7 @@ import kotlinx.coroutines.withContext
 
 /** Observe both values, including changes made while the editor is a separate activity. */
 @Composable
-private fun shapeRevision(): Int {
+internal fun shapeRevision(): Int {
     val context = LocalContext.current
     val items = remember {
         arrayOf(
@@ -72,6 +73,7 @@ private fun shapeRevision(): Int {
             ShapeTarget.ICON.customShapePref,
             ShapeTarget.FOLDER.shapePref,
             ShapeTarget.FOLDER.customShapePref,
+            ThemeManager.PREF_RESHAPE_PACK_ICONS,
         )
     }
     var revision by remember { mutableIntStateOf(0) }
@@ -79,7 +81,7 @@ private fun shapeRevision(): Int {
         val prefs = LauncherPrefs.get(context)
         var active = true
         val listener = LauncherPrefChangeListener { key ->
-            if (items.any { it.sharedPrefKey == key }) {
+            if (items.any { it.sharedPrefKey == key } || key == IconDatabase.KEY_ICON_PACK) {
                 MAIN_EXECUTOR.execute { if (active) revision++ }
             }
         }
@@ -476,7 +478,7 @@ private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
 }
 
 /** The icon cache expects its model executor; keep package and bitmap work off the UI thread. */
-private suspend fun loadPreviewApps(context: Context): List<AppInfo> =
+internal suspend fun loadPreviewApps(context: Context, count: Int = 20): List<AppInfo> =
     suspendCancellableCoroutine { continuation ->
         MODEL_EXECUTOR.execute {
             val apps =
@@ -494,7 +496,7 @@ private suspend fun loadPreviewApps(context: Context): List<AppInfo> =
                             .orEmpty()
                             .distinctBy { it.componentName.packageName }
                             .sortedBy { it.label.toString().lowercase() }
-                            .take(20)
+                            .take(count)
                             .map { activity ->
                                 AppInfo(context, activity, user).also {
                                     cache.getTitleAndIcon(it, activity, flag)

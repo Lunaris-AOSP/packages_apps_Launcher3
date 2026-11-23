@@ -19,6 +19,7 @@ package com.android.launcher3.settings;
 import static androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.ContentObserver;
@@ -50,6 +51,7 @@ import com.android.launcher3.settings.preferences.CustomSeekBarPreference;
 import com.android.launcher3.icons.pack.IconPackSettingsActivity;
 import com.android.launcher3.shapes.IconShapeSettingsActivity;
 import com.android.launcher3.shapes.ShapeTarget;
+import com.android.launcher3.graphics.ThemeManager;
 import com.android.launcher3.settings.preference.ReloadingListPreference;
 import com.android.launcher3.util.SettingsCache;
 
@@ -198,6 +200,10 @@ public class SettingsIcons extends ComposeSettingsActivity {
 
         @Override
         public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+            if (ThemeManager.PREF_RESHAPE_PACK_ICONS.getSharedPrefKey().equals(key)) {
+                updatePreferences();
+                return;
+            }
             switch (key) {
                 case IconDatabase.KEY_ICON_PACK:
                     updatePreferences();
@@ -288,7 +294,14 @@ public class SettingsIcons extends ComposeSettingsActivity {
         }
 
         private void setupShapePreference(Preference preference, ShapeTarget target) {
-            preference.setSummary(IconShapeSettingsActivity.getCurrentShapeLabel(getContext(), target));
+            Context context = getContext();
+            boolean blockedByIconPack = target == ShapeTarget.ICON
+                    && !IconDatabase.VALUE_DEFAULT.equals(IconDatabase.getGlobal(context))
+                    && !LauncherPrefs.get(context).get(ThemeManager.PREF_RESHAPE_PACK_ICONS);
+            preference.setEnabled(!blockedByIconPack);
+            preference.setSummary(blockedByIconPack
+                    ? context.getString(R.string.icon_shape_unavailable_pack_summary)
+                    : IconShapeSettingsActivity.getCurrentShapeLabel(context, target));
             preference.setOnPreferenceClickListener(p -> {
                 startActivity(IconShapeSettingsActivity.createIntent(getContext(), target));
                 return true;

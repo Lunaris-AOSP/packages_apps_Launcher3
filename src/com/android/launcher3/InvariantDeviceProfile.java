@@ -172,6 +172,7 @@ public class InvariantDeviceProfile {
     public float[] iconSize;
     public float[] iconTextSize;
     public String iconPack;
+    public boolean reshapePackIcons;
     public int iconBitmapSize;
     public int fillResIconDpi;
     public @DeviceType int deviceType;
@@ -333,15 +334,16 @@ public class InvariantDeviceProfile {
                     ENABLE_TWOLINE_ALLAPPS_TOGGLE.getSharedPrefKey().equals(key) ||
                     ROW_HEIGHT.getSharedPrefKey().equals(key) ||
                     IconDatabase.KEY_ICON_PACK.equals(key) ||
+                    ThemeManager.PREF_RESHAPE_PACK_ICONS.getSharedPrefKey().equals(key) ||
                     LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT.getSharedPrefKey().equals(key)) {
                 onConfigChanged();
             }
         };
         prefs.addListener(prefListener, FIXED_LANDSCAPE_MODE, ENABLE_TWOLINE_ALLAPPS_TOGGLE,
-                LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT);
+                LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT, ThemeManager.PREF_RESHAPE_PACK_ICONS);
         lifeCycle.addCloseable(() -> prefs.removeListener(prefListener,
                 FIXED_LANDSCAPE_MODE, ENABLE_TWOLINE_ALLAPPS_TOGGLE,
-                LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT));
+                LauncherPrefs.HOTSEAT_BOTTOM_SPACE_DEFAULT, ThemeManager.PREF_RESHAPE_PACK_ICONS));
 
         SimpleBroadcastReceiver localeReceiver = new SimpleBroadcastReceiver(context,
                 mMainExecutor, i -> onConfigChanged());
@@ -445,6 +447,7 @@ public class InvariantDeviceProfile {
             maxIconSize = Math.max(maxIconSize, iconSize[i]);
         }
         iconPack = IconDatabase.getGlobal(context);
+        reshapePackIcons = mPrefs.get(ThemeManager.PREF_RESHAPE_PACK_ICONS);
 
         iconBitmapSize = ResourceUtils.pxFromDp(maxIconSize, metrics);
 
@@ -561,7 +564,7 @@ public class InvariantDeviceProfile {
     private Object[] toModelState() {
         return new Object[]{
                 numColumns, numRows, numSearchContainerColumns, numDatabaseHotseatIcons,
-                iconPack, iconBitmapSize, fillResIconDpi, numDatabaseAllAppsColumns,
+                iconPack, reshapePackIcons, iconBitmapSize, fillResIconDpi, numDatabaseAllAppsColumns,
                 dbFile, mLocale};
     }
 

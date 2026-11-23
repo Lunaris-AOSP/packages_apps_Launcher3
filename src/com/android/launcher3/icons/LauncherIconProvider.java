@@ -31,6 +31,7 @@ import android.util.Log;
 
 import com.android.internal.util.lunaris.Utils;
 import com.android.launcher3.R;
+import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.config.FeatureFlags;
 import com.android.launcher3.customization.IconDatabase;
 import com.android.launcher3.dagger.ApplicationContext;
@@ -87,7 +88,8 @@ public class LauncherIconProvider extends IconProvider {
         super.updateSystemState();
         mSystemState += "," + mThemeManager.getIconState().toUniqueId()
             + Build.VERSION.INCREMENTAL
-            + ",icon-pack-shape-v2,per-app-icon-style-v2";
+            + ",icon-pack-shape-v2,per-app-icon-style-v2"
+            + ",reshape-pack=" + LauncherPrefs.get(mContext).get(ThemeManager.PREF_RESHAPE_PACK_ICONS);
     }
 
     private Map<String, ThemeData> getThemedIconMap() {

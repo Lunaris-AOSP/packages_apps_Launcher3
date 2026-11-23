@@ -48,7 +48,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.customization.IconDatabase
-import com.android.launcher3.icons.IconProvider
+import com.android.launcher3.graphics.ThemeManager
+import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_NO_BADGE
+import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_THEMED
 import com.android.launcher3.lineage.trust.TrustAppsActivity
 import com.android.launcher3.lineage.trust.db.TrustComponent
 import com.android.launcher3.settings.ComposeSettingsActivity
@@ -237,6 +239,12 @@ private fun IconPacksScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val revision = packageRevision()
     var selected by remember { mutableStateOf(IconDatabase.getGlobal(context)) }
+    val prefs = LauncherPrefs.get(context)
+    val shapeRevision = shapeRevision()
+    var reshape by
+        remember(revision, shapeRevision) {
+            mutableStateOf(prefs.get(ThemeManager.PREF_RESHAPE_PACK_ICONS))
+        }
     val packs by
         produceState<List<AppChoice>?>(null, revision) {
             selected = IconDatabase.getGlobal(context)
@@ -269,23 +277,21 @@ private fun IconPacksScreen(onBack: () -> Unit) {
                 }
         }
     val preview by
-        produceState<List<Drawable>>(emptyList(), selected, revision) {
+        produceState<List<Drawable>>(emptyList(), selected, revision, reshape, shapeRevision) {
+            val apps = loadPreviewApps(context.applicationContext, 8)
+            val theme = ThemeManager.INSTANCE.get(context)
             value =
-                withContext(Dispatchers.IO) {
-                    val pm = context.packageManager
-                    pm.queryIntentActivities(
-                            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
-                            0,
+                apps.map { app ->
+                    val flags =
+                        app.resolveIconCreationFlags(
+                            context,
+                            FLAG_NO_BADGE or if (theme.isIconThemeEnabled) FLAG_THEMED else 0,
                         )
-                        .sortedBy { it.loadLabel(pm).toString() }
-                        .take(8)
-                        .map {
-                            IconProvider.INSTANCE.get(context)
-                                .getIcon(
-                                    it.activityInfo,
-                                    context.resources.displayMetrics.densityDpi,
-                                )
-                        }
+                    app.bitmap.newIcon(
+                        context,
+                        flags,
+                        if (app.supportsCustomShapes(flags)) theme.iconShapeData.value else null,
+                    )
                 }
         }
     AppListScaffold(
@@ -312,6 +318,46 @@ private fun IconPacksScreen(onBack: () -> Unit) {
             }
         },
     ) { query ->
+        if (query.isEmpty())
+            item("reshape") {
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .toggleable(
+                                value = reshape,
+                                enabled = selected != IconDatabase.VALUE_DEFAULT,
+                                role = Role.Switch,
+                                onValueChange = {
+                                    prefs.put(ThemeManager.PREF_RESHAPE_PACK_ICONS, it)
+                                    reshape = it
+                                },
+                            )
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.icon_shape_reshape_pack_title),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                stringResource(R.string.icon_shape_reshape_pack_summary),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = reshape,
+                            onCheckedChange = null,
+                            enabled = selected != IconDatabase.VALUE_DEFAULT,
+                        )
+                    }
+                }
+            }
         if (query.isEmpty() && preview.isNotEmpty())
             item("preview") {
                 SettingsPreviewCard {
