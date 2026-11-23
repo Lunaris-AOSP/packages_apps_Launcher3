@@ -84,7 +84,12 @@ private fun shapeRevision(): Int {
             }
         }
         prefs.addListener(listener, *items)
+        val shapeSubscription =
+            ThemeManager.INSTANCE.get(context).iconShapeData.forEach(MAIN_EXECUTOR) {
+                if (active) revision++
+            }
         onDispose {
+            shapeSubscription.close()
             active = false
             prefs.removeListener(listener, *items)
         }
@@ -108,9 +113,7 @@ internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTar
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        item("preview") {
-            IconShapeAppPreview(current?.pathString ?: defaultPreviewPath(context, target), target)
-        }
+        item("preview") { IconShapeAppPreview(null, target) }
         item("custom_heading") { ShapeHeading(stringResource(R.string.icon_shape_custom)) }
         custom?.let {
             item(CustomIconShape.KEY) {
@@ -371,10 +374,11 @@ internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun IconShapeAppPreview(path: String, target: ShapeTarget) {
+private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
     val context = LocalContext.current
+    val revision = shapeRevision()
     val apps by
-        produceState<List<AppInfo>>(emptyList(), context) {
+        produceState<List<AppInfo>>(emptyList(), context, revision) {
             value = loadPreviewApps(context.applicationContext)
         }
     val theme = ThemeManager.INSTANCE.get(context)
@@ -384,15 +388,16 @@ private fun IconShapeAppPreview(path: String, target: ShapeTarget) {
             value = path
         }
     val drawables =
-        remember(apps, renderedPath, target) {
+        remember(apps, renderedPath, target, revision) {
             val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
             val shape =
                 if (apps.isEmpty()) null
-                else if (target == ShapeTarget.FOLDER) theme.iconShapeData.value
+                else if (renderedPath == null || target == ShapeTarget.FOLDER)
+                    theme.iconShapeData.value
                 else
                     GraphicsUtils.generateIconShape(
                         size,
-                        pickBestShape(renderedPath).getPath(size.toFloat()),
+                        pickBestShape(renderedPath.orEmpty()).getPath(size.toFloat()),
                     )
             apps.map { app ->
                 val flags =
@@ -408,9 +413,14 @@ private fun IconShapeAppPreview(path: String, target: ShapeTarget) {
             }
         }
     val folderShape =
-        remember(renderedPath, target) {
-            if (target == ShapeTarget.FOLDER || ShapeTarget.FOLDER.shapePref.get(context).isEmpty())
-                pickBestShape(renderedPath)
+        remember(renderedPath, target, revision) {
+            val editedPath = renderedPath
+            if (
+                editedPath != null &&
+                    (target == ShapeTarget.FOLDER ||
+                        ShapeTarget.FOLDER.shapePref.get(context).isEmpty())
+            )
+                pickBestShape(editedPath)
             else theme.folderShape
         }
     val folderColor =
@@ -441,7 +451,7 @@ private fun IconShapeAppPreview(path: String, target: ShapeTarget) {
                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                             val drawable =
                                 if (row == 0) drawables.getOrNull(column) else folders[column]
-                            if (drawable == null) ShapeOutline(path, Modifier.size(56.dp))
+                            if (drawable == null) ShapeOutline(path.orEmpty(), Modifier.size(56.dp))
                             else
                                 AndroidView(
                                     factory = {
