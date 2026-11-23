@@ -634,13 +634,15 @@ public class Hotseat extends CellLayout implements Insettable {
         } else {
             cornerRadius = Math.min(mPillRect.width(), mPillRect.height()) / 2f;
         }
+        boolean drewBlur = false;
         if (canvas.isHardwareAccelerated()) {
             updateBlurState();
             if (mBackdropBlur.isEnabled()) {
-                mBackdropBlur.draw(canvas, mPillRect.left, mPillRect.top,
+                drewBlur = mBackdropBlur.draw(canvas, mPillRect.left, mPillRect.top,
                         mPillRect.right, mPillRect.bottom, cornerRadius);
             }
         }
+        if (drewBlur && mBackdropBlur.isTintOverrideEnabled()) return;
 
         if (mBackgroundTintDrawable.getCornerRadius() != cornerRadius) {
             mBackgroundTintDrawable.setCornerRadius(cornerRadius);
@@ -714,7 +716,8 @@ public class Hotseat extends CellLayout implements Insettable {
     }
 
     private boolean canBlurHotseat() {
-        return mShowHotseatBg && mHotseatBlur && mCrossWindowBlurEnabled && mBlurDepth > 0
+        return mShowHotseatBg && mHotseatBlur && mCrossWindowBlurEnabled && (mBackdropBlur.resolveBlurRadiusPx(mBlurDepth) > 0
+                || mBackdropBlur.isTintOverrideEnabled())
                 && mCountX > 0 && mCountY > 0 && mCellWidth > 0 && mCellHeight > 0
                 && isAttachedToWindow() && isHardwareAccelerated() && isShown()
                 && getWindowVisibility() == VISIBLE;

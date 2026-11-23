@@ -161,7 +161,8 @@ public class QsbLayout extends FrameLayout
         int color = Color.argb(alphaValue, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor));
         float strokeWidth = LauncherPrefs.HOTSEAT_QSB_STROKE_WIDTH.get(getContext());
 
-        PaintDrawable backgroundDrawable = new PaintDrawable(color);
+        PaintDrawable backgroundDrawable = new PaintDrawable(
+                canBlur && mBackdropBlur.isTintOverrideEnabled() ? Color.TRANSPARENT : color);
         backgroundDrawable.setCornerRadius(cornerRadius);
 
         if (strokeWidth != 0f) {
@@ -200,6 +201,10 @@ public class QsbLayout extends FrameLayout
         cancelSquishAnimation();
         ThemeManager.INSTANCE.get(getContext()).addChangeListener(mThemeChangeListener);
         LauncherPrefs.getPrefs(getContext()).registerOnSharedPreferenceChangeListener(this);
+        mBackdropBlur.setOnCustomizationChangedListener(() -> {
+            updateBlurState();
+            setUpBackground();
+        });
         mBackdropBlur.onAttachedToWindow();
         mCrossWindowBlurEnabled = CrossWindowBlurListeners.getInstance().isCrossWindowBlurEnabled();
         CrossWindowBlurListeners.getInstance().addListener(
@@ -219,6 +224,7 @@ public class QsbLayout extends FrameLayout
     @Override
     protected void onDetachedFromWindow() {
         cancelSquishAnimation();
+        mBackdropBlur.setOnCustomizationChangedListener(null);
         mBackdropBlur.onDetachedFromWindow();
         mBlurDrawn = false;
         CrossWindowBlurListeners.getInstance().removeListener(mCrossWindowBlurListener);
@@ -294,7 +300,8 @@ public class QsbLayout extends FrameLayout
     }
 
     private boolean isBlurAvailable() {
-        return mBlurEnabled && mCrossWindowBlurEnabled && mBlurDepth > 0
+        return mBlurEnabled && mCrossWindowBlurEnabled && (mBackdropBlur.resolveBlurRadiusPx(mBlurDepth) > 0
+                || mBackdropBlur.isTintOverrideEnabled())
                 && isHardwareAccelerated();
     }
 

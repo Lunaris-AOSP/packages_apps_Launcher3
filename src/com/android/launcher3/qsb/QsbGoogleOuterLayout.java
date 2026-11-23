@@ -148,7 +148,8 @@ public class QsbGoogleOuterLayout extends FrameLayout
     }
 
     private boolean isBlurAvailable() {
-        return mBlurEnabled && mCrossWindowBlurEnabled && mBlurDepth > 0
+        return mBlurEnabled && mCrossWindowBlurEnabled && (mBackdropBlur.resolveBlurRadiusPx(mBlurDepth) > 0
+                || mBackdropBlur.isTintOverrideEnabled())
                 && isHardwareAccelerated();
     }
 

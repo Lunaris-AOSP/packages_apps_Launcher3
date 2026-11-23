@@ -107,6 +107,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     private boolean mCrossWindowBlurEnabled;
     private boolean mIsVisibleToUser;
     private int mBlurDepth = 45;
+    private boolean mTintOverrideActive;
     private final Consumer<Boolean> mCrossWindowBlurListener =
             this::onCrossWindowBlurEnabledChanged;
 
@@ -182,6 +183,10 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        mBackdropBlur.setOnCustomizationChangedListener(() -> {
+            updateBlurState();
+            setUpPillSearchBackground(isUniversalSearchActive());
+        });
         mBackdropBlur.onAttachedToWindow();
         mCrossWindowBlurEnabled = CrossWindowBlurListeners.getInstance().isCrossWindowBlurEnabled();
         CrossWindowBlurListeners.getInstance().addListener(
@@ -200,6 +205,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     protected void onDetachedFromWindow() {
         mTouchAction = ACTION_NONE;
+        mBackdropBlur.setOnCustomizationChangedListener(null);
         mBackdropBlur.onDetachedFromWindow();
         CrossWindowBlurListeners.getInstance().removeListener(mCrossWindowBlurListener);
         ThemeManager.INSTANCE.get(getContext()).removeChangeListener(mThemeChangeListener);
@@ -250,7 +256,8 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     }
 
     private boolean isBlurAvailable() {
-        return mCrossWindowBlurEnabled && mBlurDepth > 0 && isHardwareAccelerated();
+        return mCrossWindowBlurEnabled && (mBackdropBlur.resolveBlurRadiusPx(mBlurDepth) > 0
+                || mBackdropBlur.isTintOverrideEnabled()) && isHardwareAccelerated();
     }
 
     private boolean canDrawBlur() {
@@ -263,6 +270,11 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     private void updateBlurState() {
         boolean enabled = mUsePillSearchBar && canDrawBlur();
         mBackdropBlur.setEnabled(enabled);
+        boolean overrideTint = enabled && mBackdropBlur.isTintOverrideEnabled();
+        if (mTintOverrideActive != overrideTint) {
+            mTintOverrideActive = overrideTint;
+            setUpPillSearchBackground(isUniversalSearchActive());
+        }
         if (enabled) {
             mBackdropBlur.setSurfaceAlpha(Math.round(255f
                     * Utilities.boundToRange(getAlpha(), 0f, 1f)));
@@ -271,6 +283,10 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
     private void hideBlur() {
         mBackdropBlur.setEnabled(false);
+        if (mTintOverrideActive) {
+            mTintOverrideActive = false;
+            setUpPillSearchBackground(isUniversalSearchActive());
+        }
     }
 
     private boolean isUniversalSearchActive() {
@@ -338,7 +354,9 @@ public class AppsSearchContainerLayout extends ExtendedEditText
                     : Color.argb(90, 0, 0, 0);
         }
 
-        mBackgroundTintDrawable.setColor(fillColor);
+        mBackgroundTintDrawable.setColor(
+                active && mBackdropBlur.isEnabled() && mBackdropBlur.isTintOverrideEnabled()
+                        ? Color.TRANSPARENT : fillColor);
         mBackgroundTintDrawable.setStroke(strokeWidth, strokeColor);
         setClipToOutline(false);
         if (getBackground() != mBackgroundTintDrawable) {

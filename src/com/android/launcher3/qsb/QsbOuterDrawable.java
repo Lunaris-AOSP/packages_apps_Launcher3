@@ -15,6 +15,7 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 
 import com.android.launcher3.util.Themes;
+import com.android.internal.graphics.drawable.AxBlurCustomization;
 
 public class QsbOuterDrawable extends Drawable {
     private final Paint mPaint;
@@ -54,7 +55,8 @@ public class QsbOuterDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
         Rect bounds = getBounds();
-        if (bounds.isEmpty()) return;
+        if (bounds.isEmpty() || (mBlurActive
+                && AxBlurCustomization.getInstance(mContext).getState().tintEnabled)) return;
 
         // Get the themed color for outer shape
         int themedColor = Themes.getAttrColor(mContext, com.android.launcher3.R.attr.qsbOuterColor);
