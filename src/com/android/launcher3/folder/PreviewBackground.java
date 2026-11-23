@@ -415,8 +415,8 @@ public class PreviewBackground extends DelegatedCellDrawing {
         drawShadow(canvas);
     }
 
-    private ShapeDelegate getShape() {
-        return ThemeManager.INSTANCE.get(mContext).getFolderShape();
+    public ShapeDelegate getShape() {
+        return ThemeManager.INSTANCE.get(mContext).folderShapeForSpan(mSpanX, mSpanY);
     }
 
     private float getCornerRadius(

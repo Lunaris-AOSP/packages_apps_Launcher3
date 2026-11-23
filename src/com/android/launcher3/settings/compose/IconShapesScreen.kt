@@ -46,8 +46,6 @@ import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.graphics.ShapeDelegate.Companion.pickBestShape
 import com.android.launcher3.graphics.ThemeManager
-import com.android.launcher3.graphics.ThemeManager.Companion.PREF_CUSTOM_ICON_SHAPE
-import com.android.launcher3.graphics.ThemeManager.Companion.PREF_ICON_SHAPE
 import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_NO_BADGE
 import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_THEMED
 import com.android.launcher3.icons.GraphicsUtils
@@ -68,44 +66,63 @@ import kotlinx.coroutines.withContext
 @Composable
 private fun shapeRevision(): Int {
     val context = LocalContext.current
+    val items = remember {
+        arrayOf(
+            ShapeTarget.ICON.shapePref,
+            ShapeTarget.ICON.customShapePref,
+            ShapeTarget.FOLDER.shapePref,
+            ShapeTarget.FOLDER.customShapePref,
+        )
+    }
     var revision by remember { mutableIntStateOf(0) }
     DisposableEffect(context) {
         val prefs = LauncherPrefs.get(context)
         var active = true
         val listener = LauncherPrefChangeListener { key ->
-            if (
-                key == PREF_ICON_SHAPE.sharedPrefKey || key == PREF_CUSTOM_ICON_SHAPE.sharedPrefKey
-            ) {
+            if (items.any { it.sharedPrefKey == key }) {
                 MAIN_EXECUTOR.execute { if (active) revision++ }
             }
         }
-        prefs.addListener(listener, PREF_ICON_SHAPE, PREF_CUSTOM_ICON_SHAPE)
+        prefs.addListener(listener, *items)
         onDispose {
             active = false
-            prefs.removeListener(listener, PREF_ICON_SHAPE, PREF_CUSTOM_ICON_SHAPE)
+            prefs.removeListener(listener, *items)
         }
     }
     return revision
 }
 
 @Composable
-internal fun IconShapesScreen(onBack: () -> Unit) {
+internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTarget.ICON) {
     val context = LocalContext.current
     val revision = shapeRevision()
-    val custom = remember(revision) { CustomIconShape.fromPrefs(LauncherPrefs.get(context)) }
-    val current = remember(revision) { IconShapeSettingsActivity.currentShape(context) }
-    ShapeScaffold(stringResource(R.string.icon_shape_title), onBack) {
-        item("preview") { IconShapeAppPreview(current?.pathString.orEmpty()) }
+    val custom = remember(revision, target) { target.customShape(LauncherPrefs.get(context)) }
+    val current =
+        remember(revision, target) { IconShapeSettingsActivity.currentShape(context, target) }
+    ShapeScaffold(stringResource(target.title), onBack) {
+        if (target == ShapeTarget.FOLDER)
+            item("scope") {
+                Text(
+                    stringResource(R.string.folder_shape_normal_only),
+                    Modifier.padding(horizontal = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        item("preview") {
+            IconShapeAppPreview(current?.pathString ?: defaultPreviewPath(context, target), target)
+        }
         item("custom_heading") { ShapeHeading(stringResource(R.string.icon_shape_custom)) }
         custom?.let {
             item(CustomIconShape.KEY) {
-                ShapeOption(it.toModel(), current?.key == CustomIconShape.KEY)
+                ShapeOption(it.toModel(), current?.key == CustomIconShape.KEY, target)
             }
         }
         item("edit") {
             Surface(
                 onClick = {
-                    context.startActivity(IconShapeSettingsActivity.createEditorIntent(context))
+                    context.startActivity(
+                        IconShapeSettingsActivity.createEditorIntent(context, target)
+                    )
                 },
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -118,23 +135,22 @@ internal fun IconShapesScreen(onBack: () -> Unit) {
                     Icon(if (custom == null) Icons.Rounded.Add else Icons.Rounded.Edit, null)
                     Text(
                         stringResource(
-                            if (custom == null) R.string.icon_shape_custom_create
-                            else R.string.icon_shape_custom_edit
+                            if (custom == null) target.customCreate else target.customEdit
                         )
                     )
                 }
             }
         }
         item("presets_heading") { ShapeHeading(stringResource(R.string.icon_shape_presets)) }
-        item("system_default") { ShapeOption(null, current == null) }
+        item("system_default") { ShapeOption(null, current == null, target) }
         items(ShapesProvider.iconShapes.toList(), key = { it.key }) { shape ->
-            ShapeOption(shape, current?.key == shape.key)
+            ShapeOption(shape, current?.key == shape.key, target)
         }
     }
 }
 
 @Composable
-private fun ShapeOption(shape: IconShapeModel?, selected: Boolean) {
+private fun ShapeOption(shape: IconShapeModel?, selected: Boolean, target: ShapeTarget) {
     val context = LocalContext.current
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -146,7 +162,7 @@ private fun ShapeOption(shape: IconShapeModel?, selected: Boolean) {
                     selected = selected,
                     role = Role.RadioButton,
                     onClick = {
-                        LauncherPrefs.get(context).put(PREF_ICON_SHAPE, shape?.key.orEmpty())
+                        LauncherPrefs.get(context).put(target.shapePref, shape?.key.orEmpty())
                     },
                 )
                 .padding(horizontal = 20.dp, vertical = 12.dp),
@@ -154,28 +170,25 @@ private fun ShapeOption(shape: IconShapeModel?, selected: Boolean) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             RadioButton(selected, onClick = null)
-            Text(
-                stringResource(shape?.titleId ?: R.string.icon_shape_default_label),
-                Modifier.weight(1f),
-            )
-            ShapeOutline(shape?.pathString.orEmpty())
+            Text(stringResource(shape?.titleId ?: target.defaultLabel), Modifier.weight(1f))
+            ShapeOutline(shape?.pathString ?: defaultPreviewPath(context, target))
         }
     }
 }
 
 @Composable
-internal fun IconShapeEditorScreen(onBack: () -> Unit) {
+internal fun IconShapeEditorScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTarget.ICON) {
     val context = LocalContext.current
     val revision = shapeRevision()
-    val saved = remember(revision) { CustomIconShape.fromPrefs(LauncherPrefs.get(context)) }
+    val saved = remember(revision, target) { target.customShape(LauncherPrefs.get(context)) }
     var serialized by rememberSaveable {
         mutableStateOf((saved ?: CustomIconShape.DEFAULT).serialize())
     }
     val draft =
         remember(serialized) { CustomIconShape.parse(serialized) ?: CustomIconShape.DEFAULT }
-    val canApply = draft.needsApply(saved, PREF_ICON_SHAPE.get(context))
+    val canApply = draft.needsApply(saved, target.shapePref.get(context))
     ShapeScaffold(
-        stringResource(R.string.icon_shape_custom_title),
+        stringResource(target.customTitle),
         onBack,
         actions = {
             TextButton(
@@ -183,8 +196,8 @@ internal fun IconShapeEditorScreen(onBack: () -> Unit) {
                 onClick = {
                     LauncherPrefs.get(context)
                         .put(
-                            PREF_CUSTOM_ICON_SHAPE to draft.serialize(),
-                            PREF_ICON_SHAPE to CustomIconShape.KEY,
+                            target.customShapePref to draft.serialize(),
+                            target.shapePref to CustomIconShape.KEY,
                         )
                     onBack()
                 },
@@ -193,7 +206,7 @@ internal fun IconShapeEditorScreen(onBack: () -> Unit) {
             }
         },
     ) {
-        item("preview") { IconShapeAppPreview(draft.pathString) }
+        item("preview") { IconShapeAppPreview(draft.pathString, target) }
         item("top_left") {
             ShapeCornerEditor(stringResource(R.string.icon_shape_corner_top_left), draft.topLeft) {
                 serialized = draft.copy(topLeft = it).serialize()
@@ -320,6 +333,14 @@ private fun ShapeOutline(path: String, modifier: Modifier = Modifier.size(40.dp)
     )
 }
 
+private fun defaultPreviewPath(context: Context, target: ShapeTarget): String {
+    if (target == ShapeTarget.ICON) return ""
+    val icon = IconShapeSettingsActivity.currentShape(context)
+    if (icon?.key == CustomIconShape.KEY) return icon.pathString
+    val corner = ShapeCorner(CornerStyle.ROUND, icon?.folderRadiusRatio ?: 1f)
+    return ShapePathBuilder.fromCorners(corner, corner, corner, corner)
+}
+
 /** Shared wallpaper card also used by the icon pack screen. Loading follows the composition. */
 @Composable
 internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
@@ -350,7 +371,7 @@ internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun IconShapeAppPreview(path: String) {
+private fun IconShapeAppPreview(path: String, target: ShapeTarget) {
     val context = LocalContext.current
     val apps by
         produceState<List<AppInfo>>(emptyList(), context) {
@@ -363,10 +384,11 @@ private fun IconShapeAppPreview(path: String) {
             value = path
         }
     val drawables =
-        remember(apps, renderedPath) {
+        remember(apps, renderedPath, target) {
             val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
             val shape =
                 if (apps.isEmpty()) null
+                else if (target == ShapeTarget.FOLDER) theme.iconShapeData.value
                 else
                     GraphicsUtils.generateIconShape(
                         size,
@@ -385,6 +407,29 @@ private fun IconShapeAppPreview(path: String) {
                 )
             }
         }
+    val folderShape =
+        remember(renderedPath, target) {
+            if (target == ShapeTarget.FOLDER || ShapeTarget.FOLDER.shapePref.get(context).isEmpty())
+                pickBestShape(renderedPath)
+            else theme.folderShape
+        }
+    val folderColor =
+        context.getColor(
+            if (context.resources.configuration.isNightModeActive) R.color.folder_preview_dark
+            else R.color.folder_preview_light
+        )
+    val folders =
+        remember(drawables, folderShape, folderColor) {
+            val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
+            List(4) { index ->
+                FolderPreviewDrawable(
+                    folderShape,
+                    drawables.drop(4 + index * 4).take(4),
+                    folderColor,
+                    size,
+                )
+            }
+        }
     SettingsPreviewCard {
         Column(Modifier.fillMaxWidth().padding(vertical = 20.dp)) {
             repeat(2) { row ->
@@ -393,9 +438,9 @@ private fun IconShapeAppPreview(path: String) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     repeat(4) { column ->
-                        val index = row * 4 + column
                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            val drawable = drawables.getOrNull(index)
+                            val drawable =
+                                if (row == 0) drawables.getOrNull(column) else folders[column]
                             if (drawable == null) ShapeOutline(path, Modifier.size(56.dp))
                             else
                                 AndroidView(
@@ -407,7 +452,9 @@ private fun IconShapeAppPreview(path: String) {
                                     modifier = Modifier.size(56.dp),
                                     update = {
                                         it.setImageDrawable(drawable)
-                                        it.contentDescription = apps[index].title
+                                        it.contentDescription =
+                                            if (row == 0) apps[column].title
+                                            else context.getString(R.string.folder_shape_title)
                                     },
                                 )
                         }
@@ -437,7 +484,7 @@ private suspend fun loadPreviewApps(context: Context): List<AppInfo> =
                             .orEmpty()
                             .distinctBy { it.componentName.packageName }
                             .sortedBy { it.label.toString().lowercase() }
-                            .take(8)
+                            .take(20)
                             .map { activity ->
                                 AppInfo(context, activity, user).also {
                                     cache.getTitleAndIcon(it, activity, flag)

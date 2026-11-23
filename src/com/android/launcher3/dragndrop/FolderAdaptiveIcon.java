@@ -156,7 +156,7 @@ public class FolderAdaptiveIcon extends AdaptiveIconDrawable {
         // Draw foreground
         foregroundCanvas.save();
         foregroundCanvas.translate(previewShiftX, previewShiftY);
-        icon.getPreviewItemManager().draw(foregroundCanvas);
+        icon.drawPreviewContent(foregroundCanvas);
         foregroundCanvas.restore();
 
         // Draw background

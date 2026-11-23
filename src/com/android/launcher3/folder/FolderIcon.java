@@ -142,6 +142,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
             new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Path mThumbnailClipPath = new Path();
     private final RectF mThumbnailBounds = new RectF();
+    private final RectF mThumbnailImageBounds = new RectF();
     @Nullable private Bitmap mCustomThumbnail;
     private boolean mShowThumbnailWhileHidden = false;
 
@@ -1201,12 +1202,26 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         invalidate();
     }
 
+    /** Draws the same thumbnail or app preview used by the closed folder in drag snapshots. */
+    public void drawPreviewContent(Canvas canvas) {
+        if (mCustomThumbnail != null) drawCustomThumbnail(canvas, mCustomThumbnail);
+        else mPreviewItemManager.draw(canvas);
+    }
+
     private void drawCustomThumbnail(Canvas canvas, Bitmap bitmap) {
         mBackground.getDrawnShapePath(mThumbnailClipPath);
         mThumbnailClipPath.computeBounds(mThumbnailBounds, true);
         int saveCount = canvas.save();
         canvas.clipPath(mThumbnailClipPath);
-        canvas.drawBitmap(bitmap, null, mThumbnailBounds, sThumbnailPaint);
+        float scale = Math.max(mThumbnailBounds.width() / bitmap.getWidth(),
+                mThumbnailBounds.height() / bitmap.getHeight());
+        float halfWidth = bitmap.getWidth() * scale / 2f;
+        float halfHeight = bitmap.getHeight() * scale / 2f;
+        mThumbnailImageBounds.set(mThumbnailBounds.centerX() - halfWidth,
+                mThumbnailBounds.centerY() - halfHeight,
+                mThumbnailBounds.centerX() + halfWidth,
+                mThumbnailBounds.centerY() + halfHeight);
+        canvas.drawBitmap(bitmap, null, mThumbnailImageBounds, sThumbnailPaint);
         canvas.restoreToCount(saveCount);
     }
 
@@ -1225,6 +1240,10 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
             if (isMultiSpanFolder()) {
                 mBackground.getBounds(iconBounds);
             }
+
+            mDotParams.shapeInfo = isMultiSpanFolder()
+                    ? ThemeManager.INSTANCE.get(getContext()).getExpandedFolderShapeInfo()
+                    : ThemeManager.INSTANCE.get(getContext()).getIconState().getFolderShapeInfo();
 
             // If we are animating to the accepting state, animate the dot out.
             mDotParams.scale = Math.max(0, mDotScale - mBackground.getAcceptScaleProgress());

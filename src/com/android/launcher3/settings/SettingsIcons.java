@@ -49,6 +49,7 @@ import com.android.launcher3.settings.preferences.ColorPreference;
 import com.android.launcher3.settings.preferences.CustomSeekBarPreference;
 import com.android.launcher3.icons.pack.IconPackSettingsActivity;
 import com.android.launcher3.shapes.IconShapeSettingsActivity;
+import com.android.launcher3.shapes.ShapeTarget;
 import com.android.launcher3.settings.preference.ReloadingListPreference;
 import com.android.launcher3.util.SettingsCache;
 
@@ -59,6 +60,7 @@ public class SettingsIcons extends ComposeSettingsActivity {
 
     private static final String NOTIFICATION_DOTS_PREFERENCE_KEY = "pref_icon_badging";
     private static final String ICON_SHAPE_PREFERENCE_KEY = "pref_icon_shape";
+    private static final String FOLDER_SHAPE_PREFERENCE_KEY = "pref_folder_shape";
 
     public static final String EXTRA_FRAGMENT_ARGS = ":settings:fragment_args";
 
@@ -215,7 +217,10 @@ public class SettingsIcons extends ComposeSettingsActivity {
                     setupIconPackPreference(preference);
                     return true;
                 case ICON_SHAPE_PREFERENCE_KEY:
-                    setupIconShapePreference(preference);
+                    setupShapePreference(preference, ShapeTarget.ICON);
+                    return Flags.enableLauncherIconShapes();
+                case FOLDER_SHAPE_PREFERENCE_KEY:
+                    setupShapePreference(preference, ShapeTarget.FOLDER);
                     return Flags.enableLauncherIconShapes();
                 case KEY_THEMED_ICONS:
                     setupThemedIconsSwitch(preference);
@@ -282,10 +287,10 @@ public class SettingsIcons extends ComposeSettingsActivity {
             });
         }
 
-        private void setupIconShapePreference(Preference preference) {
-            preference.setSummary(IconShapeSettingsActivity.getCurrentShapeLabel(getContext()));
+        private void setupShapePreference(Preference preference, ShapeTarget target) {
+            preference.setSummary(IconShapeSettingsActivity.getCurrentShapeLabel(getContext(), target));
             preference.setOnPreferenceClickListener(p -> {
-                startActivity(new Intent(getContext(), IconShapeSettingsActivity.class));
+                startActivity(IconShapeSettingsActivity.createIntent(getContext(), target));
                 return true;
             });
         }
