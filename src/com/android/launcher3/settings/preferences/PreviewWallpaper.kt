@@ -23,27 +23,33 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.Log
 import androidx.annotation.WorkerThread
+import kotlin.math.roundToInt
 
 /** Loads the home screen wallpaper for use as a backdrop behind settings previews. */
 object PreviewWallpaper {
 
     private const val TAG = "PreviewWallpaper"
-    private const val MAX_WIDTH = 720
+    private const val MAX_SIZE = 720
 
     /** Returns the wallpaper scaled down, since previews only show a snippet, or null. */
     @JvmStatic
     @WorkerThread
     fun load(context: Context): Drawable? {
-        val drawable =
-            runCatching { WallpaperManager.getInstance(context).drawable }
-                .onFailure { Log.w(TAG, "Unable to read wallpaper", it) }
-                .getOrNull() ?: return null
-        val bitmap = (drawable as? BitmapDrawable)?.bitmap ?: return drawable
-        if (bitmap.width <= MAX_WIDTH) return drawable
-        val height = bitmap.height * MAX_WIDTH / bitmap.width
-        return BitmapDrawable(
-            context.resources,
-            Bitmap.createScaledBitmap(bitmap, MAX_WIDTH, height, true),
-        )
+        return runCatching {
+                val drawable =
+                    WallpaperManager.getInstance(context).drawable ?: return@runCatching null
+                val bitmap = (drawable as? BitmapDrawable)?.bitmap ?: return@runCatching drawable
+                val longestSide = maxOf(bitmap.width, bitmap.height)
+                if (longestSide <= MAX_SIZE) return@runCatching drawable
+                val scale = MAX_SIZE.toFloat() / longestSide
+                val width = (bitmap.width * scale).roundToInt().coerceAtLeast(1)
+                val height = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
+                BitmapDrawable(
+                    context.resources,
+                    Bitmap.createScaledBitmap(bitmap, width, height, true),
+                )
+            }
+            .onFailure { Log.w(TAG, "Unable to read wallpaper preview", it) }
+            .getOrNull()
     }
 }

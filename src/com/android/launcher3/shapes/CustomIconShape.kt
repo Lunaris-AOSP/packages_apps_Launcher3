@@ -33,6 +33,10 @@ data class CustomIconShape(
         ShapePathBuilder.fromCorners(topLeft, topRight, bottomRight, bottomLeft)
     }
 
+    /** Applying also creates the initial shape or selects an unchanged saved shape. */
+    fun needsApply(saved: CustomIconShape?, selectedKey: String): Boolean =
+        this != saved || selectedKey != KEY
+
     /**
      * Serialized form: `v1|<style>,<size>|...` in top-left, top-right, bottom-left, bottom-right
      * order.

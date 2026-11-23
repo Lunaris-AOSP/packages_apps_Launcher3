@@ -38,6 +38,7 @@ import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceScreen;
 
 import com.android.launcher3.BuildConfig;
+import com.android.launcher3.Flags;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherFiles;
 import com.android.launcher3.LauncherPrefs;
@@ -215,7 +216,7 @@ public class SettingsIcons extends ComposeSettingsActivity {
                     return true;
                 case ICON_SHAPE_PREFERENCE_KEY:
                     setupIconShapePreference(preference);
-                    return true;
+                    return Flags.enableLauncherIconShapes();
                 case KEY_THEMED_ICONS:
                     setupThemedIconsSwitch(preference);
                     return true;

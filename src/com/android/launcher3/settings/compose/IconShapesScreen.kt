@@ -5,6 +5,7 @@
  */
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
 
 package com.android.launcher3.settings.compose
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.android.launcher3.InvariantDeviceProfile
@@ -53,9 +55,11 @@ import com.android.launcher3.icons.cache.CacheLookupFlag.Companion.DEFAULT_LOOKU
 import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.settings.preferences.PreviewWallpaper
 import com.android.launcher3.shapes.*
+import com.android.launcher3.util.Executors.MAIN_EXECUTOR
 import com.android.launcher3.util.Executors.MODEL_EXECUTOR
 import java.text.NumberFormat
 import kotlin.coroutines.resume
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -67,9 +71,19 @@ private fun shapeRevision(): Int {
     var revision by remember { mutableIntStateOf(0) }
     DisposableEffect(context) {
         val prefs = LauncherPrefs.get(context)
-        val listener = LauncherPrefChangeListener { revision++ }
+        var active = true
+        val listener = LauncherPrefChangeListener { key ->
+            if (
+                key == PREF_ICON_SHAPE.sharedPrefKey || key == PREF_CUSTOM_ICON_SHAPE.sharedPrefKey
+            ) {
+                MAIN_EXECUTOR.execute { if (active) revision++ }
+            }
+        }
         prefs.addListener(listener, PREF_ICON_SHAPE, PREF_CUSTOM_ICON_SHAPE)
-        onDispose { prefs.removeListener(listener, PREF_ICON_SHAPE, PREF_CUSTOM_ICON_SHAPE) }
+        onDispose {
+            active = false
+            prefs.removeListener(listener, PREF_ICON_SHAPE, PREF_CUSTOM_ICON_SHAPE)
+        }
     }
     return revision
 }
@@ -152,13 +166,14 @@ private fun ShapeOption(shape: IconShapeModel?, selected: Boolean) {
 @Composable
 internal fun IconShapeEditorScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val saved = remember { CustomIconShape.fromPrefs(LauncherPrefs.get(context)) }
+    val revision = shapeRevision()
+    val saved = remember(revision) { CustomIconShape.fromPrefs(LauncherPrefs.get(context)) }
     var serialized by rememberSaveable {
         mutableStateOf((saved ?: CustomIconShape.DEFAULT).serialize())
     }
     val draft =
         remember(serialized) { CustomIconShape.parse(serialized) ?: CustomIconShape.DEFAULT }
-    val canApply = draft != (saved ?: CustomIconShape.DEFAULT)
+    val canApply = draft.needsApply(saved, PREF_ICON_SHAPE.get(context))
     ShapeScaffold(
         stringResource(R.string.icon_shape_custom_title),
         onBack,
@@ -225,12 +240,16 @@ private fun ShapeCornerEditor(title: String, corner: ShapeCorner, onChange: (Sha
             }
             Slider(
                 value = corner.size,
-                onValueChange = { onChange(corner.copy(size = (it * 100).toInt() / 100f)) },
+                onValueChange = { onChange(corner.copy(size = (it * 100).roundToInt() / 100f)) },
                 valueRange = 0f..1f,
                 steps = 99,
-                modifier = Modifier.semantics { contentDescription = title },
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = title
+                        stateDescription = format.format(corner.size)
+                    },
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CornerStyle.entries.forEach { style ->
                     FilterChip(
                         selected = corner.style == style,
@@ -277,12 +296,14 @@ private fun ShapeScaffold(
             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = { SettingsTopAppBar(title, onBack, scroll, actions) },
     ) { padding ->
-        LazyColumn(
-            Modifier.padding(padding).widthIn(max = 840.dp).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            content = content,
-        )
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            LazyColumn(
+                Modifier.widthIn(max = 840.dp).fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = content,
+            )
+        }
     }
 }
 
@@ -336,15 +357,20 @@ private fun IconShapeAppPreview(path: String) {
             value = loadPreviewApps(context.applicationContext)
         }
     val theme = ThemeManager.INSTANCE.get(context)
+    val renderedPath by
+        produceState(path, path) {
+            withFrameNanos {}
+            value = path
+        }
     val drawables =
-        remember(apps, path) {
+        remember(apps, renderedPath) {
             val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
             val shape =
                 if (apps.isEmpty()) null
                 else
                     GraphicsUtils.generateIconShape(
                         size,
-                        pickBestShape(path).getPath(size.toFloat()),
+                        pickBestShape(renderedPath).getPath(size.toFloat()),
                     )
             apps.map { app ->
                 val flags =
