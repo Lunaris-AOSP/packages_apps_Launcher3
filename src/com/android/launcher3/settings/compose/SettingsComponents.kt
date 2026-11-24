@@ -2,7 +2,10 @@
  * Copyright (C) 2026 Lunaris AOSP
  * SPDX-License-Identifier: Apache-2.0
  */
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
 
 package com.android.launcher3.settings.compose
 
@@ -28,10 +31,12 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewCarousel
 import androidx.compose.material3.*
@@ -61,6 +66,61 @@ import com.android.launcher3.settings.preferences.ColorPreference
 import com.android.launcher3.settings.preferences.CustomSeekBarPreference
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+
+@Composable
+internal fun SettingsSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        shape = CircleShape,
+        singleLine = true,
+        placeholder = { Text(stringResource(R.string.label_search)) },
+        leadingIcon = { Icon(Icons.Rounded.Search, null) },
+        trailingIcon = {
+            if (value.isNotEmpty())
+                IconButton(shapes = IconButtonDefaults.shapes(), onClick = { onValueChange("") }) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        stringResource(R.string.widgets_full_sheet_cancel_button_description),
+                    )
+                }
+        },
+        colors =
+            OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = colors.surfaceBright,
+                unfocusedContainerColor = colors.surfaceBright,
+                focusedTextColor = colors.onSurface,
+                unfocusedTextColor = colors.onSurface,
+                focusedLeadingIconColor = colors.onSurfaceVariant,
+                unfocusedLeadingIconColor = colors.onSurfaceVariant,
+                focusedTrailingIconColor = colors.onSurfaceVariant,
+                unfocusedTrailingIconColor = colors.onSurfaceVariant,
+                focusedPlaceholderColor = colors.onSurfaceVariant,
+                unfocusedPlaceholderColor = colors.onSurfaceVariant,
+                focusedBorderColor = colors.primary,
+                unfocusedBorderColor = colors.outlineVariant.copy(alpha = 0.7f),
+            ),
+    )
+}
+
+@Composable
+internal fun settingsSwitchColors(): SwitchColors {
+    val colors = MaterialTheme.colorScheme
+    return SwitchDefaults.colors(
+        checkedThumbColor = colors.primary,
+        checkedTrackColor = colors.primaryContainer,
+        checkedIconColor = colors.onPrimary,
+        uncheckedThumbColor = colors.outline,
+        uncheckedTrackColor = colors.surfaceVariant,
+        uncheckedIconColor = colors.onSurfaceVariant,
+    )
+}
 
 @Composable
 internal fun SettingsPreference(
@@ -193,7 +253,7 @@ internal fun SettingsPreference(
                         Box(
                             Modifier.size(52.dp)
                                 .background(
-                                    MaterialTheme.colorScheme.secondaryContainer,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                     RoundedCornerShape(18.dp),
                                 ),
                             contentAlignment = Alignment.Center,
@@ -202,7 +262,7 @@ internal fun SettingsPreference(
                                 icon,
                                 null,
                                 Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
@@ -227,6 +287,7 @@ internal fun SettingsPreference(
                                 checked = pref.isChecked,
                                 onCheckedChange = null,
                                 enabled = enabled,
+                                colors = settingsSwitchColors(),
                                 thumbContent =
                                     if (pref.isChecked) {
                                         {
@@ -576,7 +637,7 @@ internal fun HomeOverview(modifier: Modifier = Modifier) {
     Surface(
         modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.primaryContainer,
+        color = MaterialTheme.colorScheme.surfaceBright,
     ) {
         Row(
             Modifier.padding(24.dp),

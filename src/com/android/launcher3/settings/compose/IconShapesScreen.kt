@@ -130,7 +130,7 @@ internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTar
                     )
                 },
                 shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainer,
+                color = MaterialTheme.colorScheme.surfaceBright,
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(20.dp),
@@ -157,10 +157,7 @@ internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTar
 @Composable
 private fun ShapeOption(shape: IconShapeModel?, selected: Boolean, target: ShapeTarget) {
     val context = LocalContext.current
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceBright) {
         Row(
             Modifier.fillMaxWidth()
                 .selectable(
@@ -247,10 +244,7 @@ internal fun IconShapeEditorScreen(onBack: () -> Unit, target: ShapeTarget = Sha
 @Composable
 private fun ShapeCornerEditor(title: String, corner: ShapeCorner, onChange: (ShapeCorner) -> Unit) {
     val format = remember { NumberFormat.getPercentInstance() }
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceBright) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
@@ -310,6 +304,7 @@ private fun ShapeScaffold(
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets =
             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = { SettingsTopAppBar(title, onBack, scroll, actions) },

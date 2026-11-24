@@ -197,7 +197,7 @@ internal fun SettingsSearchResultRow(
     Surface(
         modifier,
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = MaterialTheme.colorScheme.surfaceBright,
     ) {
         Row(
             Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(20.dp),
@@ -206,7 +206,8 @@ internal fun SettingsSearchResultRow(
         ) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.secondaryContainer,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 Icon(
                     settingsCategoryIcon(result.category),

@@ -37,7 +37,7 @@ internal fun SettingsTopAppBar(
                 104.dp + MaterialTheme.typography.headlineLargeEmphasized.lineHeight.toDp() * 2,
             )
         }
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    Surface(color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
             TwoRowsTopAppBar(
                 modifier = Modifier.widthIn(max = 840.dp).fillMaxWidth(),
@@ -63,6 +63,11 @@ internal fun SettingsTopAppBar(
                         onClick = onBack,
                         shapes = IconButtonDefaults.shapes(),
                         modifier = Modifier.padding(start = 12.dp, end = 8.dp).size(48.dp),
+                        colors =
+                            IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceBright,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
                     ) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
@@ -77,8 +82,8 @@ internal fun SettingsTopAppBar(
                 expandedHeight = expandedHeight,
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
                     ),
                 scrollBehavior = scrollBehavior,
             )

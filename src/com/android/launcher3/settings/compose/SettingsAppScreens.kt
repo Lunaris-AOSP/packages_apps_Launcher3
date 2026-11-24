@@ -22,14 +22,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -84,7 +81,7 @@ private fun AppListScaffold(
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets =
             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = {
@@ -109,27 +106,9 @@ private fun AppListScaffold(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item("search") {
-                    OutlinedTextField(
+                    SettingsSearchField(
                         query,
                         { query = it },
-                        singleLine = true,
-                        shape = CircleShape,
-                        placeholder = { Text(stringResource(R.string.label_search)) },
-                        leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                        trailingIcon = {
-                            if (query.isNotEmpty())
-                                IconButton(
-                                    shapes = IconButtonDefaults.shapes(),
-                                    onClick = { query = "" },
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.Close,
-                                        stringResource(
-                                            R.string.widgets_full_sheet_cancel_button_description
-                                        ),
-                                    )
-                                }
-                        },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                     )
                 }
@@ -322,7 +301,7 @@ private fun IconPacksScreen(onBack: () -> Unit) {
             item("reshape") {
                 Surface(
                     shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    color = MaterialTheme.colorScheme.surfaceBright,
                 ) {
                     Row(
                         Modifier.fillMaxWidth()
@@ -354,6 +333,7 @@ private fun IconPacksScreen(onBack: () -> Unit) {
                             checked = reshape,
                             onCheckedChange = null,
                             enabled = selected != IconDatabase.VALUE_DEFAULT,
+                            colors = settingsSwitchColors(),
                         )
                     }
                 }
@@ -424,7 +404,7 @@ private fun AppChoiceRow(
         shape = MaterialTheme.shapes.large,
         color =
             if (selected) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerLow,
+            else MaterialTheme.colorScheme.surfaceBright,
     ) {
         Row(
             Modifier.fillMaxWidth()

@@ -23,10 +23,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -230,7 +226,7 @@ internal fun HomeSettingsScreen(fragment: ComposePreferenceFragment) {
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scroll.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets =
             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = { SettingsTopAppBar(title = title, onBack = goBack, scrollBehavior = scroll) },
@@ -286,36 +282,10 @@ internal fun HomeSettingsScreen(fragment: ComposePreferenceFragment) {
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         item("search") {
-                            OutlinedTextField(
+                            SettingsSearchField(
                                 value = query,
                                 onValueChange = { query = it },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-                                shape = CircleShape,
-                                singleLine = true,
-                                placeholder = { Text(stringResource(R.string.label_search)) },
-                                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                                trailingIcon = {
-                                    if (query.isNotEmpty())
-                                        IconButton(
-                                            shapes = IconButtonDefaults.shapes(),
-                                            onClick = { query = "" },
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.Close,
-                                                stringResource(
-                                                    R.string
-                                                        .widgets_full_sheet_cancel_button_description
-                                                ),
-                                            )
-                                        }
-                                },
-                                colors =
-                                    OutlinedTextFieldDefaults.colors(
-                                        unfocusedContainerColor =
-                                            MaterialTheme.colorScheme.surfaceContainer,
-                                        unfocusedBorderColor =
-                                            androidx.compose.ui.graphics.Color.Transparent,
-                                    ),
                             )
                         }
                         if (overview && query.isEmpty())

@@ -35,7 +35,8 @@ import com.android.launcher3.util.LauncherOverscroll
 fun HomeSettingsTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
-    val colors = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val baseColors = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val colors = baseColors.copy(background = baseColors.surfaceContainer)
     val typography =
         remember(context) {
             val base = Typography()
