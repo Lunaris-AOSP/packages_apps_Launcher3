@@ -11,9 +11,10 @@ package com.android.launcher3.settings.compose
 
 import android.content.*
 import android.graphics.drawable.Drawable
+import android.view.View
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -34,14 +35,13 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -447,8 +447,16 @@ private fun AppChoiceRow(
 
 @Composable
 private fun AppIcon(drawable: Drawable) {
-    val bitmap = remember(drawable) { drawable.toBitmap(128, 128).asImageBitmap() }
-    Image(bitmap, null, Modifier.size(48.dp))
+    AndroidView(
+        factory = {
+            ImageView(it).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+        },
+        modifier = Modifier.size(48.dp),
+        update = { it.setImageDrawable(drawable) },
+    )
 }
 
 @Composable
