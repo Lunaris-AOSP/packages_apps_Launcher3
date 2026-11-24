@@ -539,6 +539,8 @@ final class SmartspaceView extends LinearLayout {
         private boolean mVerticalGesture;
         private int mPendingPage = -1;
         private boolean mAnimatePage;
+        private int mIndicatorScroll = Integer.MIN_VALUE;
+        private int mIndicatorMaxScroll = Integer.MIN_VALUE;
 
         SmartspacePager(Context context, PageIndicatorDots dots) {
             super(context);
@@ -577,13 +579,21 @@ final class SmartspaceView extends LinearLayout {
         protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
             super.onLayout(changed, left, top, right, bottom);
             applySelectedPage();
-            mPageIndicator.setScroll(getScrollX(), mMaxScroll);
+            updateIndicatorScroll(getScrollX());
         }
 
         @Override
         protected void onScrollChanged(int left, int top, int oldLeft, int oldTop) {
             super.onScrollChanged(left, top, oldLeft, oldTop);
-            if (mPageIndicator != null) mPageIndicator.setScroll(left, mMaxScroll);
+            updateIndicatorScroll(left);
+        }
+
+        private void updateIndicatorScroll(int scroll) {
+            if (mPageIndicator == null
+                    || (scroll == mIndicatorScroll && mMaxScroll == mIndicatorMaxScroll)) return;
+            mIndicatorScroll = scroll;
+            mIndicatorMaxScroll = mMaxScroll;
+            mPageIndicator.setScroll(scroll, mMaxScroll);
         }
 
         @Override
