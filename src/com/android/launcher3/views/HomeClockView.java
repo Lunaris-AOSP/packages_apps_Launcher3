@@ -49,6 +49,8 @@ public final class HomeClockView extends SurfaceView
     private static final String TAG = "HomeClockView";
     private static final String ENABLED_SETTING = "lock_screen_home_clock_enabled";
     private static final String STYLE_SETTING = "lock_screen_custom_clock_style";
+    private static final String DYNAMIC_SETTING = "lock_screen_dynamic_clock_enabled";
+    private static final String SMALL_SETTING = "lock_screen_home_clock_use_small";
     private static final Uri PROVIDER = Uri.parse("content://com.android.systemui.homeclock");
 
     private static final FloatProperty<HomeClockView> STATE_ALPHA =
@@ -127,7 +129,7 @@ public final class HomeClockView extends SurfaceView
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         mAttached = true;
-        for (String key : new String[] {ENABLED_SETTING, STYLE_SETTING}) {
+        for (String key : new String[] {ENABLED_SETTING, STYLE_SETTING, DYNAMIC_SETTING, SMALL_SETTING}) {
             getContext().getContentResolver().registerContentObserver(
                     Settings.Secure.getUriFor(key), false, mSettingsObserver);
         }
@@ -188,7 +190,8 @@ public final class HomeClockView extends SurfaceView
         mEnabled = home != null && home.activityInfo != null
                 && getContext().getPackageName().equals(home.activityInfo.packageName)
                 && Settings.Secure.getInt(getContext().getContentResolver(), ENABLED_SETTING, 0) != 0
-                && Settings.Secure.getInt(getContext().getContentResolver(), STYLE_SETTING, 0) > 0;
+                && (Settings.Secure.getInt(getContext().getContentResolver(), STYLE_SETTING, 0) > 0
+                        || Settings.Secure.getInt(getContext().getContentResolver(), DYNAMIC_SETTING, 0) != 0);
         if (!mEnabled) mUnlockDuration = 0;
         updateVisibility(mLauncher.getStateManager().getState());
     }
