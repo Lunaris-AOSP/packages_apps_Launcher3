@@ -20,7 +20,6 @@ import static com.android.launcher3.LauncherState.OVERVIEW;
 
 import android.animation.Animator;
 import android.animation.AnimatorSet;
-import android.os.Handler;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -45,19 +44,22 @@ public class OverviewToHomeAnim {
     private final Launcher mLauncher;
     private final Runnable mOnReachedHome;
     @Nullable
+    private final Runnable mOnCancelled;
+    @Nullable
     private final BiConsumer<AnimatorSet, Long> mSplitCancelConsumer;
-
-    // Only run mOnReachedHome when both of these are true.
-    private boolean mIsHomeStaggeredAnimFinished;
-    private boolean mIsOverviewHidden;
-    private boolean mAnimationStarted = false;
-    private Handler mHandler = new Handler();
 
     public OverviewToHomeAnim(Launcher launcher, Runnable onReachedHome,
             @Nullable BiConsumer<AnimatorSet, Long> splitCancelConsumer) {
+        this(launcher, onReachedHome, splitCancelConsumer, null);
+    }
+
+    public OverviewToHomeAnim(Launcher launcher, Runnable onReachedHome,
+            @Nullable BiConsumer<AnimatorSet, Long> splitCancelConsumer,
+            @Nullable Runnable onCancelled) {
         mLauncher = launcher;
         mOnReachedHome = onReachedHome;
         mSplitCancelConsumer = splitCancelConsumer;
+        mOnCancelled = onCancelled;
     }
 
     /**
@@ -69,23 +71,9 @@ public class OverviewToHomeAnim {
         LauncherState startState = stateManager.getState();
         if (startState != OVERVIEW) {
             Log.e(TAG, "animateFromOverviewToHome: unexpected start state " + startState);
-            if (startState == NORMAL) {
-                Log.d(TAG, "Already at NORMAL state, completing animation immediately");
-                mIsHomeStaggeredAnimFinished = true;
-                mIsOverviewHidden = true;
-                maybeOverviewToHomeAnimComplete();
-                return;
-            }
-
-        mAnimationStarted = true;
-
-            Log.w(TAG, "Force transitioning from " + startState + " to NORMAL");
             stateManager.goToState(NORMAL, false);
-            mIsHomeStaggeredAnimFinished = true;
-            mIsOverviewHidden = true;
-            maybeOverviewToHomeAnimComplete();
+            completeAnimation();
             return;
-
         }
         AnimatorSet anim = new AnimatorSet();
 
@@ -93,16 +81,7 @@ public class OverviewToHomeAnim {
         if (playWorkspaceRevealAnim) {
             WorkspaceRevealAnim workspaceRevealAnim = new WorkspaceRevealAnim(mLauncher,
                     false /* animateOverviewScrim */);
-            workspaceRevealAnim.addAnimatorListener(new AnimationSuccessListener() {
-                @Override
-                public void onAnimationSuccess(Animator animator) {
-                    mIsHomeStaggeredAnimFinished = true;
-                    maybeOverviewToHomeAnimComplete();
-                }
-            });
             anim.play(workspaceRevealAnim.getAnimators());
-        } else {
-            mIsHomeStaggeredAnimFinished = true;
         }
 
         StateAnimationConfig config = new StateAnimationConfig();
@@ -113,53 +92,34 @@ public class OverviewToHomeAnim {
         config.duration = startState.getTransitionDuration(mLauncher, false /* isToState */);
         AnimatorSet stateAnim = stateManager.createAtomicAnimation(
                 startState, NORMAL, config);
-        stateAnim.addListener(new AnimationSuccessListener() {
-            @Override
-            public void onAnimationSuccess(Animator animator) {
-                mIsOverviewHidden = true;
-                maybeOverviewToHomeAnimComplete();
-            }
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                Log.w(TAG, "State animation cancelled, forcing completion");
-                mIsOverviewHidden = true;
-                maybeOverviewToHomeAnimComplete();
-            }
-        });
-
-        final long ANIMATION_TIMEOUT = config.duration + 1000; // duration + 1 second safety
-        mHandler.postDelayed(() -> {
-            if (mAnimationStarted && (!mIsHomeStaggeredAnimFinished || !mIsOverviewHidden)) {
-                Log.e(TAG, "Animation timeout reached! Force completing animation");
-                Log.e(TAG, "  mIsHomeStaggeredAnimFinished: " + mIsHomeStaggeredAnimFinished);
-                Log.e(TAG, "  mIsOverviewHidden: " + mIsOverviewHidden);
-                Log.e(TAG, "  current state: " + stateManager.getState());
-
-                mIsHomeStaggeredAnimFinished = true;
-                mIsOverviewHidden = true;
-                maybeOverviewToHomeAnimComplete();
-            }
-        }, ANIMATION_TIMEOUT);
-
         if (mSplitCancelConsumer != null) {
-            // Clear split state when swiping to home
             mSplitCancelConsumer.accept(anim, config.duration);
         }
         anim.play(stateAnim);
         stateManager.setCurrentAnimation(anim, NORMAL);
+        anim.addListener(new AnimationSuccessListener() {
+            @Override
+            public void onAnimationSuccess(Animator animator) {
+                completeAnimation();
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                super.onAnimationCancel(animation);
+                if (mOnCancelled != null) {
+                    mOnCancelled.run();
+                }
+            }
+        });
         anim.start();
     }
 
-    private void maybeOverviewToHomeAnimComplete() {
-        mHandler.removeCallbacksAndMessages(null);
-        if (mIsHomeStaggeredAnimFinished && mIsOverviewHidden) {
-            mAnimationStarted = false;
-            mHandler.post(() -> {
-                if (mOnReachedHome != null) {
-                    mOnReachedHome.run();
-                }
-            });
+    private void completeAnimation() {
+        StateManager<LauncherState, Launcher> stateManager = mLauncher.getStateManager();
+        if (stateManager.isInStableState(NORMAL) && !stateManager.isInTransition()) {
+            mOnReachedHome.run();
+        } else if (mOnCancelled != null) {
+            mOnCancelled.run();
         }
     }
 }

@@ -45,10 +45,10 @@ import com.android.launcher3.allapps.AllAppsTransitionController;
 import com.android.launcher3.anim.AnimatorPlaybackController;
 import com.android.launcher3.anim.PendingAnimation;
 import com.android.launcher3.compat.AccessibilityManagerCompat;
-import com.android.launcher3.statemanager.StateManager;
 import com.android.launcher3.touch.SingleAxisSwipeDetector;
 import com.android.launcher3.util.DisplayController;
 import com.android.launcher3.util.TouchController;
+import com.android.quickstep.RecentsAnimationController;
 import com.android.quickstep.SystemUiProxy;
 import com.android.quickstep.TaskUtils;
 import com.android.quickstep.util.AnimatorControllerWithResistance;
@@ -200,23 +200,28 @@ public class NavBarToHomeTouchController implements TouchController,
                 || (velocity < 0 && fling);
         if (success) {
             RecentsView recentsView = mLauncher.getOverviewPanel();
+            RecentsAnimationController recentsController =
+                    recentsView.getRecentsAnimationController();
             recentsView.switchToScreenshot(null,
-                    () -> recentsView.finishRecentsAnimation(true /* toHome */, null));
+                    () -> {
+                        if (recentsView.getRecentsAnimationController() == recentsController) {
+                            recentsView.finishRecentsAnimation(true /* toHome */, null);
+                        }
+                    });
             if (mStartState.isRecentsViewVisible) {
+                AnimatorPlaybackController currentAnimation = mCurrentAnimation;
                 Runnable onReachedHome = () -> {
-                    StateManager.StateListener<LauncherState> listener =
-                            new StateManager.StateListener<>() {
-                                @Override
-                                public void onStateTransitionComplete(LauncherState finalState) {
-                                    mLauncher.onStateTransitionCompletedAfterSwipeToHome(
-                                            finalState);
-                                    mLauncher.getStateManager().removeStateListener(this);
-                                }
-                            };
-                    mLauncher.getStateManager().addStateListener(listener);
+                    if (mCurrentAnimation != currentAnimation) {
+                        return;
+                    }
                     onSwipeInteractionCompleted(mEndState);
+                    mLauncher.onStateTransitionCompletedAfterSwipeToHome(mEndState);
                 };
-                new OverviewToHomeAnim(mLauncher, onReachedHome, mCancelSplitRunnable)
+                new OverviewToHomeAnim(mLauncher, onReachedHome, mCancelSplitRunnable, () -> {
+                    if (mCurrentAnimation == currentAnimation) {
+                        clearState();
+                    }
+                })
                         .animateWithVelocity(velocity);
             } else {
                 mLauncher.getStateManager().goToState(mEndState, true,

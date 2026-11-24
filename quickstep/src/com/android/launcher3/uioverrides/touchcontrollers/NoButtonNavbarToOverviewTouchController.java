@@ -290,7 +290,16 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
     private void goToOverviewOrHomeOnDragEnd(float velocity) {
         boolean goToHomeInsteadOfOverview = !mMotionPauseDetector.isPaused();
         if (goToHomeInsteadOfOverview) {
-            new OverviewToHomeAnim(mLauncher, () -> onSwipeInteractionCompleted(NORMAL), null)
+            AnimatorPlaybackController currentAnimation = mCurrentAnimation;
+            new OverviewToHomeAnim(mLauncher, () -> {
+                if (mCurrentAnimation == currentAnimation) {
+                    onSwipeInteractionCompleted(NORMAL);
+                }
+            }, null, () -> {
+                if (mCurrentAnimation == currentAnimation) {
+                    clearState();
+                }
+            })
                     .animateWithVelocity(velocity);
             InteractionJankMonitorWrapper.cancel(Cuj.CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS);
         } else if (!mReachedOverview && !mLauncher.isInState(OVERVIEW)) {
