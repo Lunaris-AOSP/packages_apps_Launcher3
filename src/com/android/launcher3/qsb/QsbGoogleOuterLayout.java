@@ -54,14 +54,15 @@ public class QsbGoogleOuterLayout extends FrameLayout
     public QsbGoogleOuterLayout(@NonNull Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
         setWillNotDraw(false);
-        setBackground(new QsbOuterDrawable(context));
+        mBackdropBlur.setDrawRimWithBlur(false);
+        setBackground(new QsbOuterDrawable(context, mBackdropBlur));
     }
 
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
         if (getBackground() == null) {
-            setBackground(new QsbOuterDrawable(getContext()));
+            setBackground(new QsbOuterDrawable(getContext(), mBackdropBlur));
         }
         updateBlurPreferences();
     }

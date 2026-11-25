@@ -378,15 +378,17 @@ public class CompactSearchBar extends FrameLayout
             strokeDrawable.getPaint().setStyle(Paint.Style.STROKE);
             strokeDrawable.getPaint().setStrokeWidth(strokeWidth);
             strokeDrawable.setCornerRadius(cornerRadius);
-            mInner.setBackground(new LayerDrawable(new Drawable[]{backgroundDrawable, strokeDrawable}));
-        } else if (canBlur) {
+            mInner.setBackground(mBackdropBlur.wrapBackgroundWithRim(
+                    new LayerDrawable(new Drawable[]{backgroundDrawable, strokeDrawable}), cornerRadius));
+        } else if (canBlur && !mBackdropBlur.getResolvedRim().getEnabled()) {
             PaintDrawable strokeDrawable = new PaintDrawable(Color.argb(35, 255, 255, 255));
             strokeDrawable.getPaint().setStyle(Paint.Style.STROKE);
             strokeDrawable.getPaint().setStrokeWidth(Math.max(1, Utilities.dpToPx(1f)));
             strokeDrawable.setCornerRadius(cornerRadius);
-            mInner.setBackground(new LayerDrawable(new Drawable[]{backgroundDrawable, strokeDrawable}));
+            mInner.setBackground(mBackdropBlur.wrapBackgroundWithRim(
+                    new LayerDrawable(new Drawable[]{backgroundDrawable, strokeDrawable}), cornerRadius));
         } else {
-            mInner.setBackground(backgroundDrawable);
+            mInner.setBackground(mBackdropBlur.wrapBackgroundWithRim(backgroundDrawable, cornerRadius));
         }
         mInner.setClipToOutline(cornerRadius > 0);
     }

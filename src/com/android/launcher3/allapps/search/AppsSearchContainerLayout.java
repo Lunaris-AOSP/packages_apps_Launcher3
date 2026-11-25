@@ -357,10 +357,14 @@ public class AppsSearchContainerLayout extends ExtendedEditText
         mBackgroundTintDrawable.setColor(
                 active && mBackdropBlur.isEnabled() && mBackdropBlur.isTintOverrideEnabled()
                         ? Color.TRANSPARENT : fillColor);
-        mBackgroundTintDrawable.setStroke(strokeWidth, strokeColor);
+        boolean glassRim = active && mBackdropBlur.isEnabled()
+                && mBackdropBlur.getResolvedRim().getEnabled();
+        mBackgroundTintDrawable.setStroke(glassRim ? 0 : strokeWidth, strokeColor);
         setClipToOutline(false);
-        if (getBackground() != mBackgroundTintDrawable) {
-            setBackground(mBackgroundTintDrawable);
+        Drawable background = mBackdropBlur.wrapBackgroundWithRim(
+                mBackgroundTintDrawable, mBackgroundTintDrawable.getCornerRadius());
+        if (getBackground() != background) {
+            setBackground(background);
         }
     }
 

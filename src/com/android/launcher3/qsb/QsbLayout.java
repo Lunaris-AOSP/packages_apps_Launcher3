@@ -173,10 +173,10 @@ public class QsbLayout extends FrameLayout
             LayerDrawable combinedDrawable = new LayerDrawable(new Drawable[]{backgroundDrawable, strokeDrawable});
 
             inner.setClipToOutline(cornerRadius > 0);
-            inner.setBackground(combinedDrawable);
+            inner.setBackground(mBackdropBlur.wrapBackgroundWithRim(combinedDrawable, cornerRadius));
         } else {
             inner.setClipToOutline(cornerRadius > 0);
-            inner.setBackground(backgroundDrawable);
+            inner.setBackground(mBackdropBlur.wrapBackgroundWithRim(backgroundDrawable, cornerRadius));
         }
     }
 

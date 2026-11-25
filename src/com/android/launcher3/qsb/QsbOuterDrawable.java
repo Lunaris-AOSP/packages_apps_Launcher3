@@ -16,16 +16,23 @@ import android.graphics.drawable.Drawable;
 
 import com.android.launcher3.util.Themes;
 import com.android.internal.graphics.drawable.AxBlurCustomization;
+import com.android.axion.blur.ui.view.AxViewBackdropBlur;
 
 public class QsbOuterDrawable extends Drawable {
     private final Paint mPaint;
     private final RectF mRect;
     private final Context mContext;
+    private final AxViewBackdropBlur mBlur;
     private int mOpacity = 70;
     private boolean mBlurActive = false;
 
     public QsbOuterDrawable(Context context) {
+        this(context, null);
+    }
+
+    public QsbOuterDrawable(Context context, AxViewBackdropBlur blur) {
         mContext = context;
+        mBlur = blur;
         mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         mRect = new RectF();
     }
@@ -55,8 +62,11 @@ public class QsbOuterDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
         Rect bounds = getBounds();
-        if (bounds.isEmpty() || (mBlurActive
-                && AxBlurCustomization.getInstance(mContext).getState().tintEnabled)) return;
+        if (bounds.isEmpty()) return;
+        if (mBlurActive && AxBlurCustomization.getInstance(mContext).getState().tintEnabled) {
+            drawRim(canvas, bounds);
+            return;
+        }
 
         // Get the themed color for outer shape
         int themedColor = Themes.getAttrColor(mContext, com.android.launcher3.R.attr.qsbOuterColor);
@@ -100,6 +110,13 @@ public class QsbOuterDrawable extends Drawable {
 
         RectF innerRect = new RectF(innerBounds);
         canvas.drawRoundRect(innerRect, radius, radius, mPaint);
+        drawRim(canvas, bounds);
+    }
+
+    private void drawRim(Canvas canvas, Rect bounds) {
+        if (mBlur == null || !mBlurActive) return;
+        mBlur.drawRim(canvas, bounds.left, bounds.top, bounds.right, bounds.bottom,
+                bounds.height() / 2f);
     }
 
     @Override

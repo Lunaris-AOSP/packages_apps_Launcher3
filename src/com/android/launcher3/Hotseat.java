@@ -152,6 +152,7 @@ public class Hotseat extends CellLayout implements Insettable {
 
     public Hotseat(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
+        mBackdropBlur.setDrawRimWithBlur(false);
         mQsb = createQsbView(context);
         addView(mQsb);
         mIconsAlphaChannels = new MultiValueAlpha(getShortcutsAndWidgets(),
@@ -642,7 +643,11 @@ public class Hotseat extends CellLayout implements Insettable {
                         mPillRect.right, mPillRect.bottom, cornerRadius);
             }
         }
-        if (drewBlur && mBackdropBlur.isTintOverrideEnabled()) return;
+        if (drewBlur && mBackdropBlur.isTintOverrideEnabled()) {
+            mBackdropBlur.drawRim(canvas, mPillRect.left, mPillRect.top, mPillRect.right,
+                    mPillRect.bottom, cornerRadius, Math.round(255f * iconAlpha));
+            return;
+        }
 
         if (mBackgroundTintDrawable.getCornerRadius() != cornerRadius) {
             mBackgroundTintDrawable.setCornerRadius(cornerRadius);
@@ -650,6 +655,10 @@ public class Hotseat extends CellLayout implements Insettable {
         mBackgroundTintDrawable.setBounds(mPillRect);
         mBackgroundTintDrawable.setAlpha(Math.round(255f * iconAlpha));
         mBackgroundTintDrawable.draw(canvas);
+        if (drewBlur) {
+            mBackdropBlur.drawRim(canvas, mPillRect.left, mPillRect.top, mPillRect.right,
+                    mPillRect.bottom, cornerRadius, Math.round(255f * iconAlpha));
+        }
     }
 
     private void updatePillBounds() {
