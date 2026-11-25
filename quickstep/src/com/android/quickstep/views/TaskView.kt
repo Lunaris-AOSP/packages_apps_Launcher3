@@ -1536,18 +1536,6 @@ constructor(
         if (confirmSecondSplitSelectApp()) {
             return
         }
-        val recents = recentsView
-        if (recents != null && recents.isStackRecentsStyleActive) {
-            val pageIndex = recents.indexOfChild(this)
-            if (
-                pageIndex >= 0 &&
-                    (this != recents.currentPageTaskView ||
-                        !recents.isTaskInExpectedScrollPosition(this))
-            ) {
-                recents.snapToPage(pageIndex)
-                return
-            }
-        }
         launchWithAnimation()
         container.statsLogManager
             .logger()
