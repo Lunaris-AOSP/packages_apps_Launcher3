@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
@@ -45,6 +46,7 @@ import com.android.launcher3.LauncherPrefChangeListener
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.customization.IconDatabase
+import com.android.launcher3.graphics.ShapeDelegate
 import com.android.launcher3.graphics.ShapeDelegate.Companion.pickBestShape
 import com.android.launcher3.graphics.ThemeManager
 import com.android.launcher3.icons.BitmapInfo.Companion.FLAG_NO_BADGE
@@ -74,6 +76,7 @@ internal fun shapeRevision(): Int {
             ShapeTarget.FOLDER.shapePref,
             ShapeTarget.FOLDER.customShapePref,
             ThemeManager.PREF_RESHAPE_PACK_ICONS,
+            ThemeManager.PREF_CIRCULAR_EXPANDED_FOLDERS,
         )
     }
     var revision by remember { mutableIntStateOf(0) }
@@ -106,7 +109,14 @@ internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTar
     val custom = remember(revision, target) { target.customShape(LauncherPrefs.get(context)) }
     val current =
         remember(revision, target) { IconShapeSettingsActivity.currentShape(context, target) }
+    val circularExpandedFolders =
+        remember(revision) {
+            LauncherPrefs.get(context).get(ThemeManager.PREF_CIRCULAR_EXPANDED_FOLDERS)
+        }
     ShapeScaffold(stringResource(target.title), onBack) {
+        if (target == ShapeTarget.FOLDER)
+            item("circular_expanded") { CircularExpandedFoldersOption(circularExpandedFolders) }
+        item("preview") { IconShapeAppPreview(null, target) }
         if (target == ShapeTarget.FOLDER)
             item("scope") {
                 Text(
@@ -115,7 +125,6 @@ internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTar
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        item("preview") { IconShapeAppPreview(null, target) }
         item("custom_heading") { ShapeHeading(stringResource(R.string.icon_shape_custom)) }
         custom?.let {
             item(CustomIconShape.KEY) {
@@ -150,6 +159,37 @@ internal fun IconShapesScreen(onBack: () -> Unit, target: ShapeTarget = ShapeTar
         item("system_default") { ShapeOption(null, current == null, target) }
         items(ShapesProvider.iconShapes.toList(), key = { it.key }) { shape ->
             ShapeOption(shape, current?.key == shape.key, target)
+        }
+    }
+}
+
+@Composable
+private fun CircularExpandedFoldersOption(checked: Boolean) {
+    val prefs = LauncherPrefs.get(LocalContext.current)
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceBright) {
+        Row(
+            Modifier.fillMaxWidth()
+                .toggleable(
+                    value = checked,
+                    role = Role.Switch,
+                    onValueChange = { prefs.put(ThemeManager.PREF_CIRCULAR_EXPANDED_FOLDERS, it) },
+                )
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.folder_shape_circular_expanded_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    stringResource(R.string.folder_shape_circular_expanded_summary),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked, onCheckedChange = null, colors = settingsSwitchColors())
         }
     }
 }
@@ -393,7 +433,8 @@ private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
                         size,
                         pickBestShape(renderedPath.orEmpty()).getPath(size.toFloat()),
                     )
-            apps.map { app ->
+            val previewApps = if (target == ShapeTarget.FOLDER) apps + apps.take(14) else apps
+            previewApps.map { app ->
                 val flags =
                     app.resolveIconCreationFlags(
                         context,
@@ -422,15 +463,33 @@ private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
             if (context.resources.configuration.isNightModeActive) R.color.folder_preview_dark
             else R.color.folder_preview_light
         )
+    val appDrawables = remember(drawables, apps) { drawables.take(apps.size) }
     val folders =
-        remember(drawables, folderShape, folderColor) {
+        remember(appDrawables, folderShape, folderColor) {
             val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
             List(4) { index ->
                 FolderPreviewDrawable(
                     folderShape,
-                    drawables.drop(4 + index * 4).take(4),
+                    appDrawables.drop(4 + index * 4).take(4),
                     folderColor,
                     size,
+                )
+            }
+        }
+    val circularExpandedFolders = theme.useCircularExpandedFolders
+    val expandedFolders =
+        remember(drawables, folderColor, circularExpandedFolders) {
+            val size = InvariantDeviceProfile.INSTANCE.get(context).iconBitmapSize
+            val shape =
+                if (circularExpandedFolders) ShapeDelegate.Circle()
+                else ShapeDelegate.RoundedSquare(0.3f)
+            List(2) { index ->
+                FolderPreviewDrawable(
+                    shape,
+                    drawables.drop(apps.size + index * 7).take(7),
+                    folderColor,
+                    size,
+                    expanded = true,
                 )
             }
         }
@@ -444,7 +503,7 @@ private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
                     repeat(4) { column ->
                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                             val drawable =
-                                if (row == 0) drawables.getOrNull(column) else folders[column]
+                                if (row == 0) appDrawables.getOrNull(column) else folders[column]
                             if (drawable == null) ShapeOutline(path.orEmpty(), Modifier.size(56.dp))
                             else
                                 AndroidView(
@@ -461,6 +520,27 @@ private fun IconShapeAppPreview(path: String?, target: ShapeTarget) {
                                             else context.getString(R.string.folder_shape_title)
                                     },
                                 )
+                        }
+                    }
+                }
+            }
+            if (target == ShapeTarget.FOLDER) {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    expandedFolders.forEach { drawable ->
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            AndroidView(
+                                factory = {
+                                    ImageView(it).apply {
+                                        scaleType = ImageView.ScaleType.FIT_CENTER
+                                    }
+                                },
+                                modifier = Modifier.size(112.dp),
+                                update = {
+                                    it.setImageDrawable(drawable)
+                                    it.contentDescription =
+                                        context.getString(R.string.folder_shape_title)
+                                },
+                            )
                         }
                     }
                 }

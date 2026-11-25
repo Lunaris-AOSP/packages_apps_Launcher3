@@ -103,6 +103,7 @@ public class PreviewItemManager {
     private int mPrevSpanY = -1;
     private int mPrevTopPadding = -1;
     private boolean mPrevUsesWorkspacePreviewLayout;
+    private boolean mPrevCircularExpandedFolders;
     private Drawable mReferenceDrawable = null;
 
     private int mNumOfPrevItems = 0;
@@ -171,6 +172,8 @@ public class PreviewItemManager {
         int spanX = mIcon.getCurrentSpanX();
         int spanY = mIcon.getCurrentSpanY();
         boolean usesWorkspacePreview = mIcon.usesWorkspacePreviewLayout();
+        boolean circularExpandedFolders =
+                ThemeManager.INSTANCE.get(mContext).getUseCircularExpandedFolders();
 
         boolean geometryChanged =
                 mTotalWidth != totalWidth
@@ -178,11 +181,13 @@ public class PreviewItemManager {
                         || mPrevSpanX != spanX
                         || mPrevSpanY != spanY
                         || mPrevUsesWorkspacePreviewLayout != usesWorkspacePreview
+                        || mPrevCircularExpandedFolders != circularExpandedFolders
                         || mPrevTopPadding != mIcon.getPaddingTop();
 
         if (mIntrinsicIconSize != drawableSize || geometryChanged) {
             boolean animateResize =
                     geometryChanged
+                            && mPrevCircularExpandedFolders == circularExpandedFolders
                             && mIntrinsicIconSize > 0
                             && !mFirstPageParams.isEmpty()
                             && mIcon.isLaidOut()
@@ -205,6 +210,7 @@ public class PreviewItemManager {
             mPrevSpanY = spanY;
             mPrevTopPadding = mIcon.getPaddingTop();
             mPrevUsesWorkspacePreviewLayout = usesWorkspacePreview;
+            mPrevCircularExpandedFolders = circularExpandedFolders;
 
             mIcon.mBackground.setup(
                     mIcon.getContext(),
@@ -305,6 +311,11 @@ public class PreviewItemManager {
             boolean featured = style == FolderInfo.FOLDER_STYLE_FEATURED;
             int columns = threeByThree ? 3 : 2;
             int rows = threeByThree ? 3 : 2;
+            if (spanX > 1 && spanY > 1
+                    && ThemeManager.INSTANCE.get(mContext).getUseCircularExpandedFolders()) {
+                return FolderPreviewLayout.calculateCircularGrid(
+                        backgroundBounds, columns, rows, featured);
+            }
             float width = backgroundBounds.width();
             float height = backgroundBounds.height();
             int numColumns = deviceProfile.inv != null ? deviceProfile.inv.numColumns : 4;
@@ -344,6 +355,7 @@ public class PreviewItemManager {
                 mIcon.getPaddingTop(),
                 spanX,
                 spanY,
+                ThemeManager.INSTANCE.get(mContext).getUseCircularExpandedFolders(),
                 backgroundBounds);
         return calculateWorkspacePreviewGrid(new RectF(backgroundBounds), spanX, spanY);
     }

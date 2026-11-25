@@ -91,6 +91,7 @@ public class PreviewBackground extends DelegatedCellDrawing {
     private int mStrokeAlpha = MAX_BG_OPACITY;
     private int mShadowAlpha = 255;
     private View mInvalidateDelegate;
+    private boolean mCircularExpandedFolders;
 
     int previewSize;
     private int mSpanX = 1;
@@ -155,6 +156,19 @@ public class PreviewBackground extends DelegatedCellDrawing {
             int spanX,
             int spanY,
             Rect outBounds) {
+        calculateBackgroundBounds(grid, availableSpaceX, availableSpaceY, topPadding,
+                spanX, spanY, false, outBounds);
+    }
+
+    public static void calculateBackgroundBounds(
+            DeviceProfile grid,
+            int availableSpaceX,
+            int availableSpaceY,
+            int topPadding,
+            int spanX,
+            int spanY,
+            boolean circularExpandedFolders,
+            Rect outBounds) {
         int previewSize = grid.folderIconSizePx;
         Point borderSpace = grid.getWorkspaceIconProfile().getCellLayoutBorderSpacePx();
         Point cellSize = grid.getWorkspaceIconProfile().getCellSize();
@@ -217,6 +231,12 @@ public class PreviewBackground extends DelegatedCellDrawing {
             backgroundTop,
             backgroundLeft + backgroundWidth,
             backgroundTop + backgroundHeight);
+        if (circularExpandedFolders && spanX > 1 && spanY > 1) {
+            int diameter = Math.min(backgroundWidth, backgroundHeight);
+            int left = backgroundLeft + (backgroundWidth - diameter) / 2;
+            int top = backgroundTop + (backgroundHeight - diameter) / 2;
+            outBounds.set(left, top, left + diameter, top + diameter);
+        }
     }
 
     public PreviewBackground(Context context) {
@@ -249,6 +269,12 @@ public class PreviewBackground extends DelegatedCellDrawing {
         mInvalidateDelegate = invalidateDelegate;
         mSpanX = spanX;
         mSpanY = spanY;
+        boolean circularExpandedFolders =
+                ThemeManager.INSTANCE.get(context).getUseCircularExpandedFolders();
+        if (mCircularExpandedFolders != circularExpandedFolders && mBoundsAnimator != null) {
+            mBoundsAnimator.cancel();
+        }
+        mCircularExpandedFolders = circularExpandedFolders;
 
         TypedArray ta = context.getTheme().obtainStyledAttributes(R.styleable.FolderIconPreview);
         mStrokeColor = ta.getColor(R.styleable.FolderIconPreview_folderIconBorderColor, 0);
@@ -265,6 +291,7 @@ public class PreviewBackground extends DelegatedCellDrawing {
             topPadding,
             spanX,
             spanY,
+            mCircularExpandedFolders,
             mBackgroundBounds);
         mTargetBackgroundBounds.set(mBackgroundBounds);
 
@@ -439,6 +466,10 @@ public class PreviewBackground extends DelegatedCellDrawing {
 
         if ((mSpanX == 2 && mSpanY == 1) || (mSpanX == 1 && mSpanY == 2)) {
             return Math.min(bounds.width(), bounds.height()) / 2f * scale;
+        }
+
+        if (mSpanX > 1 && mSpanY > 1 && mCircularExpandedFolders) {
+            return Math.min(bounds.width(), bounds.height()) / 2f;
         }
 
         if (mSpanX > 1 || mSpanY > 1) {

@@ -91,6 +91,9 @@ constructor(
     val folderShape
         get() = iconState.folderShape
 
+    val useCircularExpandedFolders
+        get() = iconState.circularExpandedFolders
+
     /** Expanded folders retain their capsule/rounded rectangle independently of shape overrides. */
     private val expandedFolderShape = ShapeDelegate.Circle()
     val expandedFolderShapeInfo =
@@ -192,6 +195,7 @@ constructor(
             themeController = iconControllerFactory,
             iconShape = iconShape,
             folderShape = folderShape,
+            circularExpandedFolders = prefs.get(PREF_CIRCULAR_EXPANDED_FOLDERS),
             shapeRadius = shapeModel?.shapeRadius ?: DEFAULT_ICON_RADIUS,
             themeCode = themeCode,
         )
@@ -216,6 +220,7 @@ constructor(
         /* Icon content may change when using Circle shape due to android:roundIcon property */
         val isCircle: Boolean = iconShape is ShapeDelegate.Circle,
         val folderShape: ShapeDelegate,
+        val circularExpandedFolders: Boolean,
         val shapeRadius: Float,
     ) {
         fun toUniqueId() = "$themeCode,$isCircle"
@@ -242,6 +247,8 @@ constructor(
         @JvmField val PREF_CUSTOM_ICON_SHAPE = backedUpItem("icon_shape_custom", "")
         @JvmField val PREF_FOLDER_SHAPE = backedUpItem("folder_shape_model", "")
         @JvmField val PREF_CUSTOM_FOLDER_SHAPE = backedUpItem("folder_shape_custom", "")
+        @JvmField
+        val PREF_CIRCULAR_EXPANDED_FOLDERS = backedUpItem("folder_shape_circular_expanded", false)
         @JvmField val PREF_RESHAPE_PACK_ICONS = backedUpItem("icon_shape_reshape_pack_icons", false)
 
         private val SHAPE_PREFS =
@@ -250,6 +257,7 @@ constructor(
                 PREF_CUSTOM_ICON_SHAPE,
                 PREF_FOLDER_SHAPE,
                 PREF_CUSTOM_FOLDER_SHAPE,
+                PREF_CIRCULAR_EXPANDED_FOLDERS,
             )
 
         @JvmField val DEFAULT_SHAPE_DELEGATE = pickBestShape(shapeStr = "")

@@ -725,6 +725,8 @@
     <string name="folder_shape_custom_title">Custom folder shape</string>
     <string name="folder_shape_custom_create">Create custom folder shape</string>
     <string name="folder_shape_custom_edit">Edit custom folder shape</string>
-    <string name="folder_shape_normal_only">Applies to 1×1 folders. Expanded folders automatically use their standard shape.</string>
+    <string name="folder_shape_normal_only">The shapes below apply to 1×1 folders.</string>
+    <string name="folder_shape_circular_expanded_title">Circular expanded folders</string>
+    <string name="folder_shape_circular_expanded_summary">Use a circular background for large folders. Horizontal and vertical folders keep their capsule shape.</string>
 
 </resources>

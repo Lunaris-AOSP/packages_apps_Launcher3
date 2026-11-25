@@ -30,7 +30,9 @@ object FolderPreviewLayout {
 
     data class ItemPlacement(val item: ItemInfo, val role: ItemRole, val bounds: RectF)
 
-    data class Grid @JvmOverloads constructor(
+    data class Grid
+    @JvmOverloads
+    constructor(
         val columns: Int,
         val rows: Int,
         val startX: Float,
@@ -68,19 +70,14 @@ object FolderPreviewLayout {
         }
 
         if (items.size <= capacity) {
-            return ContentSelection(
-                directItems = items.toList(),
-                overviewItems = emptyList(),
-            )
+            return ContentSelection(directItems = items.toList(), overviewItems = emptyList())
         }
 
         val directItemCount = capacity - 1
 
         val direct = items.take(directItemCount)
         val overview =
-            items
-                .drop(directItemCount)
-                .take(ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW)
+            items.drop(directItemCount).take(ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW)
 
         return ContentSelection(directItems = direct, overviewItems = overview)
     }
@@ -124,7 +121,9 @@ object FolderPreviewLayout {
         val miniItemSize = (tileSize - 2 * miniPadding - miniGap) / 2f
 
         val placements =
-            items.take(ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW).mapIndexed { index, item ->
+            items.take(ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW).mapIndexed {
+                index,
+                item ->
                 val r = index / miniCols
                 val logicalC = index % miniCols
                 val c = if (isRtl) (miniCols - 1 - logicalC) else logicalC
@@ -183,6 +182,34 @@ object FolderPreviewLayout {
     }
 
     @JvmStatic
+    fun calculateCircularGrid(
+        backgroundBounds: RectF,
+        columns: Int,
+        rows: Int,
+        featuredFirstItem: Boolean,
+    ): Grid {
+        require(columns > 0 && rows > 0)
+        val contentSize =
+            minOf(backgroundBounds.width(), backgroundBounds.height()) / kotlin.math.sqrt(2f)
+        val cellWidth = contentSize / columns
+        val cellHeight = contentSize / rows
+        val itemSize =
+            minOf(cellWidth, cellHeight) * if (columns == 2 && rows == 2) 0.86f else 0.82f
+        val columnGap = cellWidth - itemSize
+        val rowGap = cellHeight - itemSize
+        return Grid(
+            columns,
+            rows,
+            backgroundBounds.centerX() - contentSize / 2f + columnGap / 2f,
+            backgroundBounds.centerY() - contentSize / 2f + rowGap / 2f,
+            itemSize,
+            columnGap,
+            rowGap,
+            featuredFirstItem,
+        )
+    }
+
+    @JvmStatic
     fun calculateGridItemBounds(index: Int, grid: Grid, isRtl: Boolean): RectF {
         require(index in 0 until grid.capacity)
 
@@ -199,13 +226,14 @@ object FolderPreviewLayout {
                 val top = grid.startY + (spanHeight - featuredSize) / 2f
                 return squareBounds(left, top, featuredSize)
             }
-            val (row, logicalColumn) = when (index) {
-                1 -> 0 to 2
-                2 -> 1 to 2
-                3 -> 2 to 0
-                4 -> 2 to 1
-                else -> 2 to 2
-            }
+            val (row, logicalColumn) =
+                when (index) {
+                    1 -> 0 to 2
+                    2 -> 1 to 2
+                    3 -> 2 to 0
+                    4 -> 2 to 1
+                    else -> 2 to 2
+                }
             val column = if (isRtl) grid.columns - logicalColumn - 1 else logicalColumn
             return squareBounds(
                 grid.startX + column * stepX,
@@ -223,10 +251,11 @@ object FolderPreviewLayout {
 
     @JvmStatic
     fun isTightlyWrapped(itemCount: Int, grid: Grid): Boolean {
-        if ((grid.columns in 2..3 && grid.rows == 1)
-            || (grid.columns == 1 && grid.rows in 2..3)
-            || (grid.columns == 2 && grid.rows == 2)
-            || (grid.columns == 3 && grid.rows == 3)
+        if (
+            (grid.columns in 2..3 && grid.rows == 1) ||
+                (grid.columns == 1 && grid.rows in 2..3) ||
+                (grid.columns == 2 && grid.rows == 2) ||
+                (grid.columns == 3 && grid.rows == 3)
         ) {
             return itemCount >= 2
         }
@@ -236,10 +265,11 @@ object FolderPreviewLayout {
 
     @JvmStatic
     fun calculateGridUsage(itemCount: Int, grid: Grid): GridUsage {
-        if ((grid.columns in 2..3 && grid.rows == 1)
-            || (grid.columns == 1 && grid.rows in 2..3)
-            || (grid.columns == 2 && grid.rows == 2)
-            || (grid.columns == 3 && grid.rows == 3)
+        if (
+            (grid.columns in 2..3 && grid.rows == 1) ||
+                (grid.columns == 1 && grid.rows in 2..3) ||
+                (grid.columns == 2 && grid.rows == 2) ||
+                (grid.columns == 3 && grid.rows == 3)
         ) {
             if (itemCount >= 2) {
                 return GridUsage(hasEmptyColumns = false, hasEmptyRows = false)
@@ -270,20 +300,22 @@ object FolderPreviewLayout {
         val directPlacements = calculateDirectPlacements(selection.directItems, grid, isRtl)
 
         if (grid.capacity <= 1) {
-            val overviewBounds = RectF(
-                backgroundBounds.centerX() - grid.itemSize / 2f,
-                backgroundBounds.centerY() - grid.itemSize / 2f,
-                backgroundBounds.centerX() + grid.itemSize / 2f,
-                backgroundBounds.centerY() + grid.itemSize / 2f,
-            )
-            val overviewPlacements = calculateOverviewPlacements(
-                selection.overviewItems,
-                overviewBounds,
-                grid.itemSize,
-                intrinsicIconSize,
-                isRtl,
-                folderColumnCount,
-            )
+            val overviewBounds =
+                RectF(
+                    backgroundBounds.centerX() - grid.itemSize / 2f,
+                    backgroundBounds.centerY() - grid.itemSize / 2f,
+                    backgroundBounds.centerX() + grid.itemSize / 2f,
+                    backgroundBounds.centerY() + grid.itemSize / 2f,
+                )
+            val overviewPlacements =
+                calculateOverviewPlacements(
+                    selection.overviewItems,
+                    overviewBounds,
+                    grid.itemSize,
+                    intrinsicIconSize,
+                    isRtl,
+                    folderColumnCount,
+                )
             return Snapshot(snapshotBounds, overviewBounds, overviewPlacements, emptyList())
         }
 
@@ -309,7 +341,9 @@ object FolderPreviewLayout {
         val miniPadding = grid.itemSize * 0.04f
         val miniItemSize = (grid.itemSize - 2 * miniPadding - miniGap) / 2f
         val placeholderBounds = mutableListOf<RectF>()
-        for (dotIndex in selection.overviewItems.size until ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW) {
+        for (dotIndex in
+            selection.overviewItems.size until
+                ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW) {
             val r = dotIndex / miniCols
             val logicalC = dotIndex % miniCols
             val c = if (isRtl) (miniCols - 1 - logicalC) else logicalC
