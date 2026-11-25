@@ -228,7 +228,7 @@ public class PreviewBackground extends DelegatedCellDrawing {
      */
     @Override
     public void drawUnderItem(Canvas canvas) {
-        drawBackground(canvas);
+        drawBackground(canvas, true);
         if (!isClipping) {
             drawBackgroundStroke(canvas);
         }
@@ -407,11 +407,21 @@ public class PreviewBackground extends DelegatedCellDrawing {
     }
 
     public void drawBackground(Canvas canvas) {
-        mPaint.setStyle(Paint.Style.FILL);
-        mPaint.setColor(getBgColor());
+        drawBackground(canvas, false);
+    }
 
+    void drawBackground(Canvas canvas, boolean useBlur) {
         RectF bounds = getBoundsAtScale(mScale);
-        drawShapeInBounds(canvas, bounds, mScale, mPaint);
+        boolean drewBlur = false;
+        if (useBlur && mInvalidateDelegate instanceof FolderIcon icon) {
+            getDrawnShapePath(mPath);
+            drewBlur = icon.drawPreviewBlur(canvas, bounds, mPath, getDrawnCornerRadius());
+        }
+        if (!drewBlur) {
+            mPaint.setStyle(Paint.Style.FILL);
+            mPaint.setColor(getBgColor());
+            drawShapeInBounds(canvas, bounds, mScale, mPaint);
+        }
         drawShadow(canvas);
     }
 

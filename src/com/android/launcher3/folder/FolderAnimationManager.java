@@ -216,7 +216,7 @@ public class FolderAnimationManager implements FolderAnimationCreator {
         final float yDistance = initialY - lp.y;
 
         final boolean hasThumbnail = mFolderIcon.hasCustomThumbnail();
-        final int previewColor = Themes.getAttrColor(mContext, R.attr.folderPreviewColor);
+        final int previewColor = mFolderIcon.getPreviewBackgroundColor();
         final int initialColor = hasThumbnail
                 ? ColorUtils.setAlphaComponent(previewColor, 0)
                 : previewColor;

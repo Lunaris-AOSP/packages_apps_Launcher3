@@ -348,6 +348,7 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val SWIPE_DOWN_TO_LOCK = backedUpItem("pref_swipe_down_to_lock", false)
         @JvmField val HOTSEAT_OPACITY = backedUpItem("pref_hotseat_opacity", 40)
         @JvmField val HOTSEAT_BLUR = backedUpItem("pref_hotseat_blur", true)
+        @JvmField val FOLDER_PREVIEW_BLUR = backedUpItem("pref_folder_preview_blur", false)
         @JvmField val HOTSEAT_SHAPE = backedUpItem("pref_hotseat_shape", "capsule")
         @JvmField val HOTSEAT_QSB_OPACITY = backedUpItem("pref_hotseat_qsb_opacity", 100)
         @JvmField val HOTSEAT_QSB_STROKE_WIDTH = backedUpItem("pref_hotseat_qsb_stroke_width", 0)

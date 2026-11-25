@@ -63,12 +63,15 @@ constructor(
     private val workspaceBlurRenderNode = RenderNode("workspaceBlur")
     private val workspaceBlurRenderNodeOutline = Outline()
     private val bounds = Rect()
-    private val folderBlurDrawable: BackgroundBlurDrawable? by lazy {
-        if (!isBlurEnabled()) null
-        else
-            activityContext.dragLayer.getViewRootImpl().createBackgroundBlurDrawable()?.apply {
-                setBlurRadius(folderBlurRadius.toInt())
+    private var folderBlurDrawable: BackgroundBlurDrawable? = null
+    private var activeFolderBlurRadius = folderBlurRadius
+
+    private fun getOrCreateFolderBlurDrawable(): BackgroundBlurDrawable? {
+        return folderBlurDrawable
+            ?: activityContext.dragLayer.viewRootImpl?.createBackgroundBlurDrawable()?.apply {
+                setBlurRadius(Math.round(activeFolderBlurRadius))
                 setVisible(false, false)
+                folderBlurDrawable = this
             }
     }
 
@@ -78,6 +81,17 @@ constructor(
         }
 
         val folderIcon = folder.folderIcon
+        val blurRadius = folderIcon.folderBlurRadius
+        activeFolderBlurRadius = blurRadius
+        getOrCreateFolderBlurDrawable()?.setBlurRadius(Math.round(blurRadius))
+        if (blurRadius <= 0f) {
+            workspaceBlurRenderNode.discardDisplayList()
+            workspaceBlurRenderNode.setRenderEffect(null)
+            return
+        }
+        workspaceBlurRenderNode.setRenderEffect(
+            RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP)
+        )
         val folderName = folderIcon.folderName
         val folderNameVisibility = folderName.visibility
         val isIconVisible = folderIcon.iconVisible
@@ -140,14 +154,11 @@ constructor(
         workspaceBlurRenderNode.setOutline(workspaceBlurRenderNodeOutline)
         workspaceBlurRenderNode.setClipToOutline(true)
 
-        workspaceBlurRenderNode.setRenderEffect(
-            RenderEffect.createBlurEffect(folderBlurRadius, folderBlurRadius, Shader.TileMode.CLAMP)
-        )
         canvas.drawRenderNode(workspaceBlurRenderNode)
     }
 
     private fun drawCrossWindowBlur(canvas: Canvas, pathWrapper: PathWrapper?, view: View) {
-        val d = folderBlurDrawable ?: return
+        val d = getOrCreateFolderBlurDrawable() ?: return
 
         d.setVisible(true, false)
         if (pathWrapper != null) {

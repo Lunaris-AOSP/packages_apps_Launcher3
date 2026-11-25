@@ -43,6 +43,7 @@ import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.FloatProperty;
 import android.util.Property;
+import android.view.CrossWindowBlurListeners;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -54,6 +55,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.android.app.animation.Interpolators;
+import com.android.axion.blur.AxBlurColors;
+import com.android.axion.blur.ui.view.AxViewBackdropBlur;
+import com.android.internal.graphics.drawable.AxBlurCustomization;
 import com.android.launcher3.Alarm;
 import com.android.launcher3.BubbleTextView;
 import com.android.launcher3.CellLayout;
@@ -61,6 +65,7 @@ import com.android.launcher3.CheckLongPressHelper;
 import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.DropTarget.DragObject;
 import com.android.launcher3.Launcher;
+import com.android.launcher3.LauncherPrefChangeListener;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.LauncherState;
@@ -102,6 +107,7 @@ import com.android.launcher3.widget.PendingAddShortcutInfo;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
@@ -129,6 +135,22 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
     PreviewBackground mBackground = new PreviewBackground(getContext());
     private boolean mBackgroundIsVisible = true;
+    private final AxViewBackdropBlur mPreviewBlur = new AxViewBackdropBlur(this, false);
+    private boolean mPreviewBlurEnabled;
+    private boolean mPreviewBlurDrawn;
+    private boolean mCrossWindowBlurEnabled;
+    private final float mFolderBlurRadius =
+            getResources().getDimension(R.dimen.folder_blur_radius);
+    private final Consumer<Boolean> mCrossWindowBlurListener = enabled -> {
+        mCrossWindowBlurEnabled = enabled;
+        updatePreviewBlurState();
+        mBackground.invalidate();
+    };
+    private final LauncherPrefChangeListener mPreviewBlurPrefListener = key -> {
+        if (LauncherPrefs.FOLDER_PREVIEW_BLUR.getSharedPrefKey().equals(key)) {
+            updatePreviewBlurPreferences();
+        }
+    };
 
     FolderGridOrganizer mPreviewVerifier;
     final ClippedFolderIconLayoutRule mPreviewLayoutRule;
@@ -294,6 +316,12 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         mDotParams = new DotRenderer.DrawParams();
         mDotParams.setDotColor(Themes.getAttrColor(context, R.attr.notificationDotColor));
         mDotParams.shapeInfo = ThemeManager.INSTANCE.get(context).getIconState().getIconShapeInfo();
+        mPreviewBlur.setBlurRadiusPx(mFolderBlurRadius);
+        mPreviewBlur.setOnCustomizationChangedListener(() -> {
+            updatePreviewBlurState();
+            mBackground.invalidate();
+        });
+        mPreviewBlur.setOnInvalidationListener(() -> mBackground.invalidate());
     }
 
     public static <T extends Context & ActivityContext> FolderIcon inflateFolderAndIcon(int resId,
@@ -1046,6 +1074,8 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         if (visible) {
             mShowThumbnailWhileHidden = false;
         }
+        updatePreviewBlurState();
+        mBackground.invalidate();
         invalidate();
     }
 
@@ -1055,6 +1085,47 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
     public PreviewBackground getFolderBackground() {
         return mBackground;
+    }
+
+    public float getFolderBlurRadius() {
+        return mPreviewBlurEnabled
+                ? mPreviewBlur.resolveBlurRadiusPx(mFolderBlurRadius) : mFolderBlurRadius;
+    }
+
+    public int getPreviewBackgroundColor() {
+        if (mPreviewBlurDrawn && isPreviewBlurAvailable() && mActivity != null
+                && mActivity.getActivityComponent().getBlurBackgroundHelper().isBlurEnabled()) {
+            return AxBlurCustomization.getInstance(getContext()).getState().resolveTint(
+                    getContext(), AxBlurColors.surfaceBrightTint(getContext()));
+        }
+        return Themes.getAttrColor(getContext(), R.attr.folderPreviewColor);
+    }
+
+    private boolean isPreviewBlurAvailable() {
+        return mPreviewBlurEnabled && mCrossWindowBlurEnabled && isHardwareAccelerated()
+                && (getFolderBlurRadius() > 0 || mPreviewBlur.isTintOverrideEnabled());
+    }
+
+    private void updatePreviewBlurPreferences() {
+        mPreviewBlurEnabled = LauncherPrefs.FOLDER_PREVIEW_BLUR.get(getContext());
+        mPreviewBlur.setOverlayColor(AxBlurColors.surfaceBrightTint(getContext()));
+        updatePreviewBlurState();
+        mBackground.invalidate();
+    }
+
+    private void updatePreviewBlurState() {
+        mPreviewBlur.setEnabled(isPreviewBlurAvailable() && mBackgroundIsVisible
+                && (mCustomThumbnail == null || mThumbnailFading || mAnimating)
+                && isAttachedToWindow() && isShown() && getWindowVisibility() == VISIBLE
+                && getWidth() > 0 && getHeight() > 0);
+    }
+
+    boolean drawPreviewBlur(Canvas canvas, RectF bounds, Path clipPath, float cornerRadius) {
+        if (!canvas.isHardwareAccelerated()) return false;
+        updatePreviewBlurState();
+        mPreviewBlurDrawn = mPreviewBlur.isEnabled()
+                && mPreviewBlur.draw(canvas, bounds, clipPath, cornerRadius);
+        return mPreviewBlurDrawn;
     }
 
     public PreviewItemManager getPreviewItemManager() {
@@ -1089,6 +1160,10 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
 
+        if (canvas.isHardwareAccelerated()) {
+            updatePreviewBlurState();
+        }
+
         boolean thumbnailOnly = !mBackgroundIsVisible && mShowThumbnailWhileHidden
                 && mCustomThumbnail != null;
         if (!mBackgroundIsVisible && !thumbnailOnly) return;
@@ -1096,7 +1171,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         mPreviewItemManager.recomputePreviewDrawingParams();
 
         if (!mBackground.drawingDelegated()) {
-            mBackground.drawBackground(canvas);
+            mBackground.drawBackground(canvas, true);
         }
 
         if (mThumbnailFading && !thumbnailOnly) {
@@ -1368,7 +1443,8 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
     @Override
     protected boolean verifyDrawable(@NonNull Drawable who) {
-        return mPreviewItemManager.verifyDrawable(who) || super.verifyDrawable(who);
+        return mPreviewItemManager.verifyDrawable(who) || super.verifyDrawable(who)
+                || mPreviewBlur.verifyDrawable(who);
     }
 
     private void updatePreviewItems(boolean animate) {
@@ -1536,7 +1612,42 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     }
 
     @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        mPreviewBlur.onAttachedToWindow();
+        mCrossWindowBlurEnabled = CrossWindowBlurListeners.getInstance().isCrossWindowBlurEnabled();
+        CrossWindowBlurListeners.getInstance().addListener(
+                getContext().getMainExecutor(), mCrossWindowBlurListener);
+        LauncherPrefs.get(getContext()).addListener(
+                mPreviewBlurPrefListener, LauncherPrefs.FOLDER_PREVIEW_BLUR);
+        updatePreviewBlurPreferences();
+    }
+
+    @Override
+    public void onVisibilityAggregated(boolean isVisible) {
+        super.onVisibilityAggregated(isVisible);
+        mPreviewBlur.onVisibilityAggregated(isVisible);
+        updatePreviewBlurState();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility == VISIBLE) {
+            updatePreviewBlurPreferences();
+        } else {
+            mPreviewBlur.setEnabled(false);
+        }
+    }
+
+    @Override
     protected void onDetachedFromWindow() {
+        mPreviewBlurDrawn = false;
+        mPreviewBlur.setEnabled(false);
+        mPreviewBlur.onDetachedFromWindow();
+        CrossWindowBlurListeners.getInstance().removeListener(mCrossWindowBlurListener);
+        LauncherPrefs.get(getContext()).removeListener(
+                mPreviewBlurPrefListener, LauncherPrefs.FOLDER_PREVIEW_BLUR);
         if (mPressScaleAnimator != null) {
             mPressScaleAnimator.cancel();
         }
