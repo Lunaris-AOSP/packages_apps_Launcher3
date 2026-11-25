@@ -167,8 +167,11 @@ public final class NothingTransitionState {
                                         if (held != null) {
                                             float[] values = new float[9];
                                             for (HandoffTarget target : held) {
-                                                Snapshot state = target.allowHandoff
-                                                        ? peek(target.task, target.animationId) : null;
+                                                if (!target.allowHandoff) {
+                                                    clear(target.animationId);
+                                                    continue;
+                                                }
+                                                Snapshot state = peek(target.task, target.animationId);
                                                 if (state == null || !target.surface.isValid()) continue;
                                                 state.matrix.getValues(values);
                                                 float scale = (float) Math.hypot(
@@ -251,7 +254,7 @@ public final class NothingTransitionState {
         final RunningTaskInfo task;
         final SurfaceControl surface;
         volatile long animationId;
-        volatile boolean allowHandoff = true;
+        volatile boolean allowHandoff;
 
         HandoffTarget(RunningTaskInfo taskInfo, SurfaceControl leash) {
             task = taskInfo;

@@ -118,7 +118,7 @@ public class LauncherAnimationRunner extends RemoteAnimationRunnerCompat {
     @UiThread
     private void finishExistingAnimation() {
         if (mAnimationResult != null) {
-            mAnimationResult.finish();
+            mAnimationResult.finish(true);
             mAnimationResult = null;
         }
     }
@@ -129,7 +129,7 @@ public class LauncherAnimationRunner extends RemoteAnimationRunnerCompat {
     @BinderThread
     @Override
     public void onAnimationCancelled() {
-        long generation = mAnimationGeneration.get();
+        long generation = mAnimationGeneration.incrementAndGet();
         postAsyncCallback(mHandler, () -> {
             if (generation != mAnimationGeneration.get()) return;
             finishExistingAnimation();
@@ -161,11 +161,20 @@ public class LauncherAnimationRunner extends RemoteAnimationRunnerCompat {
 
         @UiThread
         private void finish() {
+            finish(false);
+        }
+
+        @UiThread
+        private void finish(boolean interrupted) {
             if (!mFinished) {
                 mFinished = true;
                 if (mWindowSpring != null) {
                     if (mWindowSpring.isRunning()) {
-                        mWindowSpring.end();
+                        if (interrupted && mWindowSpring.isNothing()) {
+                            mWindowSpring.interrupt();
+                        } else {
+                            mWindowSpring.end();
+                        }
                     }
                     if (!mAnimatorEnded && mAnimator != null && mAnimator.isStarted()) {
                         mAnimator.cancel();

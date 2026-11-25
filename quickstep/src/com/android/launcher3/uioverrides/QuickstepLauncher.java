@@ -543,7 +543,7 @@ public class QuickstepLauncher extends Launcher implements RecentsViewContainer,
         }
         RunnableList deferred = new RunnableList();
         if (com.android.quickstep.AbsSwipeUpHandler.handleNothingHomeFlightLaunch(this,
-                intent, item, () -> {
+                () -> {
                     if (isDestroyed()) {
                         deferred.executeAllAndDestroy();
                         return;

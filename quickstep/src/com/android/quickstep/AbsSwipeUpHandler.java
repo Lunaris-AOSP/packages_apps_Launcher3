@@ -129,7 +129,6 @@ import com.android.launcher3.dagger.LauncherComponentProvider;
 import com.android.launcher3.dragndrop.DragView;
 import com.android.launcher3.logging.StatsLogManager;
 import com.android.launcher3.logging.StatsLogManager.StatsLogger;
-import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.statehandlers.DesktopVisibilityController;
 import com.android.launcher3.statemanager.BaseState;
 import com.android.launcher3.statemanager.StatefulContainer;
@@ -338,7 +337,6 @@ public abstract class AbsSwipeUpHandler<
     private RunningWindowAnim[] mRunningWindowAnim;
     private RectFSpringAnim mCosHomeFlight;
     private RectFSpringAnim mNothingHomeFlight;
-    private boolean mNothingHomeReversed;
     private static WeakReference<AbsSwipeUpHandler<?, ?, ?>> sNothingHomeFlight =
             new WeakReference<>(null);
     private boolean mHomeAnimDetachedFromWindow;
@@ -1187,14 +1185,13 @@ public abstract class AbsSwipeUpHandler<
 
     @UiThread
     public static boolean handleNothingHomeFlightLaunch(QuickstepLauncher launcher,
-            Intent intent, ItemInfo item, Runnable launch, Runnable onSuperseded) {
+            Runnable launch, Runnable onSuperseded) {
         AbsSwipeUpHandler<?, ?, ?> handler = sNothingHomeFlight.get();
         return handler != null && handler.mContainer == launcher
-                && handler.handleNothingHomeFlightLaunch(intent, item, launch, onSuperseded);
+                && handler.handleNothingHomeFlightLaunch(launch, onSuperseded);
     }
 
-    private boolean handleNothingHomeFlightLaunch(Intent intent, ItemInfo item,
-            Runnable launch, Runnable onSuperseded) {
+    private boolean handleNothingHomeFlightLaunch(Runnable launch, Runnable onSuperseded) {
         if (!CosAppAnimation.isEnabled(mContext) && mHomeFlightLaunch.hasPendingLaunch()) {
             mHomeFlightLaunch.set(launch, onSuperseded);
             return true;
@@ -1206,43 +1203,6 @@ public abstract class AbsSwipeUpHandler<
                 || !mStateCallback.hasStates(STATE_GESTURE_COMPLETED)
                 || mStateCallback.hasStates(STATE_CURRENT_TASK_FINISHED)
                 || mStateCallback.hasStates(STATE_HANDLER_INVALIDATED)) return false;
-        RemoteAnimationTarget target = mRecentsAnimationTargets == null ? null
-                : mRecentsAnimationTargets.findTask(mGestureState.getTopRunningTaskId());
-        boolean sameApp = !mHomeAnimDetachedFromWindow && target != null
-                && target.taskInfo != null && item != null
-                && item.itemType == com.android.launcher3.LauncherSettings.Favorites
-                        .ITEM_TYPE_APPLICATION
-                && item.user != null && item.user.getIdentifier() == target.taskInfo.userId
-                && intent != null && Intent.ACTION_MAIN.equals(intent.getAction())
-                && intent.hasCategory(Intent.CATEGORY_LAUNCHER)
-                && intent.getComponent() != null && target.taskInfo.baseIntent != null
-                && intent.getComponent().equals(target.taskInfo.baseIntent.getComponent())
-                && mRotationTouchHelper.getCurrentActiveRotation() == ROTATION_0
-                && mRemoteTargetHandles[0].getTaskViewSimulator().getOrientationState()
-                        .getRecentsActivityRotation() == ROTATION_0
-                && target.rotationChange == 0
-                && !mHandOffAnimationToHome
-                && target.taskInfo.getWindowingMode() != WINDOWING_MODE_FREEFORM;
-        if (sameApp && mContainer instanceof QuickstepLauncher launcher
-                && mNothingHomeAnimationRunner.reverseToOpen()) {
-            mNothingHomeReversed = true;
-            mRecentsAnimationController.setWillFinishToHome(false);
-            RecentsAnimationController controller = mRecentsAnimationController;
-            UI_HELPER_EXECUTOR.execute(() -> controller.getController()
-                    .setInputConsumerEnabled(false));
-            mInputConsumerProxy.destroy();
-            resetLauncherListeners();
-            mGestureState.setEndTarget(LAST_TASK, false);
-            mGestureState.setState(STATE_RECENTS_SCROLLING_FINISHED);
-            launcher.getAppTransitionManager().getNothingWorkspaceAnimation().open(false);
-            mNothingHomeFlight.addAnimatorListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    MAIN_EXECUTOR.getHandler().post(onSuperseded);
-                }
-            });
-            return true;
-        }
         mHomeFlightLaunch.set(launch, onSuperseded);
         mStateCallback.runOnceAtState(STATE_CURRENT_TASK_FINISHED, this::runHomeFlightLaunches);
         mRecentsAnimationController.setWillFinishToHome(true);
@@ -2566,7 +2526,6 @@ public abstract class AbsSwipeUpHandler<
             @Override
             public void onAnimationSuccess(Animator animator) {
                 // Make sure recents is in its final state
-                if (mNothingHomeReversed) return;
                 maybeUpdateRecentsAttachedState(false);
                 mContainerInterface.onSwipeUpToHomeComplete();
             }
@@ -2682,12 +2641,6 @@ public abstract class AbsSwipeUpHandler<
     private void cancelCurrentAnimation() {
         ActiveGestureProtoLogProxy.logAbsSwipeUpHandlerCancelCurrentAnimation();
         mCanceled = true;
-        if (mNothingHomeReversed && mNothingHomeFlight != null
-                && mNothingHomeFlight.isRunning()) {
-            mNothingHomeFlight.interrupt();
-            if (mNothingHomeAnimationRunner != null) mNothingHomeAnimationRunner.onCancel();
-            mNothingHomeReversed = false;
-        }
         mCurrentShift.cancelAnimation();
         resetOverviewGestureState();
 

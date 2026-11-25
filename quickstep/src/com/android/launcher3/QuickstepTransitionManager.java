@@ -542,6 +542,10 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             @NonNull RemoteAnimationTarget[] appTargets,
             @NonNull RemoteAnimationTarget[] wallpaperTargets,
             @NonNull RemoteAnimationTarget[] nonAppTargets, boolean launcherClosing) {
+        if (!mCosAppAnimations) {
+            interruptNothingLaunch();
+            getNothingWorkspaceAnimation().interruptClosingAnimations();
+        }
         TaskViewUtils.composeRecentsLaunchAnimator(anim, v, appTargets, wallpaperTargets,
                 nonAppTargets, launcherClosing, mLauncher.getStateManager(),
                 mLauncher.getOverviewPanel(), mLauncher.getDepthController(),
@@ -614,6 +618,7 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
             RemoteAnimationTarget[] appTargets, RemoteAnimationTarget[] wallpaperTargets,
             RemoteAnimationTarget[] nonAppTargets, boolean launcherClosing) {
         interruptNothingLaunch();
+        getNothingWorkspaceAnimation().interruptClosingAnimations();
         mLauncher.getStateManager().setCurrentAnimation(animation);
         RemoteAnimationTargets targets = new RemoteAnimationTargets(appTargets,
                 wallpaperTargets, nonAppTargets, MODE_OPENING);

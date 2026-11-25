@@ -191,6 +191,7 @@ public final class NothingWorkspaceAnimation {
         mRevealing = false;
         mSibling = null;
         mTarget = null;
+        interruptClosingAnimations(true);
         prepareViews();
         mLauncher.getWorkspace().setPivotToScaleWithSelf(mLauncher.getHotseat());
         mWorkspace.animate(NothingAppAnimation.WORKSPACE_MIN_SCALE,
@@ -203,6 +204,22 @@ public final class NothingWorkspaceAnimation {
             mLauncher.getRootView().getSysUiScrim().getSysUIProgress().updateValue(1f);
         }
         retarget(mSysUi, NothingAppAnimation.SYS_UI_STIFFNESS, 0f);
+    }
+
+    public void interruptClosingAnimations() {
+        mAnimationId++;
+        mSibling = null;
+        mTarget = null;
+        interruptClosingAnimations(false);
+    }
+
+    private void interruptClosingAnimations(boolean keepReversed) {
+        for (RectFSpringAnim spring : new ArrayList<>(mClosingAnimations.keySet())) {
+            if (keepReversed && spring.isReverse()) continue;
+            AnimatorSet animator = mClosingAnimations.remove(spring);
+            spring.interrupt();
+            if (animator != null) animator.cancel();
+        }
     }
 
     public void reveal(RectFSpringAnim sibling, RectF target, boolean fade, boolean blur) {
