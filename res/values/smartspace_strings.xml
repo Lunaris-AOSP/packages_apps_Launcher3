@@ -3,6 +3,7 @@
     <string name="at_a_glance_title">At a Glance</string>
     <string name="show_at_a_glance_title">Show At a Glance</string>
     <string name="show_at_a_glance_summary">Show Quickspace or Smartspace on the home screen</string>
+    <string name="at_a_glance_black_title">Use black text and icons</string>
     <string name="use_smartspace_title">Use Smartspace</string>
     <string name="use_smartspace_on">Smartspace (default)</string>
     <string name="use_smartspace_off">Quickspace</string>

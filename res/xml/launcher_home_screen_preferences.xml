@@ -243,6 +243,13 @@
             android:persistent="true"
             launcher:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:key="pref_at_a_glance_black"
+            android:title="@string/at_a_glance_black_title"
+            android:dependency="pref_quickspace"
+            android:defaultValue="false"
+            launcher:iconSpaceReserved="false" />
+
         <PreferenceScreen
             android:key="smartspace_events"
             android:title="@string/smartspace_events_title"

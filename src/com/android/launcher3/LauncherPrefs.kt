@@ -374,6 +374,7 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
         @JvmField val SHOW_DRAWER_LABELS = backedUpItem("pref_drawer_show_labels", true)
         @JvmField val SHOW_HOTSEAT_BG = backedUpItem("pref_show_hotseat_bg", false)
         @JvmField val SHOW_QUICKSPACE = backedUpItem("pref_quickspace", true)
+        @JvmField val AT_A_GLANCE_BLACK = backedUpItem("pref_at_a_glance_black", false)
         @JvmField val USE_SMARTSPACE = backedUpItem("pref_smartspace", true)
         @JvmField val SMARTSPACE_WEATHER = backedUpItem("pref_smartspace_weather", true)
         @JvmField val SMARTSPACE_CALENDAR = backedUpItem("pref_smartspace_calendar", true)

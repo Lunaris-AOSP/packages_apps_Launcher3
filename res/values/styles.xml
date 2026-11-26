@@ -732,4 +732,10 @@
         <item name="qsbIconTintTertiary">@color/qsb_tertiary</item>
     </style>
 
+    <style name="AtAGlanceBlack">
+        <item name="workspaceAmbientShadowColor">@android:color/transparent</item>
+        <item name="workspaceKeyShadowColor">@android:color/transparent</item>
+        <item name="workspaceTextColor">@android:color/black</item>
+        <item name="workspaceAccentColor">@android:color/black</item>
+    </style>
 </resources>
