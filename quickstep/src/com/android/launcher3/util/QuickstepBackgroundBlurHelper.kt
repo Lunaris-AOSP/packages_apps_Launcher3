@@ -160,6 +160,7 @@ constructor(
     private fun drawCrossWindowBlur(canvas: Canvas, pathWrapper: PathWrapper?, view: View) {
         val d = getOrCreateFolderBlurDrawable() ?: return
 
+        d.alpha = Math.round(view.alpha * 255)
         d.setVisible(true, false)
         if (pathWrapper != null) {
             pathWrapper.bounds.roundOut(bounds)

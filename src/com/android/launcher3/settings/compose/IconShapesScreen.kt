@@ -380,8 +380,9 @@ private fun defaultPreviewPath(context: Context, target: ShapeTarget): String {
 
 /** Shared wallpaper card also used by the icon pack screen. Loading follows the composition. */
 @Composable
-internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
+internal fun SettingsPreviewCard(content: @Composable (ImageView?) -> Unit) {
     val context = LocalContext.current
+    var wallpaperView by remember { mutableStateOf<ImageView?>(null) }
     val wallpaper by
         produceState<android.graphics.drawable.Drawable?>(null, context) {
             value =
@@ -397,12 +398,12 @@ internal fun SettingsPreviewCard(content: @Composable () -> Unit) {
                     ImageView(it).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    }
+                    }.also { view -> wallpaperView = view }
                 },
                 modifier = Modifier.matchParentSize(),
                 update = { it.setImageDrawable(wallpaper) },
             )
-            content()
+            content(wallpaperView.takeIf { wallpaper != null })
         }
     }
 }

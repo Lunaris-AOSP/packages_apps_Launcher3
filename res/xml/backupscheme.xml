@@ -19,5 +19,6 @@
     <include domain="database" path="launcher_22_by_11.db" />
     <include domain="sharedpref" path="com.android.launcher3.prefs.xml" />
     <include domain="file" path="downgrade_schema.json" />
+    <include domain="file" path="folder_thumbnails/" />
 
 </full-backup-content>

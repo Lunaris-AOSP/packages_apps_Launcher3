@@ -28,6 +28,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.TimeInterpolator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Rect;
@@ -260,10 +261,12 @@ public class FolderAnimationManager implements FolderAnimationCreator {
         play(a, getAnimator(mFolder.mFooter, SCALE_PROPERTY, initialScale, finalScale));
 
         if (hasThumbnail) {
+            float startAlpha = isOpening ? 0f : mFolder.getAlpha();
+            setCoveredFolderAlpha(startAlpha);
+            ValueAnimator fade = ValueAnimator.ofFloat(startAlpha, isOpening ? 1f : 0f);
+            fade.addUpdateListener(anim -> setCoveredFolderAlpha((float) anim.getAnimatedValue()));
             int half = mDuration / 2;
-            Animator contentAlpha = getAnimator(mFolder.mContent, ALPHA, 0f, 1f);
-            contentAlpha.addListener(new PropertyResetListener<>(ALPHA, 1f));
-            play(a, contentAlpha, mIsOpening ? 0 : half, half);
+            play(a, fade, isOpening ? 0 : mDuration - half, half);
         }
 
         final int footerAlphaDuration;
@@ -350,10 +353,6 @@ public class FolderAnimationManager implements FolderAnimationCreator {
                 mCellLayoutClipChildren = mCellLayout.getClipChildren();
                 mCellLayoutClipPadding = mCellLayout.getClipToPadding();
 
-                if (hasThumbnail) {
-                    mFolderIcon.setThumbnailShownDuringAnimation(true);
-                }
-
                 mFolder.setClipChildren(false);
                 mFolder.setClipToPadding(false);
                 mContent.setClipChildren(false);
@@ -374,10 +373,6 @@ public class FolderAnimationManager implements FolderAnimationCreator {
                 mFolder.mFooter.setScaleY(1f);
                 mFolder.mFooter.setTranslationX(0f);
                 mFolder.getFolderName().setAlpha(1f);
-
-                if (hasThumbnail && isOpening) {
-                    mFolderIcon.setThumbnailShownDuringAnimation(false);
-                }
 
                 mFolder.setClipChildren(mFolderClipChildren);
                 mFolder.setClipToPadding(mFolderClipToPadding);
@@ -580,6 +575,11 @@ public class FolderAnimationManager implements FolderAnimationCreator {
                 play(animatorSet, alphaAnimator);
             }
         }
+    }
+
+    private void setCoveredFolderAlpha(float alpha) {
+        mFolder.setAlpha(alpha);
+        mFolderIcon.setThumbnailAnimationAlpha(Math.round((1f - alpha) * 255));
     }
 
     private void play(AnimatorSet as, Animator a) {

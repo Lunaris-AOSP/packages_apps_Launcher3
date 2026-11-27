@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="folder_cover_emoji">Emoji</string>
+    <string name="folder_cover_symbols">Dotted symbols</string>
+    <string name="folder_cover_custom_emoji">Enter an emoji</string>
+    <string name="folder_cover_single_emoji">Enter one emoji</string>
+    <string name="folder_cover_choose_photo">Choose photo</string>
+    <string name="folder_cover_preview">Cover preview</string>
+    <string name="folder_cover_use_folder_background">Use folder background</string>
+    <string name="folder_cover_save_failed">Couldn\'t save the folder cover</string>
+    <string name="folder_cover_music">Music</string>
+    <string name="folder_cover_art">Art</string>
+    <string name="folder_cover_favorites">Favorites</string>
+    <string name="folder_cover_travel">Travel</string>
+    <string name="folder_cover_camera">Camera</string>
+    <string name="folder_cover_work">Work</string>
+    <string name="folder_cover_chat">Chat</string>
+    <string name="folder_cover_mail">Mail</string>
+    <string name="folder_cover_calendar">Calendar</string>
+    <string name="folder_cover_files">Files</string>
+    <string name="folder_cover_clock">Clock</string>
+</resources>

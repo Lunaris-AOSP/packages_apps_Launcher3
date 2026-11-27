@@ -147,7 +147,8 @@
                        android:value="true" />
 
         <activity android:name="com.android.launcher3.folder.FolderThumbnailPickerActivity"
-            android:theme="@style/ProxyActivityStarterTheme"
+            android:label="@string/folder_thumbnail_set"
+            android:theme="@style/HomeSettings.Theme"
             android:excludeFromRecents="true"
             android:autoRemoveFromRecents="true"
             android:exported="false" />

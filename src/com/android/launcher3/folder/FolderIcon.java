@@ -30,7 +30,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -160,18 +159,16 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
 
     boolean mAnimating = false;
 
-    private static final Paint sThumbnailPaint =
-            new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Path mThumbnailClipPath = new Path();
     private final RectF mThumbnailBounds = new RectF();
-    private final RectF mThumbnailImageBounds = new RectF();
-    @Nullable private Bitmap mCustomThumbnail;
+    @Nullable private FolderCover mCustomThumbnail;
+    @Nullable private FolderCover.Colors mCoverColors;
     private int mThumbnailLoadGeneration;
-    private boolean mShowThumbnailWhileHidden = false;
+    private int mThumbnailAnimationAlpha;
 
     private static final int THUMBNAIL_FADE_DURATION_MS = 300;
     private boolean mThumbnailFading = false;
-    @Nullable private Bitmap mFadeFromThumbnail;
+    @Nullable private FolderCover mFadeFromThumbnail;
     private float mThumbnailFadeProgress = 1f;
     @Nullable private ValueAnimator mThumbnailFadeAnimator;
 
@@ -1072,7 +1069,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     public void setIconVisible(boolean visible) {
         mBackgroundIsVisible = visible;
         if (visible) {
-            mShowThumbnailWhileHidden = false;
+            mThumbnailAnimationAlpha = 0;
         }
         updatePreviewBlurState();
         mBackground.invalidate();
@@ -1095,10 +1092,23 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     public int getPreviewBackgroundColor() {
         if (mPreviewBlurDrawn && isPreviewBlurAvailable() && mActivity != null
                 && mActivity.getActivityComponent().getBlurBackgroundHelper().isBlurEnabled()) {
-            return AxBlurCustomization.getInstance(getContext()).getState().resolveTint(
-                    getContext(), AxBlurColors.surfaceBrightTint(getContext()));
+            return getFolderBlurTint(getContext());
         }
         return Themes.getAttrColor(getContext(), R.attr.folderPreviewColor);
+    }
+
+    static int getFolderBlurTint(Context context) {
+        return AxBlurCustomization.getInstance(context).getState().resolveTint(
+                context, AxBlurColors.surfaceBrightTint(context));
+    }
+
+    boolean needsFolderSurface() {
+        return mAnimating || needsFolderSurface(mCustomThumbnail)
+                || (mThumbnailFading && needsFolderSurface(mFadeFromThumbnail));
+    }
+
+    private static boolean needsFolderSurface(@Nullable FolderCover cover) {
+        return cover == null || cover.getGlyph() == null || cover.getUseFolderBackground();
     }
 
     private boolean isPreviewBlurAvailable() {
@@ -1114,8 +1124,12 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     }
 
     private void updatePreviewBlurState() {
-        mPreviewBlur.setEnabled(isPreviewBlurAvailable() && mBackgroundIsVisible
-                && (mCustomThumbnail == null || mThumbnailFading || mAnimating)
+        boolean useFolderBackground = mCustomThumbnail != null
+                && mCustomThumbnail.getUseFolderBackground();
+        mPreviewBlur.setEnabled(isPreviewBlurAvailable()
+                && (mBackgroundIsVisible || (useFolderBackground && mThumbnailAnimationAlpha > 0))
+                && (useFolderBackground || mCustomThumbnail == null || mAnimating
+                        || (mThumbnailFading && needsFolderSurface()))
                 && isAttachedToWindow() && isShown() && getWindowVisibility() == VISIBLE
                 && getWidth() > 0 && getHeight() > 0);
     }
@@ -1124,7 +1138,8 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         if (!canvas.isHardwareAccelerated()) return false;
         updatePreviewBlurState();
         mPreviewBlurDrawn = mPreviewBlur.isEnabled()
-                && mPreviewBlur.draw(canvas, bounds, clipPath, cornerRadius);
+                && mPreviewBlur.draw(canvas, bounds, clipPath, cornerRadius,
+                        mBackgroundIsVisible ? 255 : mThumbnailAnimationAlpha);
         return mPreviewBlurDrawn;
     }
 
@@ -1164,14 +1179,18 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
             updatePreviewBlurState();
         }
 
-        boolean thumbnailOnly = !mBackgroundIsVisible && mShowThumbnailWhileHidden
-                && mCustomThumbnail != null;
-        if (!mBackgroundIsVisible && !thumbnailOnly) return;
+        boolean thumbnailOnly = !mBackgroundIsVisible;
+        if (thumbnailOnly && (mThumbnailAnimationAlpha == 0 || mCustomThumbnail == null)) return;
 
         mPreviewItemManager.recomputePreviewDrawingParams();
 
-        if (!mBackground.drawingDelegated()) {
-            mBackground.drawBackground(canvas, true);
+        boolean drawBackground = !mBackground.drawingDelegated();
+        boolean drewBlur = drawBackground && mBackground.drawPreviewBlur(canvas);
+        int layer = thumbnailOnly && mThumbnailAnimationAlpha < 255
+                ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), mThumbnailAnimationAlpha)
+                : -1;
+        if (drawBackground) {
+            mBackground.drawBackground(canvas, drewBlur);
         }
 
         if (mThumbnailFading && !thumbnailOnly) {
@@ -1187,7 +1206,8 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
             mBackground.drawBackgroundStroke(canvas);
         }
 
-        drawDot(canvas);
+        if (layer != -1) canvas.restoreToCount(layer);
+        if (!thumbnailOnly) drawDot(canvas);
     }
 
     public void onCustomThumbnailChanged() {
@@ -1201,16 +1221,16 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
             return;
         }
         final int folderId = mInfo.id;
-        FolderThumbnailManager.loadAsync(getContext(), folderId, bitmap -> {
+        FolderThumbnailManager.loadAsync(getContext(), folderId, cover -> {
             if (generation == mThumbnailLoadGeneration && mInfo != null
                     && mInfo.id == folderId && mInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
-                applyCustomThumbnail(bitmap, animate);
+                applyCustomThumbnail(cover, animate);
             }
         });
     }
 
-    private void applyCustomThumbnail(@Nullable Bitmap next, boolean animate) {
-        Bitmap previous = mCustomThumbnail;
+    private void applyCustomThumbnail(@Nullable FolderCover next, boolean animate) {
+        FolderCover previous = mCustomThumbnail;
         if (previous == next) {
             return;
         }
@@ -1223,7 +1243,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         }
     }
 
-    private void startThumbnailFade(@Nullable Bitmap from) {
+    private void startThumbnailFade(@Nullable FolderCover from) {
         if (mThumbnailFadeAnimator != null) {
             mThumbnailFadeAnimator.removeAllListeners();
             mThumbnailFadeAnimator.cancel();
@@ -1260,7 +1280,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         mThumbnailFadeProgress = 1f;
     }
 
-    private void drawIconContent(Canvas canvas, @Nullable Bitmap thumbnail, int alpha) {
+    private void drawIconContent(Canvas canvas, @Nullable FolderCover thumbnail, int alpha) {
         int saveCount = alpha < 255
                 ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), alpha)
                 : canvas.save();
@@ -1277,9 +1297,11 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         return mCustomThumbnail != null;
     }
 
-    public void setThumbnailShownDuringAnimation(boolean shown) {
-        mShowThumbnailWhileHidden = shown;
-        invalidate();
+    void setThumbnailAnimationAlpha(int alpha) {
+        if (mThumbnailAnimationAlpha != alpha) {
+            mThumbnailAnimationAlpha = alpha;
+            invalidate();
+        }
     }
 
     /** Draws the same thumbnail or app preview used by the closed folder in drag snapshots. */
@@ -1296,20 +1318,18 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
         }
     }
 
-    private void drawCustomThumbnail(Canvas canvas, Bitmap bitmap) {
+    private void drawCustomThumbnail(Canvas canvas, FolderCover cover) {
         mBackground.getDrawnShapePath(mThumbnailClipPath);
         mThumbnailClipPath.computeBounds(mThumbnailBounds, true);
         int saveCount = canvas.save();
         canvas.clipPath(mThumbnailClipPath);
-        float scale = Math.max(mThumbnailBounds.width() / bitmap.getWidth(),
-                mThumbnailBounds.height() / bitmap.getHeight());
-        float halfWidth = bitmap.getWidth() * scale / 2f;
-        float halfHeight = bitmap.getHeight() * scale / 2f;
-        mThumbnailImageBounds.set(mThumbnailBounds.centerX() - halfWidth,
-                mThumbnailBounds.centerY() - halfHeight,
-                mThumbnailBounds.centerX() + halfWidth,
-                mThumbnailBounds.centerY() + halfHeight);
-        canvas.drawBitmap(bitmap, null, mThumbnailImageBounds, sThumbnailPaint);
+        if (mCoverColors == null) {
+            mCoverColors = FolderCover.Colors.resolve(getContext());
+        }
+        int folderColor = cover.getUseFolderBackground() && canvas.isHardwareAccelerated()
+                && mPreviewBlurDrawn
+                ? getFolderBlurTint(getContext()) : mBackground.getBgColor();
+        cover.draw(canvas, mThumbnailBounds, mCoverColors, folderColor);
         canvas.restoreToCount(saveCount);
     }
 
@@ -1422,9 +1442,10 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     public void setFolderOpen(boolean open) {
         if (mFolderOpen == open) return;
         mFolderOpen = open;
+        if (open && mThumbnailFading) {
+            endThumbnailFade();
+        }
         if (mFolderName != null) {
-            // Hide the label's paint as well as its view so an open/close transition cannot flash
-            // stale text for one frame when the child visibility is updated.
             mFolderName.setTextVisibility(!open);
         }
         updateTextVisibility();
@@ -1634,6 +1655,7 @@ public class FolderIcon extends FrameLayout implements FloatingIconViewCompanion
     protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
         if (visibility == VISIBLE) {
+            mCoverColors = null;
             updatePreviewBlurPreferences();
         } else {
             mPreviewBlur.setEnabled(false);

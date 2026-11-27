@@ -417,9 +417,16 @@ java_import {
     ],
 }
 
+license {
+    name: "Launcher3_folder_cover_emoji_license",
+    license_kinds: ["SPDX-license-identifier-OFL-1.1"],
+    license_text: ["assets/licenses/NotoEmoji-OFL.txt"],
+}
+
 // Library with all the dependencies for building Launcher3
 android_library {
     name: "Launcher3ResLib",
+    licenses: ["Android-Apache-2.0", "Launcher3_folder_cover_emoji_license"],
     asset_dirs: ["assets"],
     srcs: [],
     resource_dirs: ["res"],

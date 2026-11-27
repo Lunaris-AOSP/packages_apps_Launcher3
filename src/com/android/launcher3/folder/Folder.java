@@ -710,8 +710,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
      * Opens the folder as part of a drag operation
      */
     public void beginExternalDrag() {
-        mIsExternalDrag = true;
         mIsDragInProgress = true;
+        cancelRunningAnimations();
+        mIsExternalDrag = true;
 
         // Since this folder opened by another controller, it might not get onDrop or
         // onDropComplete. Perform cleanup once drag-n-drop ends.
@@ -730,6 +731,7 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
      * is played.
      */
     public void animateOpen() {
+        cancelRunningAnimations();
         animateOpen(mInfo.getContents(), 0);
     }
 
@@ -782,18 +784,12 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         // dropping. One resulting issue is that replaceFolderWithFinalItem() can be called twice.
         mDeleteFolderOnDropCompleted = false;
 
-        cancelRunningAnimations();
-        Log.d("b/383526431", "animateOpen: content child count after cancelling"
-                + " animation: " + mContent.getTotalChildCount());
-
         AnimatorSet animatorSet = getFolderAnimationManager()
                 .createAnimatorSet(/* isOpening */ true);
 
         animatorSet.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
-                // The expanded folder renders its own title in the footer. Hide only the
-                // collapsed workspace label; the folder contents and footer remain unchanged.
                 mFolderIcon.setFolderOpen(true);
                 mFolderIcon.setIconVisible(false);
                 mFolderIcon.drawLeaveBehindIfExists();
@@ -880,7 +876,6 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         boolean shouldUseSpringMotion = Flags.enableLauncherIconShapes()
                 && Flags.enableExpressiveFolderExpansion()
                 && !mFolderIcon.isMultiSpanFolder()
-                // The spring animator does not implement the custom thumbnail cross-fade.
                 && !mInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL);
         if (shouldUseSpringMotion) {
             ShapeDelegate shapeDelegate =
@@ -952,6 +947,7 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
             return;
         }
 
+        cancelRunningAnimations();
         int size = getIconsInReadingOrder().size();
         if (size <= 1) {
             Log.d(TAG, "Couldn't animate folder closed because there's " + size + " icons");
@@ -963,7 +959,6 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         mContent.completePendingPageChanges();
         mContent.snapToPageImmediately(mContent.getDestinationPage());
 
-        cancelRunningAnimations();
         AnimatorSet animatorSet = getFolderAnimationManager()
                 .createAnimatorSet(/* isOpening */ false);
 
@@ -1002,11 +997,11 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
 
     private void closeComplete(boolean wasAnimated) {
         mBlurBackgroundHelper.folderCloseComplete();
-        // TODO: Clear all active animations.
         BaseDragLayer parent = (BaseDragLayer) getParent();
         if (parent != null) {
             parent.removeView(this);
         }
+        setAlpha(1f);
         mActivityContext.getDragController().removeDropTarget(this);
         clearFocus();
         if (mFolderIcon != null) {

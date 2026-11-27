@@ -176,6 +176,7 @@ public class ModelWriter {
 
             for (ItemInfo item : itemsToRemove) {
                 mModel.getModelDbController().delete(itemIdMatch(item.id), null);
+                deleteFolderCover(item);
                 mBgDataModel.removeItem(mContext, item);
             }
         }));
@@ -262,9 +263,7 @@ public class ModelWriter {
             }
             mBgDataModel.updateItems(items, mOwner);
             mBgDataModel.removeItem(mContext, Collections.singleton(folder), mOwner);
-            if (folder.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
-                FolderThumbnailManager.delete(mContext, folder.id);
-            }
+            deleteFolderCover(folder);
             verifier.verifyModel();
         }));
     }
@@ -376,10 +375,7 @@ public class ModelWriter {
         enqueueDeleteRunnable(newModelTask(() -> {
             for (ItemInfo item : items) {
                 mModel.getModelDbController().delete(itemIdMatch(item.id), null);
-                if (item instanceof FolderInfo fi
-                        && fi.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
-                    FolderThumbnailManager.delete(mContext, fi.id);
-                }
+                deleteFolderCover(item);
             }
             mBgDataModel.removeItem(mContext, items, mOwner);
             verifier.verifyModel();
@@ -402,6 +398,7 @@ public class ModelWriter {
 
             List<ItemInfo> itemsToDelete = new ArrayList<>(info.getContents());
             itemsToDelete.add(info);
+            deleteFolderCover(info);
             mBgDataModel.removeItem(mContext, itemsToDelete, mOwner);
             verifier.verifyModel();
         }));
@@ -419,6 +416,12 @@ public class ModelWriter {
             enqueueDeleteRunnable(newModelTask(() -> holder.deleteAppWidgetId(info.appWidgetId)));
         }
         deleteItemFromDatabase(info, reason);
+    }
+
+    private void deleteFolderCover(ItemInfo item) {
+        if (item instanceof FolderInfo folder && folder.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL)) {
+            FolderThumbnailManager.delete(mContext, folder.id);
+        }
     }
 
     private void notifyDelete(Collection<? extends ItemInfo> items) {

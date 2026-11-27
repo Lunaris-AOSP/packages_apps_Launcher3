@@ -21,18 +21,21 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
+import android.graphics.Rect
 import android.net.Uri
+import android.util.AtomicFile
 import android.util.Log
 import android.util.LruCache
-import android.widget.Toast
 import com.android.launcher3.Launcher
-import com.android.launcher3.R
+import com.android.launcher3.LauncherAppState
+import com.android.launcher3.celllayout.CellPosMapper
 import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.util.Executors.MAIN_EXECUTOR
-import com.android.launcher3.util.Executors.THREAD_POOL_EXECUTOR
+import com.android.launcher3.util.Executors.MODEL_EXECUTOR
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.util.function.Consumer
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -41,63 +44,60 @@ object FolderThumbnailManager {
     private const val DIR = "folder_thumbnails"
     private const val TARGET_SIZE_PX = 512
 
-    private val cache = LruCache<Int, Bitmap>(8)
+    private val cache = LruCache<Int, FolderCover>(8)
 
-    private fun fileFor(context: Context, folderId: Int) =
-        File(File(context.filesDir, DIR), "$folderId.png")
+    private fun files(context: Context, folderId: Int) =
+        FolderCoverFiles(File(context.filesDir, DIR), folderId)
 
     const val EXTRA_FOLDER_ID = "folder_id"
+    const val EXTRA_FOLDER_NAME = "folder_name"
+    const val EXTRA_HAS_COVER = "has_cover"
 
     @JvmStatic
     fun startPicker(context: Context, folderInfo: FolderInfo) {
         context.startActivity(
             Intent(context, FolderThumbnailPickerActivity::class.java)
                 .putExtra(EXTRA_FOLDER_ID, folderInfo.id)
+                .putExtra(EXTRA_FOLDER_NAME, folderInfo.title?.toString())
+                .putExtra(EXTRA_HAS_COVER, folderInfo.hasOption(FolderInfo.FLAG_CUSTOM_THUMBNAIL))
         )
     }
 
     @JvmStatic
-    fun loadAsync(context: Context, folderId: Int, callback: Consumer<Bitmap?>) {
+    fun loadAsync(context: Context, folderId: Int, callback: Consumer<FolderCover?>) {
         cache.get(folderId)?.let {
             callback.accept(it)
             return
         }
-        val appContext = context.applicationContext
-        THREAD_POOL_EXECUTOR.execute {
-            val bitmap =
-                fileFor(appContext, folderId).takeIf { it.exists() }?.let {
-                    BitmapFactory.decodeFile(it.path)
-                }
-            bitmap?.let { cache.put(folderId, it) }
-            MAIN_EXECUTOR.execute { callback.accept(bitmap) }
+        val app = context.applicationContext
+        MODEL_EXECUTOR.execute {
+            val cover = cache.get(folderId) ?: runCatching { files(app, folderId).read(app) }
+                .onFailure { Log.w(TAG, "Unable to read cover for folder $folderId", it) }
+                .getOrNull()
+            if (cover != null) cache.put(folderId, cover)
+            MAIN_EXECUTOR.execute { callback.accept(cover) }
         }
     }
 
-    @JvmStatic
-    fun importFromUri(context: Context, folderId: Int, uri: Uri, onDone: Runnable) {
-        val appContext = context.applicationContext
-        THREAD_POOL_EXECUTOR.execute {
-            val bitmap =
-                runCatching { decodeSquare(appContext, uri) }
-                    .onFailure { Log.e(TAG, "Failed to decode $uri", it) }
-                    .getOrNull()
-            val saved = bitmap != null && save(appContext, folderId, bitmap)
+    fun apply(context: Context, folderId: Int, cover: FolderCover, onDone: (Boolean) -> Unit) {
+        val app = context.applicationContext
+        val model = LauncherAppState.getInstance(app).model
+        model.loadAsync { data ->
+            val folder = data?.itemsIdMap?.get(folderId) as? FolderInfo
+            val saved = folder != null && runCatching {
+                files(app, folderId).write(cover)
+                folder.setOption(
+                    FolderInfo.FLAG_CUSTOM_THUMBNAIL, true,
+                    model.getWriter(false, CellPosMapper.DEFAULT, null),
+                )
+                cache.put(folderId, cover)
+            }.onFailure { Log.e(TAG, "Unable to apply cover to folder $folderId", it) }.isSuccess
             MAIN_EXECUTOR.execute {
-                val launcher: Launcher? = Launcher.ACTIVITY_TRACKER.getCreatedContext()
-                if (!saved || launcher == null) {
-                    Toast.makeText(appContext, R.string.folder_thumbnail_failed, Toast.LENGTH_SHORT)
-                        .show()
-                } else {
-                    bitmap?.let { cache.put(folderId, it) }
-                    val icon = launcher.findFolderIcon(folderId)
-                    icon?.mInfo?.setOption(
-                        FolderInfo.FLAG_CUSTOM_THUMBNAIL,
-                        true,
-                        launcher.modelWriter,
-                    )
-                    icon?.onCustomThumbnailChanged(true)
+                if (saved) {
+                    Launcher.ACTIVITY_TRACKER.getCreatedContext<Launcher>()?.findFolderIcon(folderId)
+                        ?.onCustomThumbnailChanged(true)
                 }
-                onDone.run()
+                onDone(saved)
             }
         }
     }
@@ -111,42 +111,77 @@ object FolderThumbnailManager {
 
     @JvmStatic
     fun delete(context: Context, folderId: Int) {
-        cache.remove(folderId)
-        val file = fileFor(context, folderId)
-        THREAD_POOL_EXECUTOR.execute { file.delete() }
+        val app = context.applicationContext
+        MODEL_EXECUTOR.execute {
+            cache.remove(folderId)
+            files(app, folderId).delete()
+        }
     }
 
-    private fun decodeSquare(context: Context, uri: Uri): Bitmap {
+    fun decodeSquare(context: Context, uri: Uri): Bitmap {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
-        val decoded =
-            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                val shortSide = min(info.size.width, info.size.height)
-                if (shortSide > TARGET_SIZE_PX) {
-                    val scale = TARGET_SIZE_PX.toFloat() / shortSide
-                    decoder.setTargetSize(
-                        max(1, (info.size.width * scale).roundToInt()),
-                        max(1, (info.size.height * scale).roundToInt()),
-                    )
+        return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            val scale = min(1.0, TARGET_SIZE_PX.toDouble() / min(info.size.width, info.size.height))
+            val width = (info.size.width * scale).roundToInt()
+            val height = (info.size.height * scale).roundToInt()
+            decoder.setTargetSize(width, height)
+            val side = min(width, height)
+            val left = (width - side) / 2
+            val top = (height - side) / 2
+            decoder.crop = Rect(left, top, left + side, top + side)
+        }
+    }
+}
+
+internal class FolderCoverFiles(directory: File, id: Int) {
+    private val image = AtomicFile(File(directory, "$id.png"))
+    private val glyph = AtomicFile(File(directory, "$id.glyph"))
+
+    fun read(context: Context): FolderCover? {
+        if (glyph.exists()) {
+            val value = glyph.readFully().toString(Charsets.UTF_8)
+            return FolderCover.fromGlyph(context, value.removePrefix(FOLDER_BACKGROUND_PREFIX))
+                ?.withFolderBackground(value.startsWith(FOLDER_BACKGROUND_PREFIX))
+        }
+        if (!image.exists()) return null
+        return image.openRead().use { BitmapFactory.decodeStream(it) }?.let { FolderCover.photo(it) }
+    }
+
+    fun write(cover: FolderCover) {
+        val key = cover.glyph
+        if (key != null) {
+            val value = if (cover.useFolderBackground) FOLDER_BACKGROUND_PREFIX + key else key
+            atomicWrite(glyph) { it.write(value.toByteArray(Charsets.UTF_8)) }
+            image.delete()
+        } else {
+            atomicWrite(image) {
+                if (!cover.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) {
+                    throw IOException("Could not encode folder image")
                 }
             }
-        val side = min(decoded.width, decoded.height)
-        return Bitmap.createBitmap(
-            decoded,
-            (decoded.width - side) / 2,
-            (decoded.height - side) / 2,
-            side,
-            side,
-        )
+            glyph.delete()
+            if (glyph.exists()) throw IOException("Could not replace folder glyph")
+        }
     }
 
-    private fun save(context: Context, folderId: Int, bitmap: Bitmap): Boolean {
-        val file = fileFor(context, folderId)
-        return runCatching {
-                file.parentFile?.mkdirs()
-                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            }
-            .onFailure { Log.e(TAG, "Failed to save thumbnail", it) }
-            .getOrDefault(false)
+    fun delete() {
+        glyph.delete()
+        image.delete()
+    }
+
+    private inline fun atomicWrite(file: AtomicFile, block: (FileOutputStream) -> Unit) {
+        val stream = file.startWrite()
+        try {
+            block(stream)
+            file.finishWrite(stream)
+        } catch (e: Throwable) {
+            file.failWrite(stream)
+            throw e
+        }
+    }
+
+    private companion object {
+        const val FOLDER_BACKGROUND_PREFIX = "folder-background:"
     }
 }
